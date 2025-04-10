@@ -8,7 +8,13 @@ use dialoguer::Select;
 use crossterm::{execute, terminal::{Clear, ClearType}};
 
 mod utils;
+mod vt11;
+mod vt11_module;
+
 use utils::*;
+use utils::select_layout_utils::*;
+use utils::setup_layout_li_utils::*;
+use vt11_module::run_vt11_module;
 
 // Struct to hold login parameters
 struct LoginParams {
@@ -38,37 +44,6 @@ fn main() -> anyhow::Result<()> {
     // Initialize logging if needed
     // pretty_env_logger::init();
 
-    loop {
-        clear_screen();
-
-        let options = vec!["Log into SAP", "Say hi!", "Exit"];
-        let choice = Select::new()
-            .with_prompt("Choose an option")
-            .items(&options)
-            .default(0)
-            .interact()
-            .unwrap();
-    
-        match choice {
-            0 => { sap_login().ok(); },
-            1 => { println!("Hi, dod"); },
-            2 => {
-                clear_screen();
-                println!("Bye!");
-                return Ok(());
-            },
-            _ => {} // no-op
-        }
-
-        std::thread::sleep(std::time::Duration::from_secs(2)); // to show output
-    }
-}
-
-fn sap_login() -> windows::core::Result<()> {
-
-    println!("SAP Login Utility");
-    println!("=================");
-
     // Initialize COM environment
     let com_instance = SAPComInstance::new().expect("Couldn't initialize COM environment");
     
@@ -78,7 +53,7 @@ fn sap_login() -> windows::core::Result<()> {
         Err(e) => {
             eprintln!("Error getting SAP wrapper: {}", e);
             eprintln!("Make sure SAP GUI is installed and properly configured.");
-            return Err(e);
+            return Err(e.into());
         }
     };
 
@@ -88,36 +63,139 @@ fn sap_login() -> windows::core::Result<()> {
         Err(e) => {
             eprintln!("Error getting SAP scripting engine: {}", e);
             eprintln!("Make sure SAP GUI is running and scripting is enabled.");
-            return Err(e);
+            return Err(e.into());
         }
     };
 
     // Get connection or create a new one
-    let connection = get_or_create_connection(&engine)?;
+    let connection = match get_or_create_connection(&engine) {
+        Ok(conn) => conn,
+        Err(e) => {
+            eprintln!("Error getting SAP connection: {}", e);
+            return Err(e.into());
+        }
+    };
     
     // Get the first session
     let session: GuiSession = match GuiConnectionExt::children(&connection)?.element_at(0)?.downcast() {
         Some(s) => s,
         None => {
             eprintln!("Failed to get SAP session");
-            return Err(windows::core::Error::from_win32());
+            return Err(windows::core::Error::from_win32().into());
         }
     };
 
+    // Main application loop
+    loop {
+        clear_screen();
+
+        // Check if already logged in
+        let transaction = session.info()?.transaction()?;
+        let is_logged_in = !transaction.contains("S000");
+        
+        // Create menu options based on login status
+        let options = if is_logged_in {
+            vec![
+                "Log in to SAP",
+                "VT11 - Shipment List Planning",
+                "Log out of SAP",
+                "Exit"
+            ]
+        } else {
+            vec![
+                "Log in to SAP",
+                "VT11 - Shipment List Planning (Not available - Login required)",
+                "Log out of SAP (Not available - Login required)",
+                "Exit"
+            ]
+        };
+        
+        let choice = Select::new()
+            .with_prompt("Choose an option")
+            .items(&options)
+            .default(0)
+            .interact()
+            .unwrap();
+    
+        match choice {
+            0 => { 
+                // Log in to SAP
+                handle_login(&session)?;
+            },
+            1 => { 
+                // Run VT11 module (only if logged in)
+                if is_logged_in {
+                    if let Err(e) = run_vt11_module(&session) {
+                        eprintln!("Error running VT11 module: {}", e);
+                        thread::sleep(Duration::from_secs(2));
+                    }
+                } else {
+                    println!("You need to log in first.");
+                    thread::sleep(Duration::from_secs(2));
+                }
+            },
+            2 => { 
+                // Log out of SAP (only if logged in)
+                if is_logged_in {
+                    if let Err(e) = handle_logout(&session) {
+                        eprintln!("Error logging out: {}", e);
+                        thread::sleep(Duration::from_secs(2));
+                    }
+                } else {
+                    println!("You are not logged in.");
+                    thread::sleep(Duration::from_secs(2));
+                }
+            },
+            3 => {
+                // Exit application
+                clear_screen();
+                println!("Exiting application...");
+                return Ok(());
+            },
+            _ => {} // no-op
+        }
+    }
+}
+
+fn handle_login(session: &GuiSession) -> anyhow::Result<()> {
     // Check if already logged in
     let transaction = session.info()?.transaction()?;
     if !transaction.contains("S000") {
         println!("Already logged in. Current transaction: {}", transaction);
+        thread::sleep(Duration::from_secs(2));
+        // ask if refresh session (close popups)
+        let options = vec!["Y", "N"];
+        let choice = Select::new()
+            .with_prompt("Refresh Session? (i.e. close windows, go back to main screen)")
+            .items(&options)
+            .interact()
+            .unwrap();
+        match choice {
+            0 => {
+                close_popups(session)?;
+                session.start_transaction("SESSION_MANAGER".into())?;
+            },
+            _ => {}     // no-op
+        }
         return Ok(());
     }
-
-    // Get login parameters
+    
+    // Not logged in, perform login
     let login_params = get_login_parameters()?;
-    
-    // Perform login
-    login(&session, &login_params)?;
-    
+    login(session, &login_params)?;
     println!("Login successful!");
+    thread::sleep(Duration::from_secs(2));
+    
+    Ok(())
+}
+
+fn handle_logout(session: &GuiSession) -> anyhow::Result<()> {
+    if let Err(e) = session.end_transaction() {
+        eprintln!("Error ending transaction: {}", e);
+        return Err(e.into());
+    }
+    println!("Logged out of SAP");
+    thread::sleep(Duration::from_secs(2));
     
     Ok(())
 }
@@ -184,7 +262,7 @@ fn get_login_parameters() -> windows::core::Result<LoginParams> {
     let mut ask_for_credentials = true;
     if let Ok(encrypted_data) = std::fs::read_to_string(&auth_file).map_err(|_| windows::core::Error::from_win32()) {
         if let Ok(key_data) = std::fs::read(&key_file).map_err(|_| windows::core::Error::from_win32()) {
-            match utils::decrypt_data(&encrypted_data, &key_data) {
+            match decrypt_data(&encrypted_data, &key_data) {
                 Ok(decrypted_data) => {
                     let lines: Vec<&str> = decrypted_data.split('\n').collect();
                     if lines.len() >= 2 {
@@ -352,7 +430,7 @@ fn save_credentials(auth_path: &str, auth_file: &str, key_file: &str, username: 
     
     // Encrypt and save credentials
     let content = format!("{}\n{}", username, password);
-    match utils::encrypt_data(&content, &key) {
+    match encrypt_data(&content, &key) {
         Ok(encrypted) => {
             std::fs::write(auth_file, encrypted).map_err(|_| windows::core::Error::from_win32())?;
             println!("Encrypted credentials saved to {}", auth_file);

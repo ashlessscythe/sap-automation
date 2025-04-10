@@ -106,6 +106,12 @@ fn get_vt11_parameters() -> Result<VT11Params> {
         2 => Some("date_range".to_string()),
         _ => None,
     };
+
+    clear_screen();
+
+    println!("-------------------------------");
+    println!("Running VT11 with params: {:#?}", params);
+    println!("-------------------------------");
     
     Ok(params)
 }

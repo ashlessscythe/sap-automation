@@ -4,6 +4,7 @@ use std::thread;
 use std::collections::HashMap;
 
 use crate::utils::*;
+use crate::utils::utils::*;
 
 /// Struct to hold layout parameters
 #[derive(Debug, Clone)]
@@ -439,4 +440,146 @@ fn goto_choose(session: &GuiSession, tcode: &str, layout_row: &str) -> windows::
     // Implementation would go here
     println!("Going to choose for tcode: {}, layout: {}", tcode, layout_row);
     Ok(())
+}
+
+/// Choose a layout from the layout selection window
+///
+/// This function is a port of the VBA function choose_layout
+pub fn choose_layout(session: &GuiSession, tcode: &str, layout_row: &str) -> windows::core::Result<String> {
+    let mut msg = String::new();
+    
+    // Check if window exists
+    let err_wnd = exist_ctrl(session, 1, "", true)?;
+    if !err_wnd.cband {
+        // If window doesn't exist, trigger layout popup
+        layout_popup(session, tcode)?;
+    }
+    
+    // Check title based on window content
+    if contains(&err_wnd.ctext.to_lowercase(), "choose", Some(false)) {
+        // Window is a "choose" layout window
+    } else if contains(&err_wnd.ctext.to_lowercase(), "change", Some(false)) {
+        // Window is a "change" layout window
+    }
+    
+    // Find button
+    if let Ok(button) = session.find_by_id("wnd[1]/tbar[0]/btn[71]".to_string()) {
+        if let Some(btn) = button.downcast::<GuiButton>() {
+            btn.press()?;
+        }
+    }
+    
+    // Handle checkbox if it exists
+    let checkbox_exists = exist_ctrl(session, 2, "/usr/chkSCAN_STRING-START", true)?;
+    if checkbox_exists.cband {
+        if let Ok(checkbox) = session.find_by_id("wnd[2]/usr/chkSCAN_STRING-START".to_string()) {
+            if let Some(chk) = checkbox.downcast::<GuiCheckBox>() {
+                chk.set_selected(false)?;
+            }
+        }
+    }
+    
+    // Set layout name in text field
+    if let Ok(text_field) = session.find_by_id("wnd[2]/usr/txtRSYSF-STRING".to_string()) {
+        if let Some(txt) = text_field.downcast::<GuiTextField>() {
+            txt.set_text(layout_row.to_string())?;
+        }
+    }
+    
+    // Press Enter
+    if let Ok(window) = session.find_by_id("wnd[2]".to_string()) {
+        if let Some(wnd) = window.downcast::<GuiFrameWindow>() {
+            wnd.send_v_key(0)?;
+        }
+    }
+    
+    // Check window 3
+    let err_wnd = exist_ctrl(session, 3, "", true)?;
+    if err_wnd.cband {
+        // Check if result exists
+        let result_exists = exist_ctrl(session, 3, "/usr/lbl[1,2]", true)?;
+        if result_exists.cband {
+            // Highlight
+            if let Ok(label) = session.find_by_id("wnd[3]/usr/lbl[1,2]".to_string()) {
+                if let Some(lbl) = label.downcast::<GuiLabel>() {
+                    lbl.set_focus()?;
+                }
+            }
+            
+            // Click
+            if let Ok(window) = session.find_by_id("wnd[3]".to_string()) {
+                if let Some(wnd) = window.downcast::<GuiFrameWindow>() {
+                    wnd.send_v_key(2)?;
+                }
+            }
+        } else {
+            // Error info window
+            msg = "No Layout".to_string();
+            close_popups(session)?;
+            return Ok(msg);
+        }
+    }
+    
+    // Enter (close window)
+    if let Ok(button) = session.find_by_id("wnd[1]/tbar[0]/btn[0]".to_string()) {
+        if let Some(btn) = button.downcast::<GuiButton>() {
+            btn.press()?;
+        }
+    }
+    
+    // Check if window closed
+    let err_wnd = exist_ctrl(session, 1, "", true)?;
+    if err_wnd.cband {
+        if let Ok(window) = session.find_by_id("wnd[1]".to_string()) {
+            if let Some(wnd) = window.downcast::<GuiFrameWindow>() {
+                wnd.close()?;
+            }
+        }
+    }
+    
+    // Get status bar message
+    msg = hit_ctrl(session, 0, "/sbar", "Text", "Get", "")?;
+    
+    println!("{}", msg);
+    Ok(msg)
+}
+
+/// Trigger layout popup based on transaction code
+///
+/// This function is a port of the VBA function layout_popup
+pub fn layout_popup(session: &GuiSession, tcode: &str) -> windows::core::Result<bool> {
+    match tcode.to_lowercase().as_str() {
+        "lx03" | "lx02" => {
+            // Select Layout
+            if let Ok(button) = session.find_by_id("wnd[0]/tbar[1]/btn[33]".to_string()) {
+                if let Some(btn) = button.downcast::<GuiButton>() {
+                    btn.press()?;
+                }
+            }
+        },
+        "vt11" => {
+            // Choose Layout Button
+            if let Ok(menu) = session.find_by_id("wnd[0]/mbar/menu[3]/menu[0]/menu[1]".to_string()) {
+                if let Some(menu_item) = menu.downcast::<GuiComponent>() {
+                    if let Some(btn) = menu_item.downcast::<GuiButton>() {
+                        btn.press()?;
+                    }
+                }
+            }
+        },
+        "zmdesnr" => {
+            // Check if button exists
+            let err_ctl = exist_ctrl(session, 0, "/tbar[1]/btn[33]", true)?;
+            if err_ctl.cband {
+                if let Ok(button) = session.find_by_id("wnd[0]/tbar[1]/btn[33]".to_string()) {
+                    if let Some(btn) = button.downcast::<GuiButton>() {
+                        btn.press()?;
+                    }
+                }
+            }
+        },
+        _ => {}
+    }
+    
+    Ok(true)
 }

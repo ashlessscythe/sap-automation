@@ -2,9 +2,10 @@ use sap_scripting::*;
 use windows::core::Result;
 use chrono::NaiveDate;
 
-use crate::utils::*;
+use crate::utils::{select_layout_utils::choose_layout, *};
 
 /// Struct to hold VT11 export parameters
+#[derive(Debug)]
 pub struct VT11Params {
     pub start_date: NaiveDate,
     pub end_date: NaiveDate,
@@ -12,6 +13,7 @@ pub struct VT11Params {
     pub layout_row: Option<String>,
     pub by_date: bool,
     pub limiter: Option<String>,
+    pub t_code: String,
 }
 
 impl Default for VT11Params {
@@ -23,6 +25,7 @@ impl Default for VT11Params {
             layout_row: None,
             by_date: true,
             limiter: None,
+            t_code: "VT11".to_string(),
         }
     }
 }
@@ -230,30 +233,7 @@ pub fn run_export(session: &GuiSession, params: &VT11Params) -> Result<bool> {
                     }
                 } else {
                     // String layout name
-                    // Loop through available saved layouts
-                    for i in 1..=30 {
-                        let err_ctl = exist_ctrl(session, 1, &format!("/usr/lbl[1,{}]", i), true)?;
-                        if err_ctl.cband {
-                            if let Ok(lbl) = session.find_by_id(format!("wnd[1]/usr/lbl[1,{}]", i)) {
-                                if let Some(label) = lbl.downcast::<GuiLabel>() {
-                                    let label_text = label.text()?;
-                                    if label_text.to_uppercase() == layout_row.to_uppercase() {
-                                        label.set_focus()?;
-                                        
-                                        // Select layout
-                                        if let Ok(window) = session.find_by_id("wnd[1]".to_string()) {
-                                            if let Some(modal_window) = window.downcast::<GuiFrameWindow>() {
-                                                modal_window.send_v_key(2)?; // Select
-                                            }
-                                        }
-                                        
-                                        println!("Layout number ({}), ({}) selected.", i, layout_row);
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    choose_layout(session, &params.t_code, layout_row);
                     
                     // If we get here and the layout window is still open, the layout wasn't found
                     let err_ctl = exist_ctrl(session, 1, "", true)?;

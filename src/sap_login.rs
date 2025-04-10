@@ -1,9 +1,11 @@
 use sap_scripting::*;
 use std::env;
-use std::io::{self, Write};
+use std::io::{self, Write, stdout};
 use std::time::Duration;
 use std::thread;
 use rand::Rng;
+use dialoguer::Select;
+use crossterm::{execute, terminal::{Clear, ClearType}};
 
 mod utils;
 use utils::*;
@@ -28,9 +30,41 @@ impl From<&LoginParams> for ParamsStruct {
     }
 }
 
-fn main() -> windows::core::Result<()> {
+fn clear_screen() {
+    execute!(stdout(), Clear(ClearType::All)).unwrap();
+}
+
+fn main() -> anyhow::Result<()> {
     // Initialize logging if needed
     // pretty_env_logger::init();
+
+    loop {
+        clear_screen();
+
+        let options = vec!["Log into SAP", "Say hi!", "Exit"];
+        let choice = Select::new()
+            .with_prompt("Choose an option")
+            .items(&options)
+            .default(0)
+            .interact()
+            .unwrap();
+    
+        match choice {
+            0 => { sap_login().ok(); },
+            1 => { println!("Hi, dod"); },
+            2 => {
+                clear_screen();
+                println!("Bye!");
+                return Ok(());
+            },
+            _ => {} // no-op
+        }
+
+        std::thread::sleep(std::time::Duration::from_secs(2)); // to show output
+    }
+}
+
+fn sap_login() -> windows::core::Result<()> {
 
     println!("SAP Login Utility");
     println!("=================");

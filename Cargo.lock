@@ -452,6 +452,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "eded382c5f5f786b989652c49544c4877d9f015cc22e145a5ea8ea66c2921cd2"
 
 [[package]]
+name = "sap-scripting"
+version = "0.4.2"
+source = "git+https://github.com/ashlessscythe/sap-scripting-rs#265fca9d5b7231571851e4fd07e88bd29860dbd6"
+dependencies = [
+ "com-shim",
+ "tracing",
+ "windows",
+]
+
+[[package]]
 name = "sap_automation"
 version = "0.1.0"
 dependencies = [
@@ -461,6 +471,7 @@ dependencies = [
  "com-shim",
  "pretty_env_logger",
  "rand",
+ "sap-scripting",
  "tracing",
  "windows",
 ]

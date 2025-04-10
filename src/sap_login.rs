@@ -1,10 +1,12 @@
-use sap_automation_lib::*;
-use sap_automation_lib::utils::{encrypt_data, decrypt_data, KEY_FILE_SUFFIX};
+use sap_scripting::*;
 use std::env;
 use std::io::{self, Write};
 use std::time::Duration;
 use std::thread;
 use rand::Rng;
+
+mod utils;
+use utils::*;
 
 // Struct to hold login parameters
 struct LoginParams {
@@ -12,6 +14,18 @@ struct LoginParams {
     user: String,
     password: String,
     language: String,
+}
+
+// Convert LoginParams to ParamsStruct for use with utils functions
+impl From<&LoginParams> for ParamsStruct {
+    fn from(params: &LoginParams) -> Self {
+        ParamsStruct {
+            client_id: params.client_id.clone(),
+            user: params.user.clone(),
+            pass: params.password.clone(),
+            language: params.language.clone(),
+        }
+    }
 }
 
 fn main() -> windows::core::Result<()> {
@@ -136,7 +150,7 @@ fn get_login_parameters() -> windows::core::Result<LoginParams> {
     let mut ask_for_credentials = true;
     if let Ok(encrypted_data) = std::fs::read_to_string(&auth_file).map_err(|_| windows::core::Error::from_win32()) {
         if let Ok(key_data) = std::fs::read(&key_file).map_err(|_| windows::core::Error::from_win32()) {
-            match decrypt_data(&encrypted_data, &key_data) {
+            match utils::decrypt_data(&encrypted_data, &key_data) {
                 Ok(decrypted_data) => {
                     let lines: Vec<&str> = decrypted_data.split('\n').collect();
                     if lines.len() >= 2 {
@@ -304,7 +318,7 @@ fn save_credentials(auth_path: &str, auth_file: &str, key_file: &str, username: 
     
     // Encrypt and save credentials
     let content = format!("{}\n{}", username, password);
-    match encrypt_data(&content, &key) {
+    match utils::encrypt_data(&content, &key) {
         Ok(encrypted) => {
             std::fs::write(auth_file, encrypted).map_err(|_| windows::core::Error::from_win32())?;
             println!("Encrypted credentials saved to {}", auth_file);

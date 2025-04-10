@@ -22,7 +22,7 @@ aes-gcm = "0.10.3"
 base64 = "0.21.7"
 rand = "0.8.5"
 com-shim = "0.4.3"
-sap-scripting = { git = "https://github.com/ashlessscythe/sap-scripting-rs", version = "0.4.2" }
+sap-scripting = { git = "https://github.com/lilopkins/sap-scripting-rs", version = "0.4.2" }
 anyhow = "1.0.97"
 dialoguer = "0.11.0"
 crossterm = "0.29.0"

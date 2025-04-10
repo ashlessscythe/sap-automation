@@ -1,1 +1,40 @@
-Connecting to SAP instance using sap_scripting crate
+# SAP Automation
+
+A Rust-based utility for automating SAP GUI interactions.
+
+## Description
+
+This project provides tools for automating SAP GUI operations using Rust. It leverages the Windows COM interface to interact with the SAP GUI Scripting API, allowing for programmatic control of SAP sessions.
+
+Key features include:
+
+- Automated SAP login with credential management
+- Secure storage of encrypted credentials
+- Handling of multiple logon scenarios
+- Interaction with SAP GUI controls (buttons, text fields, checkboxes, etc.)
+- Management of popups and error messages
+- Support for transaction code execution and verification
+- Data export capabilities
+
+## Dependencies
+
+This project relies on the following key dependencies:
+
+- `sap-scripting` - A Rust library for interacting with SAP GUI Scripting API, created by Lily Hopkins (https://github.com/lilopkins/sap-scripting-rs)
+- `windows` - For Windows COM interface integration
+- `aes-gcm` and `base64` - For secure credential encryption
+- `dialoguer` and `crossterm` - For terminal UI components
+
+## Usage
+
+The main binary provides a simple interface for logging into SAP:
+
+```
+cargo run --bin sap_login
+```
+
+This will present a menu with options to log in to SAP, with support for saving encrypted credentials for future use.
+
+## Configuration
+
+The application looks for credentials in the user's Documents folder under `SAP/cryptauth_*.txt`. The instance ID can be configured via the `SAP_INSTANCE_ID` environment variable.

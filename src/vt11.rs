@@ -1,3 +1,4 @@
+use std::env;
 use sap_scripting::*;
 use windows::core::Result;
 use chrono::NaiveDate;
@@ -38,7 +39,7 @@ pub fn run_export(session: &GuiSession, params: &VT11Params) -> Result<bool> {
     println!("Running VT11 export...");
     
     // Check if tCode is active
-    if !check_tcode(session, "VT11", Some(true), Some(false))? {
+    if !assert_tcode(session, "VT11".into(), Some(0))? {
         println!("Failed to activate VT11 transaction");
         return Ok(false);
     }
@@ -292,6 +293,29 @@ pub fn run_export(session: &GuiSession, params: &VT11Params) -> Result<bool> {
     eprintln!("DEBUG: Exporting to Excel");
     // Check export window
     let run_check = check_export_window(session, "VT11", "SHIPMENT LIST: PLANNING")?;
+    match run_check {
+        true => {
+                println!("Export window opened successfully.");
+        },
+        false => {
+            eprintln!("Error checking export window.");
+        }
+    }
+    
+    // get file path to documents folder 
+    let file_path = match env::var("USERPROFILE") {
+        Ok(profile) => format!("{}\\Documents\\Reports\\", profile),
+        Err(_) => {
+            eprintln!("Could not determine user reports directory");
+            String::from(".\\")
+        }
+    };
+
+    // file name
+    let file_name = format!("{}_VT11.xlsx", generate_timestamp());
+
+    // save sap file
+    let run_check = save_sap_file(session, &file_path, &file_name)?;
     
     Ok(run_check)
 }

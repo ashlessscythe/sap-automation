@@ -2,6 +2,7 @@ use sap_scripting::*;
 use std::time::Duration;
 use std::thread;
 use windows::core::Result;
+use crate::utils::close_popups;
 use crate::utils::sap_constants::STR_FORM;
 use crate::utils::sap_ctrl_utils::hit_ctrl;
 
@@ -30,9 +31,17 @@ pub fn assert_tcode(session: &GuiSession, tcode: &str, wnd: Option<i32>) -> Resu
 }
 
 pub fn check_tcode(session: &GuiSession, tcode: &str, run: Option<bool>, _kill_popups: Option<bool>) -> Result<bool> {
-    let run_val = run.unwrap_or(true);
+    let run_val = run.unwrap_or(false);
+    let b_kill_popups  = _kill_popups.unwrap_or(false);
     
     println!("Checking if tCode ({}) is active", tcode);
+    
+    match b_kill_popups {
+        true => {
+            close_popups(session)?;
+        },
+        _ => {}
+    }
     
     // Get current transaction
     let current = session.info()?.transaction()?;

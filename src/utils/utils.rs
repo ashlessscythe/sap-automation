@@ -92,3 +92,10 @@ pub fn mult_contains(haystack: &str, needles: &[&str]) -> bool {
     }
     false
 }
+
+// Generate timestamp
+pub fn generate_timestamp() -> String {
+    let now = chrono::Utc::now();
+    now.format("%Y%m%d%H%M%S").to_string()
+}
+

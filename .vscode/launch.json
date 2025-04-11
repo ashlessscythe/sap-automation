@@ -7,11 +7,11 @@
     {
       "type": "lldb",
       "request": "launch",
-      "name": "Debug executable 'sap_scripting'",
+      "name": "Debug executable 'sap_automation'",
       "cargo": {
-        "args": ["build", "--bin=sap_scripting", "--package=sap_scripting"],
+        "args": ["build", "--bin=sap_automation", "--package=sap_automation"],
         "filter": {
-          "name": "sap_scripting",
+          "name": "sap_automation",
           "kind": "bin"
         }
       },

@@ -2,6 +2,7 @@ use sap_scripting::*;
 use windows::core::Result;
 use chrono::NaiveDate;
 
+use crate::utils::utils::*;
 use crate::utils::{select_layout_utils::choose_layout, *};
 
 /// Struct to hold VT11 export parameters
@@ -189,6 +190,8 @@ pub fn run_export(session: &GuiSession, params: &VT11Params) -> Result<bool> {
             let err_ctl = exist_ctrl(session, 1, "", true)?;
             
             if err_ctl.cband {
+                // debug
+                eprintln!("Layout row is not empty: {}", layout_row);
                 // Check if statusbar says "No layouts found"
                 let status_text = hit_ctrl(session, 0, "/sbar", "Text", "Get", "")?;
                 if contains(&status_text.to_lowercase(), "no layouts found", Some(false)) {
@@ -205,6 +208,9 @@ pub fn run_export(session: &GuiSession, params: &VT11Params) -> Result<bool> {
                     // Setup layout functionality would be implemented here
                     // This is complex and would require additional work
                 } else if layout_row.parse::<i32>().is_ok() {
+                    // debug
+                    eprintln!("Layout row is numeric: {}", layout_row);
+
                     // Numeric layout row
                     let layout_num = layout_row.parse::<i32>().unwrap();
                     let layout_id = format!("wnd[1]/usr/lbl[1,{}]", layout_num);
@@ -232,8 +238,19 @@ pub fn run_export(session: &GuiSession, params: &VT11Params) -> Result<bool> {
                         // This would be implemented in a more complete version
                     }
                 } else {
+                    // debug
+                    eprintln!("Layout row is not numeric: {}", layout_row);
                     // String layout name
-                    choose_layout(session, &params.t_code, layout_row);
+                    let msg = choose_layout(session, &params.t_code, layout_row);
+                    match msg {
+                        Ok(message) if message == "" => {},    // no-op
+                        Ok(message) => {
+                            eprintln!("Message after choosing layout {}: {}", layout_row, message);
+                        }
+                        Err(e) => {
+                            eprintln!("Error after choosing layout {}: {:?}", layout_row, e);
+                        }
+                    }
                     
                     // If we get here and the layout window is still open, the layout wasn't found
                     let err_ctl = exist_ctrl(session, 1, "", true)?;
@@ -271,6 +288,8 @@ pub fn run_export(session: &GuiSession, params: &VT11Params) -> Result<bool> {
         }
     }
     
+    // debug
+    eprintln!("DEBUG: Exporting to Excel");
     // Check export window
     let run_check = check_export_window(session, "VT11", "SHIPMENT LIST: PLANNING")?;
     

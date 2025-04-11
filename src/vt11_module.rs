@@ -1,11 +1,10 @@
 use sap_scripting::*;
-use std::io::{self, Write};
+use std::io::{self};
 use windows::core::Result;
 use chrono::NaiveDate;
 use dialoguer::{Input, Select};
 use crossterm::{execute, terminal::{Clear, ClearType}};
 
-use crate::utils::*;
 use crate::vt11::{VT11Params, run_export};
 
 pub fn run_vt11_module(session: &GuiSession) -> Result<()> {
@@ -85,7 +84,7 @@ fn get_vt11_parameters() -> Result<VT11Params> {
     let by_date_choice = Select::new()
         .with_prompt("Filter by date?")
         .items(&by_date_options)
-        .default(0)
+        .default(1)
         .interact()
         .unwrap();
     

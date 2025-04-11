@@ -1,9 +1,10 @@
 use sap_scripting::*;
 use std::time::Duration;
 use std::thread;
-use std::collections::HashMap;
 
-use crate::utils::*;
+use crate::utils::utils::*;
+use crate::utils::sap_constants::*;
+use crate::utils::sap_ctrl_utils::*;
 
 /// Struct to hold layout parameters
 #[derive(Debug, Clone)]

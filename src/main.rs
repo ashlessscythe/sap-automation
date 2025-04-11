@@ -12,8 +12,7 @@ mod vt11;
 mod vt11_module;
 
 use utils::*;
-use utils::select_layout_utils::*;
-use utils::setup_layout_li_utils::*;
+use utils::utils::{encrypt_data, decrypt_data, KEY_FILE_SUFFIX};
 use vt11_module::run_vt11_module;
 
 // Struct to hold login parameters
@@ -168,6 +167,7 @@ fn handle_login(session: &GuiSession) -> anyhow::Result<()> {
         let choice = Select::new()
             .with_prompt("Refresh Session? (i.e. close windows, go back to main screen)")
             .items(&options)
+            .default(0)
             .interact()
             .unwrap();
         match choice {

@@ -128,14 +128,7 @@ pub fn check_select_layout(session: &GuiSession, tcode: &str, layout_row: &str,
             }
         } else if layout_row.is_empty() {
             // Close popup if exists
-            let err_wnd = exist_ctrl(session, 1, "", true)?;
-            if err_wnd.cband {
-                if let Ok(window) = session.find_by_id("wnd[1]".to_string()) {
-                    if let Some(wnd) = window.downcast::<GuiFrameWindow>() {
-                        wnd.close()?;
-                    }
-                }
-            }
+            close_popups(session, None, None)?;
             String::new()
         } else {
             layout_row.replace("layout:", "")
@@ -190,14 +183,7 @@ pub fn check_select_layout(session: &GuiSession, tcode: &str, layout_row: &str,
         // Check if layout exists
         if layout_row.is_empty() {
             // If layout is empty or zero-length, close popup window and export as-is
-            let err_ctl = exist_ctrl(session, 1, "", true)?;
-            if err_ctl.cband {
-                if let Ok(window) = session.find_by_id("wnd[1]".to_string()) {
-                    if let Some(wnd) = window.downcast::<GuiFrameWindow>() {
-                        wnd.close()?;
-                    }
-                }
-            }
+            close_popups(session, None, None)?;
             println!("Layout ({}) is empty or zero-length. Exporting as-is.", layout_row);
         } else if layout_row.parse::<i32>().is_ok() {
             // Numeric layout row
@@ -285,15 +271,8 @@ pub fn check_select_layout(session: &GuiSession, tcode: &str, layout_row: &str,
                     // Check status bar message
                     let bar_msg = hit_ctrl(session, 0, "/sbar", "Text", "Get", "")?;
                     if !contains(&bar_msg, "layout applied", Some(false)) {
-                        // If layout not found, setup layout
-                        let err_ctl = exist_ctrl(session, 1, "", true)?;
-                        if err_ctl.cband {
-                            if let Ok(window) = session.find_by_id("wnd[1]".to_string()) {
-                                if let Some(wnd) = window.downcast::<GuiFrameWindow>() {
-                                    wnd.close()?;
-                                }
-                            }
-                        }
+                        // If layout not found, close any popups and setup layout
+                        close_popups(session, None, None)?;
                         
                         println!("Layout ({}) not found. Setting up layout", layout_row);
                         
@@ -350,15 +329,8 @@ pub fn check_select_layout(session: &GuiSession, tcode: &str, layout_row: &str,
             println!("Status bar message: ({})", bar_msg);
         }
         
-        // Make sure window disappears
-        let err_ctl = exist_ctrl(session, 1, "", true)?;
-        if err_ctl.cband {
-            if let Ok(window) = session.find_by_id("wnd[1]".to_string()) {
-                if let Some(wnd) = window.downcast::<GuiFrameWindow>() {
-                    wnd.close()?;
-                }
-            }
-        }
+        // Make sure all windows are closed
+        close_popups(session, None, None)?;
         
         // Export based on tcode
         let export_wnd_name = match tcode.to_lowercase().as_str() {
@@ -448,171 +420,239 @@ fn goto_choose(session: &GuiSession, tcode: &str, layout_row: &str) -> windows::
 /// Choose a layout from the layout selection window
 ///
 /// This function is a port of the VBA function choose_layout
+/// If layout not found, it will ask the user to type in another layout name or exit
 pub fn choose_layout(session: &GuiSession, tcode: &str, layout_row: &str) -> windows::core::Result<String> {
     eprintln!("DEBUG: Entering choose_layout function with tcode={}, layout_row={}", tcode, layout_row);
-    let msg;
     
-    // Check if window exists
-    eprintln!("DEBUG: Checking if window exists");
-    let err_wnd = exist_ctrl(session, 1, "", true)?;
-    if !err_wnd.cband {
-        // If window doesn't exist, trigger layout popup
-        eprintln!("DEBUG: Window doesn't exist, triggering layout popup");
-        layout_popup(session, tcode)?;
-    } else {
-        eprintln!("DEBUG: Window exists with title: {}", err_wnd.ctext);
-    }
+    // Create a mutable copy of layout_row that we can modify in the loop
+    let mut current_layout = layout_row.to_string();
     
-    // Check title based on window content
-    if contains(&err_wnd.ctext.to_lowercase(), "choose", Some(false)) {
-        // Window is a "choose" layout window
-        eprintln!("DEBUG: Window is a 'choose' layout window");
-    } else if contains(&err_wnd.ctext.to_lowercase(), "change", Some(false)) {
-        // Window is a "change" layout window
-        eprintln!("DEBUG: Window is a 'change' layout window");
-    } else {
-        eprintln!("DEBUG: Window is neither 'choose' nor 'change' layout window: {}", err_wnd.ctext);
-    }
-    
-    // Find button
-    eprintln!("DEBUG: Finding button wnd[1]/tbar[0]/btn[71]");
-    if let Ok(button) = session.find_by_id("wnd[1]/tbar[0]/btn[71]".to_string()) {
-        if let Some(btn) = button.downcast::<GuiButton>() {
-            eprintln!("DEBUG: Button found, pressing it");
-            btn.press()?;
+    // Loop until a valid layout is found or user chooses to exit
+    loop {
+        let mut msg;
+        
+        // Check if window exists
+        eprintln!("DEBUG: Checking if window exists");
+        let err_wnd = exist_ctrl(session, 1, "", true)?;
+        if !err_wnd.cband {
+            // If window doesn't exist, trigger layout popup
+            eprintln!("DEBUG: Window doesn't exist, triggering layout popup");
+            layout_popup(session, tcode)?;
         } else {
-            eprintln!("DEBUG: Button found but downcast failed");
+            eprintln!("DEBUG: Window exists with title: {}", err_wnd.ctext);
         }
-    } else {
-        eprintln!("DEBUG: Button not found");
-    }
-    
-    // Handle checkbox if it exists
-    eprintln!("DEBUG: Checking if checkbox exists");
-    let checkbox_exists = exist_ctrl(session, 2, "/usr/chkSCAN_STRING-START", true)?;
-    if checkbox_exists.cband {
-        eprintln!("DEBUG: Checkbox exists, attempting to unselect it");
-        if let Ok(checkbox) = session.find_by_id("wnd[2]/usr/chkSCAN_STRING-START".to_string()) {
-            if let Some(chk) = checkbox.downcast::<GuiCheckBox>() {
-                eprintln!("DEBUG: Checkbox found, setting to unselected");
-                chk.set_selected(false)?;
+        
+        // Check title based on window content
+        if contains(&err_wnd.ctext.to_lowercase(), "choose", Some(false)) {
+            // Window is a "choose" layout window
+            eprintln!("DEBUG: Window is a 'choose' layout window");
+        } else if contains(&err_wnd.ctext.to_lowercase(), "change", Some(false)) {
+            // Window is a "change" layout window
+            eprintln!("DEBUG: Window is a 'change' layout window");
+        } else {
+            eprintln!("DEBUG: Window is neither 'choose' nor 'change' layout window: {}", err_wnd.ctext);
+        }
+        
+        // Find button
+        eprintln!("DEBUG: Finding button wnd[1]/tbar[0]/btn[71]");
+        if let Ok(button) = session.find_by_id("wnd[1]/tbar[0]/btn[71]".to_string()) {
+            if let Some(btn) = button.downcast::<GuiButton>() {
+                eprintln!("DEBUG: Button found, pressing it");
+                btn.press()?;
             } else {
-                eprintln!("DEBUG: Checkbox found but downcast failed");
+                eprintln!("DEBUG: Button found but downcast failed");
             }
         } else {
-            eprintln!("DEBUG: Failed to find checkbox by ID");
+            eprintln!("DEBUG: Button not found");
         }
-    } else {
-        eprintln!("DEBUG: Checkbox does not exist");
-    }
-    
-    // Set layout name in text field
-    eprintln!("DEBUG: Setting layout name in text field");
-    if let Ok(text_field) = session.find_by_id("wnd[2]/usr/txtRSYSF-STRING".to_string()) {
-        if let Some(txt) = text_field.downcast::<GuiTextField>() {
-            eprintln!("DEBUG: Text field found, setting text to '{}'", layout_row);
-            txt.set_text(layout_row.to_string())?;
-        } else {
-            eprintln!("DEBUG: Text field found but downcast failed");
-        }
-    } else {
-        eprintln!("DEBUG: Text field not found");
-    }
-    
-    // Press Enter
-    eprintln!("DEBUG: Pressing Enter on window 2");
-    if let Ok(window) = session.find_by_id("wnd[2]".to_string()) {
-        if let Some(wnd) = window.downcast::<GuiModalWindow>() {
-            eprintln!("DEBUG: Window found, sending v_key(0)");
-            wnd.send_v_key(0)?;
-        } else {
-            eprintln!("DEBUG: Window found but downcast failed");
-        }
-    } else {
-        eprintln!("DEBUG: Window 2 not found");
-    }
-    
-    // Check window 3
-    eprintln!("DEBUG: Checking if window 3 exists");
-    let err_wnd = exist_ctrl(session, 3, "", true)?;
-    if err_wnd.cband {
-        eprintln!("DEBUG: Window 3 exists with title: {}", err_wnd.ctext);
-        // Check if result exists
-        eprintln!("DEBUG: Checking if result label exists");
-        let result_exists = exist_ctrl(session, 3, "/usr/lbl[1,2]", true)?;
-        if result_exists.cband {
-            eprintln!("DEBUG: Result label exists with text: {}", result_exists.ctext);
-            // Highlight
-            eprintln!("DEBUG: Setting focus on result label");
-            if let Ok(label) = session.find_by_id("wnd[3]/usr/lbl[1,2]".to_string()) {
-                if let Some(lbl) = label.downcast::<GuiLabel>() {
-                    eprintln!("DEBUG: Label found, setting focus");
-                    lbl.set_focus()?;
+        
+        // Handle checkbox if it exists
+        eprintln!("DEBUG: Checking if checkbox exists");
+        let checkbox_exists = exist_ctrl(session, 2, "/usr/chkSCAN_STRING-START", true)?;
+        if checkbox_exists.cband {
+            eprintln!("DEBUG: Checkbox exists, attempting to unselect it");
+            if let Ok(checkbox) = session.find_by_id("wnd[2]/usr/chkSCAN_STRING-START".to_string()) {
+                if let Some(chk) = checkbox.downcast::<GuiCheckBox>() {
+                    eprintln!("DEBUG: Checkbox found, setting to unselected");
+                    chk.set_selected(false)?;
                 } else {
-                    eprintln!("DEBUG: Label found but downcast failed");
+                    eprintln!("DEBUG: Checkbox found but downcast failed");
                 }
             } else {
-                eprintln!("DEBUG: Failed to find label by ID");
+                eprintln!("DEBUG: Failed to find checkbox by ID");
             }
-            
-            // Click
-            eprintln!("DEBUG: Clicking on window 3 (send_v_key(2))");
-            if let Ok(window) = session.find_by_id("wnd[3]".to_string()) {
-                if let Some(wnd) = window.downcast::<GuiModalWindow>() {
-                    eprintln!("DEBUG: Window found, sending v_key(2)");
-                    wnd.send_v_key(2)?;
-                } else {
-                    eprintln!("DEBUG: Window found but downcast failed");
-                }
+        } else {
+            eprintln!("DEBUG: Checkbox does not exist");
+        }
+        
+        // Set layout name in text field
+        eprintln!("DEBUG: Setting layout name in text field");
+        if let Ok(text_field) = session.find_by_id("wnd[2]/usr/txtRSYSF-STRING".to_string()) {
+            if let Some(txt) = text_field.downcast::<GuiTextField>() {
+                eprintln!("DEBUG: Text field found, setting text to '{}'", current_layout);
+                txt.set_text(current_layout.clone())?;
             } else {
-                eprintln!("DEBUG: Window 3 not found for clicking");
+                eprintln!("DEBUG: Text field found but downcast failed");
             }
         } else {
-            // Error info window
-            eprintln!("DEBUG: Result label does not exist, returning 'No Layout'");
-            msg = "No Layout".to_string();
-            close_popups(session)?;
-            return Ok(msg);
+            eprintln!("DEBUG: Text field not found");
         }
-    } else {
-        eprintln!("DEBUG: Window 3 does not exist");
-    }
-    
-    // Enter (close window)
-    eprintln!("DEBUG: Closing window 1 with button press");
-    if let Ok(button) = session.find_by_id("wnd[1]/tbar[0]/btn[0]".to_string()) {
-        if let Some(btn) = button.downcast::<GuiButton>() {
-            eprintln!("DEBUG: Button found, pressing it");
-            btn.press()?;
-        } else {
-            eprintln!("DEBUG: Button found but downcast failed");
-        }
-    } else {
-        eprintln!("DEBUG: Button not found");
-    }
-    
-    // Check if window closed
-    eprintln!("DEBUG: Checking if window 1 is still open");
-    let err_wnd = exist_ctrl(session, 1, "", true)?;
-    if err_wnd.cband {
-        eprintln!("DEBUG: Window 1 is still open, forcing close");
-        if let Ok(window) = session.find_by_id("wnd[1]".to_string()) {
-            if let Some(wnd) = window.downcast::<GuiFrameWindow>() {
-                eprintln!("DEBUG: Window found, closing it");
-                wnd.close()?;
+        
+        // Press Enter
+        eprintln!("DEBUG: Pressing Enter on window 2");
+        if let Ok(window) = session.find_by_id("wnd[2]".to_string()) {
+            if let Some(wnd) = window.downcast::<GuiModalWindow>() {
+                eprintln!("DEBUG: Window found, sending v_key(0)");
+                wnd.send_v_key(0)?;
             } else {
                 eprintln!("DEBUG: Window found but downcast failed");
             }
         } else {
-            eprintln!("DEBUG: Window 1 not found for closing");
+            eprintln!("DEBUG: Window 2 not found");
         }
-    } else {
-        eprintln!("DEBUG: Window 1 is already closed");
+        
+        // Check window 3
+        eprintln!("DEBUG: Checking if window 3 exists");
+        let err_wnd = exist_ctrl(session, 3, "", true)?;
+        if err_wnd.cband {
+            eprintln!("DEBUG: Window 3 exists with title: {}", err_wnd.ctext);
+            // Check if result exists
+            eprintln!("DEBUG: Checking if result label exists");
+            let result_exists = exist_ctrl(session, 3, "/usr/lbl[1,2]", true)?;
+            if result_exists.cband {
+                eprintln!("DEBUG: Result label exists with text: {}", result_exists.ctext);
+                // Highlight
+                eprintln!("DEBUG: Setting focus on result label");
+                if let Ok(label) = session.find_by_id("wnd[3]/usr/lbl[1,2]".to_string()) {
+                    if let Some(lbl) = label.downcast::<GuiLabel>() {
+                        eprintln!("DEBUG: Label found, setting focus");
+                        lbl.set_focus()?;
+                    } else {
+                        eprintln!("DEBUG: Label found but downcast failed");
+                    }
+                } else {
+                    eprintln!("DEBUG: Failed to find label by ID");
+                }
+
+                // Click
+                eprintln!("DEBUG: Clicking on window 3 (send_v_key(2))");
+                if let Ok(window) = session.find_by_id("wnd[3]".to_string()) {
+                    if let Some(wnd) = window.downcast::<GuiModalWindow>() {
+                        eprintln!("DEBUG: Window found, sending v_key(2)");
+                        wnd.send_v_key(2)?;
+                    } else {
+                        eprintln!("DEBUG: Window found but downcast failed");
+                    }
+                } else {
+                    eprintln!("DEBUG: Window 3 not found for clicking");
+                }
+
+                // make sure wnd3 is closed
+                let wnd3 = exist_ctrl(session, 3, "", true)?;
+                if wnd3.cband {
+                    eprintln!("DEBUG: Window 3 still exists, closing it");
+                    close_popups(session, Some(3), None)?;
+                } else {
+                   eprintln!("DEBUG: Window 3 does not exist");
+                }
+                
+                // make sure wnd2 is closed
+                let wnd2 = exist_ctrl(session, 2, "", true)?;
+                if wnd2.cband {
+                    eprintln!("DEBUG: Window 2 still exists, closing it");
+                    close_popups(session, Some(2), None)?;
+                } else {
+                    eprintln!("DEBUG: Window 2 does not exist");
+                }
+
+                // click on wnd1
+                eprintln!("DEBUG: Clicking on window 1 (send_v_key(2))");
+                if let Ok(window) = session.find_by_id("wnd[1]".to_string()) {
+                    if let Some(wnd) = window.downcast::<GuiModalWindow>() {
+                        eprintln!("DEBUG: Window found, sending v_key(2)");
+                        wnd.send_v_key(2)?;
+                    } else {
+                        eprintln!("DEBUG: Window found but downcast failed");
+                    }
+                } else {
+                    eprintln!("DEBUG: Window 1 not found for clicking");
+                }
+
+                
+                // Layout found, break out of the loop
+                eprintln!("DEBUG: Break loop after wnd1");
+                break;
+            } else {
+                // Error info window - layout not found
+                eprintln!("DEBUG: Result label does not exist, layout not found");
+                
+                // Close error window if it exists
+                close_popups(session, Some(-1), Some(1))?;
+                
+                // Ask user for a new layout name or to exit
+                use dialoguer::{Select, Input};
+                
+                println!("Layout '{}' not found.", current_layout);
+                
+                let options = vec!["Enter another layout name", "Exit layout selection"];
+                let selection = Select::new()
+                    .with_prompt("What would you like to do?")
+                    .items(&options)
+                    .default(0)
+                    .interact()
+                    .unwrap_or(1); // Default to exit if interaction fails
+                
+                if selection == 0 {
+                    // User wants to try another layout name
+                    let new_layout: String = Input::new()
+                        .with_prompt("Enter new layout name")
+                        .interact_text()
+                        .unwrap_or_else(|_| String::new());
+                    
+                    if new_layout.is_empty() {
+                        // If user entered empty string, exit
+                        msg = "Layout selection cancelled".to_string();
+                        close_popups(session, None, None)?;
+                        return Ok(msg);
+                    }
+                    
+                    // Update current_layout and try again
+                    current_layout = new_layout;
+                    
+                    // Close any remaining popups before retrying
+                    close_popups(session, None, None)?;
+                    
+                    // Trigger layout popup again for the next iteration
+                    eprintln!("LAYOUT:calling layout_popup");
+                    layout_popup(session, tcode)?;
+                    
+                    // Continue to next iteration of the loop
+                    continue;
+                } else {
+                    // User wants to exit
+                    msg = "Layout selection cancelled".to_string();
+                    close_popups(session, None, None)?;
+                    return Ok(msg);
+                }
+            }
+        } else {
+            eprintln!("DEBUG: Window 3 does not exist");
+        }
+        
+                // Close any remaining windows using the improved close_popups function
+                eprintln!("DEBUG: Closing any remaining windows");
+                close_popups(session, None, None)?;
+        
+        // Break out of the loop if we've reached this point
+        break;
     }
+
+    // pause for a couple secs
+    thread::sleep(Duration::from_secs(2));
     
     // Get status bar message
     eprintln!("DEBUG: Getting status bar message");
-    msg = hit_ctrl(session, 0, "/sbar", "Text", "Get", "")?;
+    let msg = hit_ctrl(session, 0, "/sbar", "Text", "Get", "")?;
     
     eprintln!("DEBUG: Status bar message: {}", msg);
     println!("{}", msg);
@@ -636,10 +676,8 @@ pub fn layout_popup(session: &GuiSession, tcode: &str) -> windows::core::Result<
         "vt11" => {
             // Choose Layout Button
             if let Ok(menu) = session.find_by_id("wnd[0]/mbar/menu[3]/menu[0]/menu[1]".to_string()) {
-                if let Some(menu_item) = menu.downcast::<GuiComponent>() {
-                    if let Some(btn) = menu_item.downcast::<GuiButton>() {
-                        btn.press()?;
-                    }
+                if let Some(menu_item) = menu.downcast::<GuiMenu>() {
+                        menu_item.select()?
                 }
             }
         },

@@ -7,49 +7,131 @@ use crate::utils::sap_constants::{ErrorCheck, ParamsStruct, TIME_FORMAT};
 use crate::utils::sap_ctrl_utils::{exist_ctrl, hit_ctrl};
 use crate::utils::sap_tcode_utils::check_tcode;
 
-pub fn close_popups(session: &GuiSession) -> Result<bool> {
-    println!("Closing all popups");
+pub fn close_popups(session: &GuiSession, wnd_idx: Option<i32>, repeat: Option<i32>) -> Result<bool> {
+    let repeat_count = repeat.unwrap_or(1);
     
-    let max_tries = 5;
-    
-    for i in (1..=5).rev() {
-        let mut j = 0;
-        while j < max_tries {
-            let err_wnd = exist_ctrl(session, i, "", true)?;
-            if err_wnd.cband {
-                println!("Closing window ({})", i);
-                if let Ok(component) = session.find_by_id(format!("wnd[{}]", i)) {
-                    if let Some(window) = component.downcast::<GuiFrameWindow>() {
-                        window.close()?;
+    for _ in 0..repeat_count {
+        match wnd_idx {
+            Some(-1) => {
+                // Close only the highest index popup
+                println!("Closing highest index popup");
+                
+                // Find the highest index popup
+                let mut highest_idx = 0;
+                for i in 1..=5 {
+                    let err_wnd = exist_ctrl(session, i, "", true)?;
+                    if err_wnd.cband {
+                        highest_idx = i;
                     }
                 }
                 
-                // Check if another popup appeared
-                let next_err_wnd = exist_ctrl(session, i + 1, "", true)?;
-                if next_err_wnd.cband {
-                    println!("Additional popup found.... retrying");
-                    if next_err_wnd.ctext.contains("multiple selection") {
-                        // Press no
-                        let btn_err_wnd = exist_ctrl(session, i + 1, "/usr/btnSPOP-OPTION2", true)?;
-                        if btn_err_wnd.cband {
-                            if let Ok(component) = session.find_by_id(format!("wnd[{}]/usr/btnSPOP-OPTION2", i + 1)) {
-                                if let Some(button) = component.downcast::<GuiButton>() {
-                                    button.press()?;
-                                }
-                            }
-                            let _ = hit_ctrl(session, 0, "/sbar", "Text", "Get", "")?;
+                if highest_idx > 0 {
+                    close_specific_popup(session, highest_idx)?;
+                } else {
+                    println!("No popups found");
+                }
+            },
+            Some(idx) if idx > 0 => {
+                // Close only the specified popup
+                println!("Closing popup at index {}", idx);
+                close_specific_popup(session, idx)?;
+            },
+            _ => {
+                // Original behavior: close all popups from 5 down to 1
+                println!("Closing all popups");
+                
+                for i in (1..=5).rev() {
+                    close_specific_popup(session, i)?;
+                }
+            }
+        }
+    }
+    
+    Ok(true)
+}
+
+fn close_specific_popup(session: &GuiSession, i: i32) -> Result<bool> {
+    let max_tries = 5;
+    let mut j = 0;
+    
+    while j < max_tries {
+        let err_wnd = exist_ctrl(session, i, "", true)?;
+        if err_wnd.cband {
+            println!("Closing window ({})", i);
+            
+            // First attempt: try to close the window using close()
+            if let Ok(component) = session.find_by_id(format!("wnd[{}]", i)) {
+                if let Some(window) = component.downcast::<GuiModalWindow>() {
+                    window.close()?;
+                }
+            }
+            
+            // Check if window is still open after first attempt
+            let still_open = exist_ctrl(session, i, "", true)?;
+            if still_open.cband {
+                // Second attempt: try to close the window using F12
+                if let Ok(component) = session.find_by_id(format!("wnd[{}]", i)) {
+                    if let Some(window) = component.downcast::<GuiModalWindow>() {
+                        window.send_v_key(0)?; // Send Enter key
+                    } else if let Some(modal_window) = component.downcast::<GuiModalWindow>() {
+                        modal_window.send_v_key(12)?; // Send F12 (Cancel)
+                    }
+                }
+                
+                // Check if window is still open after second attempt
+                let still_open_after_second = exist_ctrl(session, i, "", true)?;
+                if still_open_after_second.cband {
+                    println!("Window {} still open, trying vkey0 (Enter)", i);
+                    // Third attempt: try to close using vkey0 (Enter key)
+                    if let Ok(component) = session.find_by_id(format!("wnd[{}]", i)) {
+                        if let Some(window) = component.downcast::<GuiModalWindow>() {
+                            window.send_v_key(0)?; // Send Enter key
+                        } else if let Some(modal_window) = component.downcast::<GuiModalWindow>() {
+                            modal_window.send_v_key(0)?; // Send Enter key
                         }
-                    } else {
-                        continue; // Go back to the top of the loop
                     }
                 }
             }
             
-            j += 1;
-            if j >= max_tries {
-                println!("Max retries, exiting....");
-                return Ok(false);
+            // Check if another popup appeared
+            let next_err_wnd = exist_ctrl(session, i + 1, "", true)?;
+            if next_err_wnd.cband {
+                println!("Additional popup found at window {}: {}", i + 1, next_err_wnd.ctext);
+                if next_err_wnd.ctext.contains("multiple selection") {
+                    // Press no
+                    let btn_err_wnd = exist_ctrl(session, i + 1, "/usr/btnSPOP-OPTION2", true)?;
+                    if btn_err_wnd.cband {
+                        if let Ok(component) = session.find_by_id(format!("wnd[{}]/usr/btnSPOP-OPTION2", i + 1)) {
+                            if let Some(button) = component.downcast::<GuiButton>() {
+                                button.press()?;
+                            }
+                        }
+                        let _ = hit_ctrl(session, 0, "/sbar", "Text", "Get", "")?;
+                    }
+                } else {
+                    // Try to close this new popup
+                    if let Ok(component) = session.find_by_id(format!("wnd[{}]", i + 1)) {
+                        if let Some(window) = component.downcast::<GuiModalWindow>() {
+                            window.close()?;
+                        } else if let Some(modal_window) = component.downcast::<GuiModalWindow>() {
+                            modal_window.send_v_key(0)?; // Send Enter key
+                        }
+                    }
+                    continue; // Go back to the top of the loop
+                }
             }
+            
+            // Check if the window is still open after all attempts
+            let final_check = exist_ctrl(session, i, "", true)?;
+            if final_check.cband {
+                println!("Warning: Window {} still open after multiple close attempts", i);
+            }
+        }
+        
+        j += 1;
+        if j >= max_tries {
+            println!("Max retries, exiting....");
+            return Ok(false);
         }
     }
     

@@ -38,7 +38,7 @@ pub fn check_tcode(session: &GuiSession, tcode: &str, run: Option<bool>, _kill_p
     
     match b_kill_popups {
         true => {
-            close_popups(session)?;
+            close_popups(session, None, None)?;
         },
         _ => {}
     }

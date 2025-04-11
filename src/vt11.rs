@@ -176,16 +176,15 @@ pub fn run_export(session: &GuiSession, params: &VT11Params) -> Result<bool> {
         }
     }
     
-    // Choose Layout
-    if let Ok(menu) = session.find_by_id("wnd[0]/mbar/menu[3]/menu[0]/menu[1]".to_string()) {
-        if let Some(menu_item) = menu.downcast::<GuiMenu>() {
-            menu_item.select()?;
-        }
-    }
-    
     // Check if layout exists and select it
     if let Some(layout_row) = &params.layout_row {
         if !layout_row.is_empty() {
+            // Choose Layout - only open layout selection if a layout is provided
+            if let Ok(menu) = session.find_by_id("wnd[0]/mbar/menu[3]/menu[0]/menu[1]".to_string()) {
+                if let Some(menu_item) = menu.downcast::<GuiMenu>() {
+                    menu_item.select()?;
+                }
+            }
             // Check if window exists
             let err_ctl = exist_ctrl(session, 1, "", true)?;
             

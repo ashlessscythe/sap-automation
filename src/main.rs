@@ -17,6 +17,8 @@ use utils::*;
 use utils::utils::{encrypt_data, decrypt_data, KEY_FILE_SUFFIX};
 use utils::sap_file_utils::get_reports_dir;
 use utils::excel_fileread_utils::{read_excel_file, format_excel_columns_for_sap};
+use utils::excel_path_utils::get_excel_file_path;
+use utils::excel_file_ops::handle_read_excel_file;
 use vt11_module::run_vt11_module;
 
 // Struct to hold login parameters
@@ -574,90 +576,6 @@ fn login(session: &GuiSession, params: &LoginParams) -> windows::core::Result<()
             window.close()?;
         }
     }
-    
-    Ok(())
-}
-
-fn handle_read_excel_file() -> anyhow::Result<()> {
-    clear_screen();
-    println!("Read Excel File");
-    println!("==============");
-    
-    // Get reports directory as default location
-    let reports_dir = get_reports_dir();
-    
-    // Ask for Excel file path
-    let file_path: String = Input::new()
-        .with_prompt("Enter Excel file path (full path including filename)")
-        .default(format!("{}\\example.xlsx", reports_dir))
-        .interact()
-        .unwrap();
-    
-    // Check if file exists
-    if !Path::new(&file_path).exists() {
-        println!("File not found: {}", file_path);
-        thread::sleep(Duration::from_secs(2));
-        return Ok(());
-    }
-    
-    // Ask for sheet name
-    let sheet_name: String = Input::new()
-        .with_prompt("Enter sheet name")
-        .default("Sheet1".to_string())
-        .interact()
-        .unwrap();
-    
-    // Ask for column names
-    let columns_input: String = Input::new()
-        .with_prompt("Enter column names (comma-separated)")
-        .default("A,B,C".to_string())
-        .interact()
-        .unwrap();
-    
-    // Parse column names
-    let column_names: Vec<&str> = columns_input.split(',')
-        .map(|s| s.trim())
-        .collect();
-    
-    println!("\nReading Excel file: {}", file_path);
-    println!("Sheet: {}", sheet_name);
-    println!("Columns: {:?}", column_names);
-    
-    // Read the Excel file
-    match read_excel_file(&file_path, &sheet_name) {
-        Ok(df) => {
-            // Display headers
-            println!("\nHeaders found in file:");
-            for (i, header) in df.headers.iter().enumerate() {
-                println!("  {}: {}", i + 1, header);
-            }
-            
-            // Display row count
-            println!("\nTotal rows: {}", df.data.len());
-            
-            // Format for SAP multi-value field
-            if !column_names.is_empty() {
-                match format_excel_columns_for_sap(&file_path, &sheet_name, &column_names) {
-                    Ok(formatted) => {
-                        println!("\nFormatted data for SAP multi-value field:");
-                        println!("{}", formatted);
-                        
-                        println!("\nThis data can be pasted directly into SAP multi-value fields.");
-                    },
-                    Err(e) => {
-                        eprintln!("Error formatting columns: {}", e);
-                    }
-                }
-            }
-        },
-        Err(e) => {
-            eprintln!("Error reading Excel file: {}", e);
-        }
-    }
-    
-    println!("\nPress Enter to continue...");
-    let mut input = String::new();
-    io::stdin().read_line(&mut input).unwrap();
     
     Ok(())
 }

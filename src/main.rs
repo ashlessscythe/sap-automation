@@ -3,8 +3,10 @@ use std::env;
 use std::io::{self, Write, stdout};
 use std::time::Duration;
 use std::thread;
+use std::fs;
+use std::path::Path;
 use rand::Rng;
-use dialoguer::Select;
+use dialoguer::{Select, Input};
 use crossterm::{execute, terminal::{Clear, ClearType}};
 
 mod utils;
@@ -13,6 +15,8 @@ mod vt11_module;
 
 use utils::*;
 use utils::utils::{encrypt_data, decrypt_data, KEY_FILE_SUFFIX};
+use utils::sap_file_utils::get_reports_dir;
+use utils::excel_fileread_utils::{read_excel_file, format_excel_columns_for_sap};
 use vt11_module::run_vt11_module;
 
 // Struct to hold login parameters
@@ -43,68 +47,118 @@ fn main() -> anyhow::Result<()> {
     // Initialize logging if needed
     // pretty_env_logger::init();
 
-    // Initialize COM environment
-    let com_instance = SAPComInstance::new().expect("Couldn't initialize COM environment");
+    // Flag to track if SAP is connected
+    let mut sap_connected = false;
     
-    // Get SAP wrapper
-    let wrapper = match com_instance.sap_wrapper() {
-        Ok(w) => w,
-        Err(e) => {
-            eprintln!("Error getting SAP wrapper: {}", e);
-            eprintln!("Make sure SAP GUI is installed and properly configured.");
-            return Err(e.into());
-        }
-    };
+    // Optional variables to hold SAP components if connection is successful
+    let mut com_instance: Option<SAPComInstance> = None;
+    let mut wrapper: Option<SAPWrapper> = None;
+    let mut engine: Option<GuiApplication> = None;
+    let mut connection: Option<GuiConnection> = None;
+    let mut session: Option<GuiSession> = None;
 
-    // Try to get the scripting engine
-    let engine = match wrapper.scripting_engine() {
-        Ok(e) => e,
+    // Try to initialize COM environment
+    match SAPComInstance::new() {
+        Ok(instance) => {
+            com_instance = Some(instance);
+            
+            // Try to get SAP wrapper
+            match com_instance.as_ref().unwrap().sap_wrapper() {
+                Ok(w) => {
+                    wrapper = Some(w);
+                    
+                    // Try to get the scripting engine
+                    match wrapper.as_ref().unwrap().scripting_engine() {
+                        Ok(e) => {
+                            engine = Some(e);
+                            
+                            // Try to get connection or create a new one
+                            match get_or_create_connection(engine.as_ref().unwrap()) {
+                                Ok(conn) => {
+                                    connection = Some(conn);
+                                    
+                                    // Try to get the first session
+                                    match GuiConnectionExt::children(connection.as_ref().unwrap()) {
+                                        Ok(children) => {
+                                            if let Ok(element) = children.element_at(0) {
+                                                if let Some(s) = element.downcast() {
+                                                    session = Some(s);
+                                                    sap_connected = true;
+                                                }
+                                            }
+                                        },
+                                        Err(e) => {
+                                            eprintln!("Warning: Failed to get SAP session: {}", e);
+                                        }
+                                    }
+                                },
+                                Err(e) => {
+                                    eprintln!("Warning: Error getting SAP connection: {}", e);
+                                }
+                            }
+                        },
+                        Err(e) => {
+                            eprintln!("Warning: Error getting SAP scripting engine: {}", e);
+                            eprintln!("Make sure SAP GUI is running and scripting is enabled.");
+                        }
+                    }
+                },
+                Err(e) => {
+                    eprintln!("Warning: Error getting SAP wrapper: {}", e);
+                    eprintln!("Make sure SAP GUI is installed and properly configured.");
+                }
+            }
+        },
         Err(e) => {
-            eprintln!("Error getting SAP scripting engine: {}", e);
-            eprintln!("Make sure SAP GUI is running and scripting is enabled.");
-            return Err(e.into());
+            eprintln!("Warning: Couldn't initialize COM environment: {}", e);
         }
-    };
+    }
 
-    // Get connection or create a new one
-    let connection = match get_or_create_connection(&engine) {
-        Ok(conn) => conn,
-        Err(e) => {
-            eprintln!("Error getting SAP connection: {}", e);
-            return Err(e.into());
-        }
-    };
-    
-    // Get the first session
-    let session: GuiSession = match GuiConnectionExt::children(&connection)?.element_at(0)?.downcast() {
-        Some(s) => s,
-        None => {
-            eprintln!("Failed to get SAP session");
-            return Err(windows::core::Error::from_win32().into());
-        }
-    };
+    if !sap_connected {
+        println!("SAP connection not available. Some features will be disabled.");
+        thread::sleep(Duration::from_secs(2));
+    }
 
     // Main application loop
     loop {
         clear_screen();
 
-        // Check if already logged in
-        let transaction = session.info()?.transaction()?;
-        let is_logged_in = !transaction.contains("S000");
+        // Check if already logged in (only if SAP is connected)
+        let is_logged_in = if sap_connected {
+            let transaction = session.as_ref().unwrap().info().unwrap().transaction().unwrap();
+            !transaction.contains("S000")
+        } else {
+            false
+        };
         
-        // Create menu options based on login status
-        let options = if is_logged_in {
-            vec![
-                "Log in to SAP",
-                "VT11 - Shipment List Planning",
-                "Log out of SAP",
-                "Exit"
-            ]
+        // Create menu options based on SAP connection and login status
+        let options = if sap_connected {
+            if is_logged_in {
+                vec![
+                    "Log in to SAP",
+                    "VT11 - Shipment List Planning",
+                    "Configure Reports Directory",
+                    "Read Excel File",
+                    "Log out of SAP",
+                    "Exit"
+                ]
+            } else {
+                vec![
+                    "Log in to SAP",
+                    "VT11 - Shipment List Planning (Not available - Login required)",
+                    "Configure Reports Directory",
+                    "Read Excel File",
+                    "Log out of SAP (Not available - Login required)",
+                    "Exit"
+                ]
+            }
         } else {
             vec![
-                "Log in to SAP",
-                "VT11 - Shipment List Planning (Not available - Login required)",
-                "Log out of SAP (Not available - Login required)",
+                "Log in to SAP (Not available - SAP connection required)",
+                "VT11 - Shipment List Planning (Not available - SAP connection required)",
+                "Configure Reports Directory",
+                "Read Excel File",
+                "Log out of SAP (Not available - SAP connection required)",
                 "Exit"
             ]
         };
@@ -119,33 +173,61 @@ fn main() -> anyhow::Result<()> {
         match choice {
             0 => { 
                 // Log in to SAP
-                handle_login(&session)?;
-            },
-            1 => { 
-                // Run VT11 module (only if logged in)
-                if is_logged_in {
-                    if let Err(e) = run_vt11_module(&session) {
-                        eprintln!("Error running VT11 module: {}", e);
+                if sap_connected {
+                    if let Err(e) = handle_login(session.as_ref().unwrap()) {
+                        eprintln!("Error logging in: {}", e);
                         thread::sleep(Duration::from_secs(2));
                     }
                 } else {
-                    println!("You need to log in first.");
+                    println!("SAP connection not available. Cannot log in.");
                     thread::sleep(Duration::from_secs(2));
                 }
             },
-            2 => { 
-                // Log out of SAP (only if logged in)
-                if is_logged_in {
-                    if let Err(e) = handle_logout(&session) {
-                        eprintln!("Error logging out: {}", e);
+            1 => { 
+                // Run VT11 module (only if logged in and SAP connected)
+                if sap_connected && is_logged_in {
+                    if let Err(e) = run_vt11_module(session.as_ref().unwrap()) {
+                        eprintln!("Error running VT11 module: {}", e);
                         thread::sleep(Duration::from_secs(2));
                     }
+                } else if sap_connected {
+                    println!("You need to log in first.");
+                    thread::sleep(Duration::from_secs(2));
                 } else {
-                    println!("You are not logged in.");
+                    println!("SAP connection not available. Cannot run VT11 module.");
+                    thread::sleep(Duration::from_secs(2));
+                }
+            },
+            2 => {
+                // Configure Reports Directory (available regardless of SAP connection)
+                if let Err(e) = handle_configure_reports_dir() {
+                    eprintln!("Error configuring reports directory: {}", e);
                     thread::sleep(Duration::from_secs(2));
                 }
             },
             3 => {
+                // Read Excel File (available regardless of SAP connection)
+                if let Err(e) = handle_read_excel_file() {
+                    eprintln!("Error reading Excel file: {}", e);
+                    thread::sleep(Duration::from_secs(2));
+                }
+            },
+            4 => { 
+                // Log out of SAP (only if logged in and SAP connected)
+                if sap_connected && is_logged_in {
+                    if let Err(e) = handle_logout(session.as_ref().unwrap()) {
+                        eprintln!("Error logging out: {}", e);
+                        thread::sleep(Duration::from_secs(2));
+                    }
+                } else if sap_connected {
+                    println!("You are not logged in.");
+                    thread::sleep(Duration::from_secs(2));
+                } else {
+                    println!("SAP connection not available. Cannot log out.");
+                    thread::sleep(Duration::from_secs(2));
+                }
+            },
+            5 => {
                 // Exit application
                 clear_screen();
                 println!("Exiting application...");
@@ -154,6 +236,91 @@ fn main() -> anyhow::Result<()> {
             _ => {} // no-op
         }
     }
+}
+
+fn handle_configure_reports_dir() -> anyhow::Result<()> {
+    clear_screen();
+    println!("Configure Reports Directory");
+    println!("==========================");
+    
+    // Get current reports directory
+    let current_dir = get_reports_dir();
+    println!("Current reports directory: {}", current_dir);
+    
+    // Ask user for new directory
+    let new_dir: String = Input::new()
+        .with_prompt("Enter new reports directory (leave empty to keep current)")
+        .allow_empty(true)
+        .default(current_dir.clone())
+        .interact()
+        .unwrap();
+    
+    if new_dir.is_empty() || new_dir == current_dir {
+        println!("No changes made to reports directory.");
+        thread::sleep(Duration::from_secs(2));
+        return Ok(());
+    }
+    
+    // Validate directory
+    let path = Path::new(&new_dir);
+    if !path.exists() {
+        println!("Directory does not exist. Create it? (y/n)");
+        let mut create_choice = String::new();
+        io::stdin().read_line(&mut create_choice).unwrap();
+        
+        if create_choice.trim().to_lowercase() == "y" {
+            if let Err(e) = fs::create_dir_all(&new_dir) {
+                eprintln!("Failed to create directory: {}", e);
+                thread::sleep(Duration::from_secs(2));
+                return Ok(());
+            }
+        } else {
+            println!("Directory not created. No changes made.");
+            thread::sleep(Duration::from_secs(2));
+            return Ok(());
+        }
+    }
+    
+    // Update config.toml
+    let config_path = "config.toml";
+    let mut config_content = if let Ok(content) = fs::read_to_string(config_path) {
+        content
+    } else {
+        String::from("[build]\ntarget = \"i686-pc-windows-msvc\"\n")
+    };
+    
+    // Check if reports_dir already exists in config
+    if let Some(pos) = config_content.find("reports_dir") {
+        // Find the end of the line
+        if let Some(end_pos) = config_content[pos..].find('\n') {
+            let end = pos + end_pos;
+            let start_line = config_content[..pos].rfind('\n').map_or(0, |p| p + 1);
+            // Replace the line
+            config_content.replace_range(start_line..end, &format!("reports_dir = \"{}\"", new_dir));
+        } else {
+            // Last line in file
+            let start_line = config_content[..pos].rfind('\n').map_or(0, |p| p + 1);
+            config_content.replace_range(start_line.., &format!("reports_dir = \"{}\"\n", new_dir));
+        }
+    } else {
+        // Add reports_dir to config
+        if !config_content.ends_with('\n') {
+            config_content.push('\n');
+        }
+        config_content.push_str(&format!("reports_dir = \"{}\"\n", new_dir));
+    }
+    
+    // Write updated config
+    if let Err(e) = fs::write(config_path, config_content) {
+        eprintln!("Failed to update config file: {}", e);
+        thread::sleep(Duration::from_secs(2));
+        return Ok(());
+    }
+    
+    println!("Reports directory updated to: {}", new_dir);
+    thread::sleep(Duration::from_secs(2));
+    
+    Ok(())
 }
 
 fn handle_login(session: &GuiSession) -> anyhow::Result<()> {
@@ -407,6 +574,90 @@ fn login(session: &GuiSession, params: &LoginParams) -> windows::core::Result<()
             window.close()?;
         }
     }
+    
+    Ok(())
+}
+
+fn handle_read_excel_file() -> anyhow::Result<()> {
+    clear_screen();
+    println!("Read Excel File");
+    println!("==============");
+    
+    // Get reports directory as default location
+    let reports_dir = get_reports_dir();
+    
+    // Ask for Excel file path
+    let file_path: String = Input::new()
+        .with_prompt("Enter Excel file path (full path including filename)")
+        .default(format!("{}\\example.xlsx", reports_dir))
+        .interact()
+        .unwrap();
+    
+    // Check if file exists
+    if !Path::new(&file_path).exists() {
+        println!("File not found: {}", file_path);
+        thread::sleep(Duration::from_secs(2));
+        return Ok(());
+    }
+    
+    // Ask for sheet name
+    let sheet_name: String = Input::new()
+        .with_prompt("Enter sheet name")
+        .default("Sheet1".to_string())
+        .interact()
+        .unwrap();
+    
+    // Ask for column names
+    let columns_input: String = Input::new()
+        .with_prompt("Enter column names (comma-separated)")
+        .default("A,B,C".to_string())
+        .interact()
+        .unwrap();
+    
+    // Parse column names
+    let column_names: Vec<&str> = columns_input.split(',')
+        .map(|s| s.trim())
+        .collect();
+    
+    println!("\nReading Excel file: {}", file_path);
+    println!("Sheet: {}", sheet_name);
+    println!("Columns: {:?}", column_names);
+    
+    // Read the Excel file
+    match read_excel_file(&file_path, &sheet_name) {
+        Ok(df) => {
+            // Display headers
+            println!("\nHeaders found in file:");
+            for (i, header) in df.headers.iter().enumerate() {
+                println!("  {}: {}", i + 1, header);
+            }
+            
+            // Display row count
+            println!("\nTotal rows: {}", df.data.len());
+            
+            // Format for SAP multi-value field
+            if !column_names.is_empty() {
+                match format_excel_columns_for_sap(&file_path, &sheet_name, &column_names) {
+                    Ok(formatted) => {
+                        println!("\nFormatted data for SAP multi-value field:");
+                        println!("{}", formatted);
+                        
+                        println!("\nThis data can be pasted directly into SAP multi-value fields.");
+                    },
+                    Err(e) => {
+                        eprintln!("Error formatting columns: {}", e);
+                    }
+                }
+            }
+        },
+        Err(e) => {
+            eprintln!("Error reading Excel file: {}", e);
+        }
+    }
+    
+    println!("\nPress Enter to continue...");
+    let mut input = String::new();
+    io::stdin().read_line(&mut input).unwrap();
     
     Ok(())
 }

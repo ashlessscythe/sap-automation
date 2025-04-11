@@ -5,6 +5,7 @@ pub use self::sap_file_utils::*;
 pub use self::sap_tcode_utils::*;
 pub use self::sap_wnd_utils::*;
 pub use self::sap_crypto_utils::*;
+pub use self::excel_fileread_utils::*;
 
 // Declare and re-export submodules
 pub mod utils;
@@ -17,3 +18,4 @@ pub mod sap_crypto_utils;
 pub mod select_layout_utils;
 pub mod setup_layout_li_utils;
 pub mod setup_layout_utils;
+pub mod excel_fileread_utils;

@@ -1,11 +1,74 @@
 use sap_scripting::*;
 use std::time::Duration;
 use std::thread;
+use std::env;
+use std::path::Path;
+use std::fs;
 use windows::core::Result;
 use chrono;
 use crate::utils::sap_constants::{ErrorCheck, ParamsStruct, TIME_FORMAT};
 use crate::utils::sap_ctrl_utils::{exist_ctrl, hit_ctrl};
 use crate::utils::sap_tcode_utils::check_tcode;
+use crate::utils::utils::generate_timestamp;
+
+/// Gets the configured reports directory or returns the default
+///
+/// # Returns
+///
+/// * `String` - The path to the reports directory
+///
+pub fn get_reports_dir() -> String {
+    // Try to read from config file first
+    if let Ok(config) = std::fs::read_to_string("config.toml") {
+        if let Some(reports_dir_line) = config.lines().find(|line| line.starts_with("reports_dir")) {
+            if let Some(value) = reports_dir_line.split('=').nth(1) {
+                let trimmed = value.trim().trim_matches('"').trim_matches('\'');
+                if !trimmed.is_empty() {
+                    return trimmed.to_string();
+                }
+            }
+        }
+    }
+    
+    // If not found in config, use default path in user documents
+    match env::var("USERPROFILE") {
+        Ok(profile) => format!("{}\\Documents\\Reports", profile),
+        Err(_) => {
+            eprintln!("Could not determine user profile directory");
+            String::from(".\\Reports")
+        }
+    }
+}
+
+/// Gets a file path for a specific tcode
+///
+/// This function generates a file path based on the tcode, timestamp, and extension.
+/// The path follows the pattern: {reports_dir}\{tcode}\{timestamp}_{tcode}.{ext}
+///
+/// # Arguments
+///
+/// * `tcode` - The SAP transaction code
+/// * `ext` - The file extension (without the dot)
+///
+/// # Returns
+///
+/// * `(String, String)` - A tuple containing (file_path, file_name)
+///
+pub fn get_tcode_file_path(tcode: &str, ext: &str) -> (String, String) {
+    let reports_dir = get_reports_dir();
+    let tcode_dir = format!("{}\\{}", reports_dir, tcode);
+    
+    // Create the directory if it doesn't exist
+    if !Path::new(&tcode_dir).exists() {
+        let _ = fs::create_dir_all(&tcode_dir);
+    }
+    
+    let timestamp = generate_timestamp();
+    let file_name = format!("{}_{}.{}", timestamp, tcode, ext);
+    let file_path = tcode_dir;
+    
+    (file_path, file_name)
+}
 
 /// Saves a file from SAP GUI to the specified path and filename
 ///

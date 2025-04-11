@@ -1,10 +1,9 @@
-use std::env;
 use sap_scripting::*;
 use windows::core::Result;
 use chrono::NaiveDate;
 
 use crate::utils::utils::*;
-use crate::utils::{select_layout_utils::choose_layout, *};
+use crate::utils::{select_layout_utils::*, sap_file_utils::*, *};
 
 /// Struct to hold VT11 export parameters
 #[derive(Debug)]
@@ -302,17 +301,8 @@ pub fn run_export(session: &GuiSession, params: &VT11Params) -> Result<bool> {
         }
     }
     
-    // get file path to documents folder 
-    let file_path = match env::var("USERPROFILE") {
-        Ok(profile) => format!("{}\\Documents\\Reports\\", profile),
-        Err(_) => {
-            eprintln!("Could not determine user reports directory");
-            String::from(".\\")
-        }
-    };
-
-    // file name
-    let file_name = format!("{}_VT11.xlsx", generate_timestamp());
+    // Get file path using the utility function
+    let (file_path, file_name) = get_tcode_file_path("VT11", "xlsx");
 
     // save sap file
     let run_check = save_sap_file(session, &file_path, &file_name)?;

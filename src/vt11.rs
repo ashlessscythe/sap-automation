@@ -55,45 +55,9 @@ pub fn run_export(session: &GuiSession, params: &VT11Params) -> Result<bool> {
     // Apply variant if provided
     if let Some(variant_name) = &params.sap_variant_name {
         if !variant_name.is_empty() {
-            // Choose variant
-            if let Ok(btn) = session.find_by_id("wnd[0]/tbar[1]/btn[17]".to_string()) {
-                if let Some(button) = btn.downcast::<GuiButton>() {
-                    button.press()?;
-                }
-            }
-            
-            // Enter variant name
-            if let Ok(txt) = session.find_by_id("wnd[1]/usr/txtV-LOW".to_string()) {
-                if let Some(text_field) = txt.downcast::<GuiTextField>() {
-                    text_field.set_text(variant_name.clone())?;
-                }
-            }
-            
-            // Blank username
-            if let Ok(txt) = session.find_by_id("wnd[1]/usr/txtENAME-LOW".to_string()) {
-                if let Some(text_field) = txt.downcast::<GuiTextField>() {
-                    text_field.set_text("".to_string())?;
-                }
-            }
-            
-            // Close variant select window
-            if let Ok(btn) = session.find_by_id("wnd[1]/tbar[0]/btn[8]".to_string()) {
-                if let Some(button) = btn.downcast::<GuiButton>() {
-                    button.press()?;
-                }
-            }
-        } else {
-            // In case of empty variant name, enter 1 to 7 for Overall Transport Status
-            if let Ok(txt) = session.find_by_id("wnd[0]/usr/ctxtK_STTRG-LOW".to_string()) {
-                if let Some(text_field) = txt.downcast::<GuiTextField>() {
-                    text_field.set_text("1".to_string())?;
-                }
-            }
-            
-            if let Ok(txt) = session.find_by_id("wnd[0]/usr/ctxtK_STTRG-HIGH".to_string()) {
-                if let Some(text_field) = txt.downcast::<GuiTextField>() {
-                    text_field.set_text("7".to_string())?;
-                }
+            if !variant_select(session, &params.t_code, variant_name)? {
+                println!("Failed to select variant '{}' for tCode '{}'", variant_name, params.t_code);
+                // Continue with export even if variant selection failed
             }
         }
     }

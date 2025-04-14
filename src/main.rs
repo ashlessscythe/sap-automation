@@ -6,11 +6,14 @@ use dialoguer::Select;
 mod utils;
 mod vt11;
 mod vt11_module;
+mod vl06o;
+mod vl06o_module;
 mod app;
 
 use utils::*;
 use utils::excel_file_ops::handle_read_excel_file;
 use vt11_module::run_vt11_module;
+use vl06o_module::run_vl06o_module;
 use app::*;
 
 fn main() -> anyhow::Result<()> {
@@ -107,6 +110,7 @@ fn main() -> anyhow::Result<()> {
                 vec![
                     "Log in to SAP",
                     "VT11 - Shipment List Planning",
+                    "VL06O - List of Outbound Deliveries",
                     "Configure Reports Directory",
                     "Read Excel File",
                     "Log out of SAP",
@@ -116,6 +120,7 @@ fn main() -> anyhow::Result<()> {
                 vec![
                     "Log in to SAP",
                     "VT11 - Shipment List Planning (Not available - Login required)",
+                    "VL06O - List of Outbound Deliveries (Not available - Login required)",
                     "Configure Reports Directory",
                     "Read Excel File",
                     "Log out of SAP (Not available - Login required)",
@@ -123,14 +128,15 @@ fn main() -> anyhow::Result<()> {
                 ]
             }
         } else {
-            vec![
-                "Log in to SAP (Not available - SAP connection required)",
-                "VT11 - Shipment List Planning (Not available - SAP connection required)",
-                "Configure Reports Directory",
-                "Read Excel File",
-                "Log out of SAP (Not available - SAP connection required)",
-                "Exit"
-            ]
+                vec![
+                    "Log in to SAP (Not available - SAP connection required)",
+                    "VT11 - Shipment List Planning (Not available - SAP connection required)",
+                    "VL06O - List of Outbound Deliveries (Not available - SAP connection required)",
+                    "Configure Reports Directory",
+                    "Read Excel File",
+                    "Log out of SAP (Not available - SAP connection required)",
+                    "Exit"
+                ]
         };
         
         let choice = Select::new()
@@ -168,21 +174,36 @@ fn main() -> anyhow::Result<()> {
                     thread::sleep(Duration::from_secs(2));
                 }
             },
-            2 => {
+            2 => { 
+                // Run VL06O module (only if logged in and SAP connected)
+                if sap_connected && is_logged_in {
+                    if let Err(e) = run_vl06o_module(session.as_ref().unwrap()) {
+                        eprintln!("Error running VL06O module: {}", e);
+                        thread::sleep(Duration::from_secs(2));
+                    }
+                } else if sap_connected {
+                    println!("You need to log in first.");
+                    thread::sleep(Duration::from_secs(2));
+                } else {
+                    println!("SAP connection not available. Cannot run VL06O module.");
+                    thread::sleep(Duration::from_secs(2));
+                }
+            },
+            3 => {
                 // Configure Reports Directory (available regardless of SAP connection)
                 if let Err(e) = handle_configure_reports_dir() {
                     eprintln!("Error configuring reports directory: {}", e);
                     thread::sleep(Duration::from_secs(2));
                 }
             },
-            3 => {
+            4 => {
                 // Read Excel File (available regardless of SAP connection)
                 if let Err(e) = handle_read_excel_file() {
                     eprintln!("Error reading Excel file: {}", e);
                     thread::sleep(Duration::from_secs(2));
                 }
             },
-            4 => { 
+            5 => { 
                 // Log out of SAP (only if logged in and SAP connected)
                 if sap_connected && is_logged_in {
                     if let Err(e) = handle_logout(session.as_ref().unwrap()) {
@@ -197,7 +218,7 @@ fn main() -> anyhow::Result<()> {
                     thread::sleep(Duration::from_secs(2));
                 }
             },
-            5 => {
+            6 => {
                 // Exit application
                 clear_screen();
                 println!("Exiting application...");

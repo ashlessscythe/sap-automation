@@ -4,10 +4,67 @@ use std::thread;
 use dialoguer::{Select, Input};
 use crossterm::{execute, terminal::{Clear, ClearType}};
 use anyhow::Result;
+use windows::core;
 
 use crate::utils::sap_file_utils::get_reports_dir;
 use crate::utils::excel_fileread_utils::{read_excel_file, ExcelValue};
-use crate::utils::excel_path_utils::get_excel_file_path;
+use crate::utils::excel_path_utils::{get_excel_file_path, resolve_path};
+
+/// Read a specific column from an Excel file and return the values as strings
+///
+/// # Arguments
+///
+/// * `file_path` - Path to the Excel file
+/// * `sheet_name` - Name of the sheet to read
+/// * `column_header` - Header of the column to read
+///
+/// # Returns
+///
+/// * `Result<Vec<String>>` - Vector of string values from the column
+pub fn read_excel_column(file_path: &str, sheet_name: &str, column_header: &str) -> core::Result<Vec<String>> {
+    // Resolve the file path (handle slugs and non-full paths)
+    let resolved_path = resolve_path(file_path);
+    
+    // Read the Excel file
+    let df = match read_excel_file(&resolved_path, sheet_name) {
+        Ok(df) => df,
+        Err(e) => {
+            println!("Error reading Excel file: {}", e);
+            return Ok(Vec::new());
+        }
+    };
+    
+    // Check if the column header exists
+    if !df.headers.contains(&column_header.to_string()) {
+        println!("Column header '{}' not found in sheet '{}'", column_header, sheet_name);
+        println!("Available headers: {:?}", df.headers);
+        return Ok(Vec::new());
+    }
+    
+    // Get the column index
+    let column_index = df.headers.iter().position(|h| h == column_header).unwrap();
+    
+    // Extract the column values
+    let mut column_values = Vec::new();
+    for row in &df.data {
+        if column_index < row.len() {
+            let value = match &row[column_index] {
+                ExcelValue::String(s) => s.clone(),
+                ExcelValue::Float(f) => f.to_string(),
+                ExcelValue::Int(i) => i.to_string(),
+                ExcelValue::Bool(b) => b.to_string(),
+                ExcelValue::Empty => String::new(),
+            };
+            
+            // Only add non-empty values
+            if !value.is_empty() {
+                column_values.push(value);
+            }
+        }
+    }
+    
+    Ok(column_values)
+}
 
 pub fn handle_read_excel_file() -> Result<()> {
     clear_screen();
@@ -90,22 +147,44 @@ pub fn handle_read_excel_file() -> Result<()> {
             let col_refs: Vec<&str> = selected_columns.iter().map(|s| s.as_str()).collect();
             
             if let Some(columns) = df.get_columns(&col_refs) {
-                // Print header row
-                print!("| ");
-                for col in &selected_columns {
-                    print!("{} | ", col);
+                // Calculate column widths based on content
+                let mut col_widths = Vec::new();
+                for (i, col_name) in selected_columns.iter().enumerate() {
+                    // Start with header width
+                    let mut max_width = col_name.len();
+                    
+                    // Check data widths (up to 5 rows)
+                    if i < columns.len() {
+                        let row_count = std::cmp::min(5, columns[i].len());
+                        for row_idx in 0..row_count {
+                            if row_idx < columns[i].len() {
+                                let value_width = columns[i][row_idx].to_string().len();
+                                max_width = std::cmp::max(max_width, value_width);
+                            }
+                        }
+                    }
+                    
+                    // Add padding
+                    col_widths.push(max_width + 2); // +2 for padding
                 }
-                println!();
                 
-                // Print separator
-                print!("|");
-                for col in &selected_columns {
-                    for _ in 0..col.len() + 2 {
-                        print!("-");
+                // Print header row with color
+                print!("\x1b[1;36m| "); // Bright cyan, bold
+                for (i, col) in selected_columns.iter().enumerate() {
+                    let width = col_widths[i];
+                    print!("{:<width$} | ", col, width = width);
+                }
+                println!("\x1b[0m"); // Reset color
+                
+                // Print separator with double line for better visibility
+                print!("\x1b[1;36m|"); // Bright cyan, bold
+                for width in &col_widths {
+                    for _ in 0..(width + 3) { // +3 for the " | " separator
+                        print!("=");
                     }
                     print!("|");
                 }
-                println!();
+                println!("\x1b[0m"); // Reset color
                 
                 // Print data rows (up to 5)
                 let row_count = if columns.is_empty() { 0 } else { columns[0].len() };
@@ -113,15 +192,27 @@ pub fn handle_read_excel_file() -> Result<()> {
                 
                 for row_idx in 0..display_rows {
                     print!("| ");
-                    for col in &columns {
+                    for (col_idx, col) in columns.iter().enumerate() {
+                        let width = col_widths[col_idx];
                         if row_idx < col.len() {
-                            print!("{} | ", col[row_idx].to_string());
+                            let value = col[row_idx].to_string();
+                            print!("{:<width$} | ", value, width = width);
                         } else {
-                            print!("  | ");
+                            print!("{:<width$} | ", "", width = width);
                         }
                     }
                     println!();
                 }
+                
+                // Print bottom separator
+                print!("|");
+                for width in &col_widths {
+                    for _ in 0..(width + 3) { // +3 for the " | " separator
+                        print!("-");
+                    }
+                    print!("|");
+                }
+                println!();
             }
         }
         

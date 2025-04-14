@@ -46,26 +46,82 @@ pub fn handle_configure_reports_dir() -> anyhow::Result<()> {
     let current_dir = get_reports_dir();
     println!("Current reports directory: {}", current_dir);
     
-    // Ask user for new directory
-    let mut new_dir: String = Input::new()
-        .with_prompt("Enter new reports directory (leave empty to keep current)")
-        .allow_empty(true)
-        .default(current_dir.clone())
+    // Present options to the user
+    let options = vec![
+        "Enter a custom directory",
+        "Reset to default (userprofile/documents/reports)",
+        "Cancel (keep current)"
+    ];
+    
+    let selection = Select::new()
+        .with_prompt("Choose an option")
+        .items(&options)
+        .default(0)
         .interact()
         .unwrap();
     
-    // handle empty
-    if new_dir.is_empty() || new_dir == current_dir {
-        println!("No changes made to reports directory.");
-        thread::sleep(Duration::from_secs(2));
-        return Ok(());
-    }
-
-    // handle slug
-    let needles = vec!["\\", "/", "\\\\"];
-    if !needles.iter().any(|n| new_dir.contains(n)) {
-        println!("Attempting to use relative path: {}", new_dir);
-        new_dir = format!("{}\\{}", current_dir, new_dir);
+    let mut new_dir = String::new();
+    
+    match selection {
+        0 => {
+            // User wants to enter a custom directory
+            new_dir = Input::new()
+                .with_prompt("Enter new reports directory")
+                .allow_empty(true)
+                .default(current_dir.clone())
+                .interact()
+                .unwrap();
+            
+            // Handle empty input
+            if new_dir.is_empty() || new_dir == current_dir {
+                println!("No changes made to reports directory.");
+                thread::sleep(Duration::from_secs(2));
+                return Ok(());
+            }
+            
+            // Handle "../" at the beginning (up one directory)
+            if new_dir.starts_with("../") || new_dir.starts_with("..\\") {
+                let current_path = Path::new(&current_dir);
+                if let Some(parent) = current_path.parent() {
+                    let rest_of_path = if new_dir.starts_with("../") {
+                        &new_dir[3..]
+                    } else { // starts_with("..\\")
+                        &new_dir[3..]
+                    };
+                    
+                    new_dir = format!("{}\\{}", parent.to_string_lossy(), rest_of_path);
+                    println!("Using parent directory path: {}", new_dir);
+                }
+            }
+            // Handle slug (no path separators)
+            else {
+                let needles = vec!["\\", "/", "\\\\"];
+                if !needles.iter().any(|n| new_dir.contains(n)) {
+                    println!("Attempting to use relative path: {}", new_dir);
+                    new_dir = format!("{}\\{}", current_dir, new_dir);
+                }
+            }
+        },
+        1 => {
+            // User wants to reset to default
+            match env::var("USERPROFILE") {
+                Ok(profile) => {
+                    new_dir = format!("{}\\Documents\\Reports", profile);
+                    println!("Resetting to default reports directory: {}", new_dir);
+                },
+                Err(_) => {
+                    eprintln!("Could not determine user profile directory");
+                    new_dir = String::from(".\\Reports");
+                    println!("Resetting to fallback reports directory: {}", new_dir);
+                }
+            }
+        },
+        _ => {
+            // User wants to cancel
+            println!("No changes made to reports directory.");
+            thread::sleep(Duration::from_secs(2));
+            return Ok(());
+        }
     }
     
     // Validate directory

@@ -63,3 +63,73 @@ pub fn check_tcode(session: &GuiSession, tcode: &str, run: Option<bool>, _kill_p
         return Ok(false);
     }
 }
+
+pub fn variant_select(session: &GuiSession, tcode: &str, variant_name: &str) -> Result<bool> {
+    println!("Selecting variant '{}' for tCode '{}'", variant_name, tcode);
+    
+    // Choose variant
+    if let Ok(btn) = session.find_by_id("wnd[0]/tbar[1]/btn[17]".to_string()) {
+        if let Some(button) = btn.downcast::<GuiButton>() {
+            button.press()?;
+        } else {
+            println!("Failed to downcast variant button to GuiButton");
+            return Ok(false);
+        }
+    } else {
+        println!("Variant button not found for tCode '{}'", tcode);
+        return Ok(false);
+    }
+    
+    // Check if variant selection window opened
+    let err_msg = hit_ctrl(session, 0, "/sbar", "Text", "Get", "")?;
+    if err_msg.contains("error") || err_msg.contains("not found") {
+        println!("Error opening variant selection: {}", err_msg);
+        return Ok(false);
+    }
+    
+    // Enter variant name
+    if let Ok(txt) = session.find_by_id("wnd[1]/usr/txtV-LOW".to_string()) {
+        if let Some(text_field) = txt.downcast::<GuiTextField>() {
+            text_field.set_text(variant_name.to_string())?;
+        } else {
+            println!("Failed to downcast variant name field to GuiTextField");
+            return Ok(false);
+        }
+    } else {
+        println!("Variant name field not found");
+        return Ok(false);
+    }
+    
+    // Blank username
+    if let Ok(txt) = session.find_by_id("wnd[1]/usr/txtENAME-LOW".to_string()) {
+        if let Some(text_field) = txt.downcast::<GuiTextField>() {
+            text_field.set_text("".to_string())?;
+        } else {
+            // If we can't find or use the username field, just continue
+            println!("Warning: Could not clear username field, continuing anyway");
+        }
+    }
+    
+    // Close variant select window
+    if let Ok(btn) = session.find_by_id("wnd[1]/tbar[0]/btn[8]".to_string()) {
+        if let Some(button) = btn.downcast::<GuiButton>() {
+            button.press()?;
+        } else {
+            println!("Failed to downcast confirm button to GuiButton");
+            return Ok(false);
+        }
+    } else {
+        println!("Confirm button not found");
+        return Ok(false);
+    }
+    
+    // Check for errors in status bar after variant selection
+    let err_msg = hit_ctrl(session, 0, "/sbar", "Text", "Get", "")?;
+    if !err_msg.is_empty() && (err_msg.contains("error") || err_msg.contains("not found")) {
+        println!("Error selecting variant: {}", err_msg);
+        return Ok(false);
+    }
+    
+    println!("Variant '{}' selected successfully for tCode '{}'", variant_name, tcode);
+    Ok(true)
+}

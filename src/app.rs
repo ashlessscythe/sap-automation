@@ -1,6 +1,7 @@
 use sap_scripting::*;
 use std::env;
-use std::io::{self, Write, stdout};
+use std::io::{self, Write, stdout, stderr};
+use rpassword;
 use std::time::Duration;
 use std::thread::{self, current};
 use std::fs;
@@ -325,8 +326,7 @@ pub fn get_login_parameters() -> windows::core::Result<LoginParams> {
             print!("Password: ");
             io::stdout().flush().unwrap();
             // In a real application, you would use a crate like rpassword to hide input
-            io::stdin().read_line(&mut params.password).unwrap();
-            params.password = params.password.trim().to_string();
+            params.password = rpassword::read_password().unwrap();
         }
         
         // Ask if user wants to save credentials

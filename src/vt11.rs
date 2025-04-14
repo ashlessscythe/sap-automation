@@ -3,7 +3,7 @@ use windows::core::Result;
 use chrono::NaiveDate;
 
 use crate::utils::utils::*;
-use crate::utils::{select_layout_utils::*, sap_file_utils::*};
+use crate::utils::{sap_file_utils::*, choose_layout, layout_popup};
 // Import specific functions to avoid ambiguity
 use crate::utils::sap_ctrl_utils::{exist_ctrl, hit_ctrl};
 use crate::utils::sap_constants::*;
@@ -154,84 +154,34 @@ pub fn run_export(session: &GuiSession, params: &VT11Params) -> Result<bool> {
                     menu_item.select()?;
                 }
             }
+
             // Check if window exists
             let err_ctl = exist_ctrl(session, 1, "", true)?;
             
             if err_ctl.cband {
-                // debug
-                eprintln!("Layout row is not empty: {}", layout_row);
-                // Check if statusbar says "No layouts found"
-                let status_text = hit_ctrl(session, 0, "/sbar", "Text", "Get", "")?;
-                if contains(&status_text.to_lowercase(), "no layouts found", Some(false)) {
-                    println!("No layouts found");
+                // String layout name
+                let msg = choose_layout(session, &params.t_code, layout_row);
+                match msg {
+                    Ok(message) if message == "" => {},    // no-op
+                    Ok(message) => {
+                        eprintln!("Message after choosing layout {}: {}", layout_row, message);
+                    }
+                    Err(e) => {
+                        eprintln!("Error after choosing layout {}: {:?}", layout_row, e);
+                    }
+                }
                     
-                    // Close the window if it exists
+                // If we get here and the layout window is still open, the layout wasn't found
+                let err_ctl = exist_ctrl(session, 1, "", true)?;
+                if err_ctl.cband {
                     if let Ok(window) = session.find_by_id("wnd[1]".to_string()) {
                         if let Some(modal_window) = window.downcast::<GuiFrameWindow>() {
                             modal_window.close()?;
                         }
                     }
-                    
+                        
                     println!("Layout ({}) not found. Setting up layout...", layout_row);
                     // Setup layout functionality would be implemented here
-                    // This is complex and would require additional work
-                } else if layout_row.parse::<i32>().is_ok() {
-                    // debug
-                    eprintln!("Layout row is numeric: {}", layout_row);
-
-                    // Numeric layout row
-                    let layout_num = layout_row.parse::<i32>().unwrap();
-                    let layout_id = format!("wnd[1]/usr/lbl[1,{}]", layout_num);
-                    
-                    let err_ctl = exist_ctrl(session, 1, &format!("/usr/lbl[1,{}]", layout_num), true)?;
-                    if err_ctl.cband {
-                        // Highlight layout row
-                        if let Ok(lbl) = session.find_by_id(layout_id.clone()) {
-                            if let Some(label) = lbl.downcast::<GuiLabel>() {
-                                label.set_focus()?;
-                            }
-                        }
-                        
-                        // Select layout
-                        if let Ok(window) = session.find_by_id("wnd[1]".to_string()) {
-                            if let Some(modal_window) = window.downcast::<GuiFrameWindow>() {
-                                modal_window.send_v_key(2)?; // Select
-                            }
-                        }
-                        
-                        println!("Layout number ({}), ({}) selected.", layout_num, err_ctl.ctext);
-                    } else {
-                        // If numeric layout not found, decrease until found
-                        println!("Layout number ({}) not found, decreasing", layout_num);
-                        // This would be implemented in a more complete version
-                    }
-                } else {
-                    // debug
-                    eprintln!("Layout row is not numeric: {}", layout_row);
-                    // String layout name
-                    let msg = choose_layout(session, &params.t_code, layout_row);
-                    match msg {
-                        Ok(message) if message == "" => {},    // no-op
-                        Ok(message) => {
-                            eprintln!("Message after choosing layout {}: {}", layout_row, message);
-                        }
-                        Err(e) => {
-                            eprintln!("Error after choosing layout {}: {:?}", layout_row, e);
-                        }
-                    }
-                    
-                    // If we get here and the layout window is still open, the layout wasn't found
-                    let err_ctl = exist_ctrl(session, 1, "", true)?;
-                    if err_ctl.cband {
-                        if let Ok(window) = session.find_by_id("wnd[1]".to_string()) {
-                            if let Some(modal_window) = window.downcast::<GuiFrameWindow>() {
-                                modal_window.close()?;
-                            }
-                        }
-                        
-                        println!("Layout ({}) not found. Setting up layout...", layout_row);
-                        // Setup layout functionality would be implemented here
-                    }
                 }
             }
         } else {

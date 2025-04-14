@@ -98,7 +98,7 @@ fn get_shipment_numbers_from_excel() -> Result<Vec<String>> {
     
     let column_header: String = Input::new()
         .with_prompt("Column header for shipment numbers")
-        .default("Shipment".to_string())
+        .default("Shipment Number".to_string())
         .interact_text()
         .unwrap();
     

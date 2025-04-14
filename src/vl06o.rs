@@ -1,7 +1,7 @@
 use sap_scripting::*;
 use windows::core::Result;
 
-use crate::utils::{select_layout_utils::*, sap_file_utils::*};
+use crate::utils::{sap_file_utils::*, choose_layout, layout_popup};
 // Import specific functions to avoid ambiguity
 use crate::utils::sap_ctrl_utils::*;
 use crate::utils::sap_tcode_utils::*;
@@ -143,16 +143,16 @@ pub fn run_export(session: &GuiSession, params: &VL06OParams) -> Result<bool> {
         }
     }
     
-    // Choose Layout
-    if let Ok(menu) = session.find_by_id("wnd[0]/mbar/menu[3]/menu[2]/menu[1]".to_string()) {
-        if let Some(menu_item) = menu.downcast::<GuiMenu>() {
-            menu_item.select()?;
-        }
-    }
     
-    // Check if layout exists and select it
+    // Check if layout provided
     if let Some(layout_row) = &params.layout_row {
         if !layout_row.is_empty() {
+            // Choose Layout
+            if let Ok(menu) = session.find_by_id("wnd[0]/mbar/menu[3]/menu[2]/menu[1]".to_string()) {
+                if let Some(menu_item) = menu.downcast::<GuiMenu>() {
+                    menu_item.select()?;
+                }
+            }
             // Use the existing layout selection utility
             let layout_result = choose_layout(session, "vl06o", layout_row);
             match layout_result {

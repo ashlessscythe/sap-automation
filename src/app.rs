@@ -2,7 +2,7 @@ use sap_scripting::*;
 use std::env;
 use std::io::{self, Write, stdout};
 use std::time::Duration;
-use std::thread;
+use std::thread::{self, current};
 use std::fs;
 use std::path::Path;
 use rand::Rng;
@@ -47,17 +47,25 @@ pub fn handle_configure_reports_dir() -> anyhow::Result<()> {
     println!("Current reports directory: {}", current_dir);
     
     // Ask user for new directory
-    let new_dir: String = Input::new()
+    let mut new_dir: String = Input::new()
         .with_prompt("Enter new reports directory (leave empty to keep current)")
         .allow_empty(true)
         .default(current_dir.clone())
         .interact()
         .unwrap();
     
+    // handle empty
     if new_dir.is_empty() || new_dir == current_dir {
         println!("No changes made to reports directory.");
         thread::sleep(Duration::from_secs(2));
         return Ok(());
+    }
+
+    // handle slug
+    let needles = vec!["\\", "/", "\\\\"];
+    if !needles.iter().any(|n| new_dir.contains(n)) {
+        println!("Attempting to use relative path: {}", new_dir);
+        new_dir = format!("{}\\{}", current_dir, new_dir);
     }
     
     // Validate directory

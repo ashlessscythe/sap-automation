@@ -8,6 +8,9 @@ pub use self::sap_crypto_utils::*;
 pub use self::excel_fileread_utils::*;
 pub use self::excel_path_utils::*;
 pub use self::excel_file_ops::*;
+pub use self::sap_interfaces::*;
+pub use self::sap_real_impl::*;
+pub use self::sap_mock_impl::*;
 
 // Declare and re-export submodules
 pub mod utils;
@@ -23,3 +26,6 @@ pub mod setup_layout_utils;
 pub mod excel_fileread_utils;
 pub mod excel_path_utils;
 pub mod excel_file_ops;
+pub mod sap_interfaces;
+pub mod sap_real_impl;
+pub mod sap_mock_impl;

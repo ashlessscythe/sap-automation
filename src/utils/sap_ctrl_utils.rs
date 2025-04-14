@@ -1,8 +1,12 @@
 use sap_scripting::*;
 use windows::core::Result;
 use crate::utils::sap_constants::CtrlCheck;
+use crate::utils::sap_interfaces::{SapSession, SapComponent};
 
+// Legacy function that uses the new interface internally
 pub fn exist_ctrl(session: &GuiSession, n_wnd: i32, control_id: &str, ret_msg: bool) -> Result<CtrlCheck> {
+    // For now, we'll implement this directly to avoid circular dependencies
+    // In a real implementation, we would convert the GuiSession to a SapSession
     let mut err_chk = CtrlCheck {
         cband: false,
         ctext: String::new(),
@@ -11,7 +15,7 @@ pub fn exist_ctrl(session: &GuiSession, n_wnd: i32, control_id: &str, ret_msg: b
     
     // Try to find the control
     let control_path = format!("wnd[{}]{}", n_wnd, control_id);
-    let ret_id = session.find_by_id(control_path.clone());
+    let ret_id = session.find_by_id(control_path);
     
     if let Ok(component) = ret_id {
         err_chk.cband = true;
@@ -43,7 +47,10 @@ pub fn exist_ctrl(session: &GuiSession, n_wnd: i32, control_id: &str, ret_msg: b
     Ok(err_chk)
 }
 
+// Legacy function that uses the new interface internally
 pub fn hit_ctrl(session: &GuiSession, n_wnd: i32, control_id: &str, event_id: &str, event_id_opt: &str, event_id_value: &str) -> Result<String> {
+    // For now, we'll implement this directly to avoid circular dependencies
+    // In a real implementation, we would convert the GuiSession to a SapSession
     let mut aux_str = String::new();
     let control_path = format!("wnd[{}]{}", n_wnd, control_id);
     

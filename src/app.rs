@@ -12,7 +12,6 @@ use crossterm::{execute, terminal::{Clear, ClearType}};
 
 use crate::utils::*;
 use crate::utils::utils::{encrypt_data, decrypt_data, KEY_FILE_SUFFIX};
-use crate::utils::sap_file_utils::get_reports_dir;
 
 // Struct to hold login parameters
 pub struct LoginParams {
@@ -38,153 +37,10 @@ pub fn clear_screen() {
     execute!(stdout(), Clear(ClearType::All)).unwrap();
 }
 
+// Wrapper for the handle_configure_reports_dir function from config_ops
 pub fn handle_configure_reports_dir() -> anyhow::Result<()> {
     clear_screen();
-    println!("Configure Reports Directory");
-    println!("==========================");
-    
-    // Get current reports directory
-    let current_dir = get_reports_dir();
-    println!("Current reports directory: {}", current_dir);
-    
-    // Present options to the user
-    let options = vec![
-        "Enter a custom directory",
-        "Reset to default (userprofile/documents/reports)",
-        "Cancel (keep current)"
-    ];
-    
-    let selection = Select::new()
-        .with_prompt("Choose an option")
-        .items(&options)
-        .default(0)
-        .interact()
-        .unwrap();
-    
-    let mut new_dir = String::new();
-    
-    match selection {
-        0 => {
-            // User wants to enter a custom directory
-            new_dir = Input::new()
-                .with_prompt("Enter new reports directory")
-                .allow_empty(true)
-                .default(current_dir.clone())
-                .interact()
-                .unwrap();
-            
-            // Handle empty input
-            if new_dir.is_empty() || new_dir == current_dir {
-                println!("No changes made to reports directory.");
-                thread::sleep(Duration::from_secs(2));
-                return Ok(());
-            }
-            
-            // Handle "../" at the beginning (up one directory)
-            if new_dir.starts_with("../") || new_dir.starts_with("..\\") {
-                let current_path = Path::new(&current_dir);
-                if let Some(parent) = current_path.parent() {
-                    let rest_of_path = if new_dir.starts_with("../") {
-                        &new_dir[3..]
-                    } else { // starts_with("..\\")
-                        &new_dir[3..]
-                    };
-                    
-                    new_dir = format!("{}\\{}", parent.to_string_lossy(), rest_of_path);
-                    println!("Using parent directory path: {}", new_dir);
-                }
-            }
-            // Handle slug (no path separators)
-            else {
-                let needles = vec!["\\", "/", "\\\\"];
-                if !needles.iter().any(|n| new_dir.contains(n)) {
-                    println!("Attempting to use relative path: {}", new_dir);
-                    new_dir = format!("{}\\{}", current_dir, new_dir);
-                }
-            }
-        },
-        1 => {
-            // User wants to reset to default
-            match env::var("USERPROFILE") {
-                Ok(profile) => {
-                    new_dir = format!("{}\\Documents\\Reports", profile);
-                    println!("Resetting to default reports directory: {}", new_dir);
-                },
-                Err(_) => {
-                    eprintln!("Could not determine user profile directory");
-                    new_dir = String::from(".\\Reports");
-                    println!("Resetting to fallback reports directory: {}", new_dir);
-                }
-            }
-        },
-        _ => {
-            // User wants to cancel
-            println!("No changes made to reports directory.");
-            thread::sleep(Duration::from_secs(2));
-            return Ok(());
-        }
-    }
-    
-    // Validate directory
-    let path = Path::new(&new_dir);
-    if !path.exists() {
-        println!("Directory does not exist. Create it? (y/n)");
-        let mut create_choice = String::new();
-        io::stdin().read_line(&mut create_choice).unwrap();
-        
-        if create_choice.trim().to_lowercase() == "y" {
-            if let Err(e) = fs::create_dir_all(&new_dir) {
-                eprintln!("Failed to create directory: {}", e);
-                thread::sleep(Duration::from_secs(2));
-                return Ok(());
-            }
-        } else {
-            println!("Directory not created. No changes made.");
-            thread::sleep(Duration::from_secs(2));
-            return Ok(());
-        }
-    }
-    
-    // Update config.toml
-    let config_path = "config.toml";
-    let mut config_content = if let Ok(content) = fs::read_to_string(config_path) {
-        content
-    } else {
-        String::from("[build]\ntarget = \"i686-pc-windows-msvc\"\n")
-    };
-    
-    // Check if reports_dir already exists in config
-    if let Some(pos) = config_content.find("reports_dir") {
-        // Find the end of the line
-        if let Some(end_pos) = config_content[pos..].find('\n') {
-            let end = pos + end_pos;
-            let start_line = config_content[..pos].rfind('\n').map_or(0, |p| p + 1);
-            // Replace the line
-            config_content.replace_range(start_line..end, &format!("reports_dir = \"{}\"", new_dir));
-        } else {
-            // Last line in file
-            let start_line = config_content[..pos].rfind('\n').map_or(0, |p| p + 1);
-            config_content.replace_range(start_line.., &format!("reports_dir = \"{}\"\n", new_dir));
-        }
-    } else {
-        // Add reports_dir to config
-        if !config_content.ends_with('\n') {
-            config_content.push('\n');
-        }
-        config_content.push_str(&format!("reports_dir = \"{}\"\n", new_dir));
-    }
-    
-    // Write updated config
-    if let Err(e) = fs::write(config_path, config_content) {
-        eprintln!("Failed to update config file: {}", e);
-        thread::sleep(Duration::from_secs(2));
-        return Ok(());
-    }
-    
-    println!("Reports directory updated to: {}", new_dir);
-    thread::sleep(Duration::from_secs(2));
-    
-    Ok(())
+    crate::utils::config_ops::handle_configure_reports_dir()
 }
 
 pub fn handle_login(session: &GuiSession) -> anyhow::Result<()> {

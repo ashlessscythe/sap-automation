@@ -1,3 +1,4 @@
 .debug/
 /target
 *.csv
+config.toml

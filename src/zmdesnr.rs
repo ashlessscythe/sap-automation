@@ -19,6 +19,7 @@ pub struct ZMDESNRParams {
     pub layout_row: Option<String>,
     pub t_code: String,
     pub exclude_serials: Option<Vec<String>>,
+    pub serial_number: Option<String>,
 }
 
 impl Default for ZMDESNRParams {
@@ -29,6 +30,7 @@ impl Default for ZMDESNRParams {
             layout_row: None,
             t_code: "ZMDESNR".to_string(),
             exclude_serials: None,
+            serial_number: None,
         }
     }
 }
@@ -68,6 +70,76 @@ pub fn run_export(session: &GuiSession, params: &ZMDESNRParams) -> Result<bool> 
             text_field.set_text("".to_string())?;
         }
     }
+    
+    // Set serial number if provided
+    if let Some(serial) = &params.serial_number {
+        if !serial.is_empty() {
+            // Set the serial number field
+            if let Ok(txt) = session.find_by_id("wnd[0]/usr/tabsTABSTRIP_TABB1/tabpUCOMM2/ssub%_SUBSCREEN_TABB1:ZMDE_SERIALNUMBER_HISTORY:9002/txtS_PARENT-LOW".to_string()) {
+                if let Some(text_field) = txt.downcast::<GuiTextField>() {
+                    text_field.set_text(serial.clone())?;
+                }
+            }
+            
+            // Execute the search
+            if let Ok(btn) = session.find_by_id("wnd[0]/tbar[1]/btn[8]".to_string()) {
+                if let Some(button) = btn.downcast::<GuiButton>() {
+                    button.press()?;
+                }
+            }
+            
+            // Check for layout
+            if let Some(layout_row) = &params.layout_row {
+                if !layout_row.is_empty() {
+                    // Choose Layout
+                    if let Ok(btn) = session.find_by_id("wnd[0]/tbar[1]/btn[33]".to_string()) {
+                        if let Some(button) = btn.downcast::<GuiButton>() {
+                            button.press()?;
+                        }
+                    }
+                    
+                    // Use the existing layout selection utility
+                    println!("DEBUG:Selecting layout with check_select_layout");
+                    let layout_select = check_select_layout(session, "ZMDESNR".into(), layout_row, None);
+                    match layout_select {
+                        Ok(_) => {
+                            println!("Layout selected: {}", layout_row);
+                        },
+                        Err(e) => {
+                            eprintln!("Error selecting layout ({}): {}", layout_row, e);
+                            // If layout selection failed, close any open layout selection windows
+                            close_popups(session, None, None)?;
+                            println!("Layout selection failed. Exporting as-is.");
+                        }
+                    }
+                }
+            }
+            
+            // Export as Excel
+            if let Ok(menu) = session.find_by_id("wnd[0]/mbar/menu[0]/menu[3]/menu[1]".to_string()) {
+                if let Some(menu_item) = menu.downcast::<GuiMenu>() {
+                    menu_item.select()?;
+                }
+            }
+            
+            // Check export window
+            let run_check = check_export_window(session, "ZMDESNR", "ZMDEMAIN SERIAL NUMBER HISTORY CONTENTS")?;
+            if !run_check {
+                println!("Error checking export window");
+                return Ok(false);
+            }
+            
+            // Get file path using the utility function
+            let (file_path, file_name) = get_tcode_file_path("ZMDESNR", "xlsx");
+            
+            // Save SAP file
+            let run_check = save_sap_file(session, &file_path, &file_name)?;
+            
+            return Ok(run_check);
+        }
+    }
+    
+    // If no serial number provided, continue with delivery numbers
     
     // Clear the Low Delivery Number field
     if let Ok(txt) = session.find_by_id("wnd[0]/usr/tabsTABSTRIP_TABB1/tabpUCOMM2/ssub%_SUBSCREEN_TABB1:ZMDE_SERIALNUMBER_HISTORY:9002/txtS_VBELN-LOW".to_string()) {

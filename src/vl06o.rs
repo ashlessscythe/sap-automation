@@ -7,12 +7,18 @@ use crate::utils::sap_ctrl_utils::*;
 use crate::utils::sap_tcode_utils::*;
 use crate::utils::sap_wnd_utils::*;
 
+use chrono::NaiveDate;
+
 /// Struct to hold VL06O export parameters
 #[derive(Debug)]
 pub struct VL06OParams {
     pub sap_variant_name: Option<String>,
     pub layout_row: Option<String>,
     pub shipment_numbers: Vec<String>,
+    pub start_date: NaiveDate,
+    pub end_date: NaiveDate,
+    pub by_date: bool,
+    pub column_name: Option<String>,
     pub t_code: String,
 }
 
@@ -22,6 +28,10 @@ impl Default for VL06OParams {
             sap_variant_name: None,
             layout_row: None,
             shipment_numbers: Vec::new(),
+            start_date: chrono::Local::now().date_naive(),
+            end_date: chrono::Local::now().date_naive(),
+            by_date: false,
+            column_name: None,
             t_code: "VL06O".to_string(),
         }
     }

@@ -1,7 +1,6 @@
 use sap_scripting::*;
 use std::time::Duration;
 use std::thread;
-use std::env;
 use std::path::Path;
 use std::fs;
 use windows::core::Result;
@@ -10,35 +9,7 @@ use crate::utils::sap_constants::{ErrorCheck, ParamsStruct, TIME_FORMAT};
 use crate::utils::sap_ctrl_utils::{exist_ctrl, hit_ctrl};
 use crate::utils::sap_tcode_utils::check_tcode;
 use crate::utils::utils::generate_timestamp;
-
-/// Gets the configured reports directory or returns the default
-///
-/// # Returns
-///
-/// * `String` - The path to the reports directory
-///
-pub fn get_reports_dir() -> String {
-    // Try to read from config file first
-    if let Ok(config) = std::fs::read_to_string("config.toml") {
-        if let Some(reports_dir_line) = config.lines().find(|line| line.starts_with("reports_dir")) {
-            if let Some(value) = reports_dir_line.split('=').nth(1) {
-                let trimmed = value.trim().trim_matches('"').trim_matches('\'');
-                if !trimmed.is_empty() {
-                    return trimmed.to_string();
-                }
-            }
-        }
-    }
-    
-    // If not found in config, use default path in user documents
-    match env::var("USERPROFILE") {
-        Ok(profile) => format!("{}\\Documents\\Reports", profile),
-        Err(_) => {
-            eprintln!("Could not determine user profile directory");
-            String::from(".\\Reports")
-        }
-    }
-}
+use crate::utils::config_ops::get_reports_dir;
 
 /// Gets a file path for a specific tcode
 ///

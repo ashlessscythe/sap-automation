@@ -12,6 +12,7 @@ pub use self::sap_interfaces::*;
 pub use self::sap_real_impl::*;
 pub use self::sap_mock_impl::*;
 pub use self::choose_layout_utils::{choose_layout, layout_popup, LayoutParams};
+pub use self::config_ops::{SapConfig, get_reports_dir, handle_configure_reports_dir, handle_configure_sap_params};
 
 // Declare and re-export submodules
 pub mod utils;
@@ -31,3 +32,4 @@ pub mod sap_interfaces;
 pub mod sap_real_impl;
 pub mod sap_mock_impl;
 pub mod choose_layout_utils;
+pub mod config_ops;

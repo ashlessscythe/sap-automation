@@ -1,13 +1,11 @@
 use sap_scripting::*;
 use std::env;
-use std::io::{self, Write, stdout, stderr};
+use std::io::{self, Write, stdout};
 use rpassword;
 use std::time::Duration;
-use std::thread::{self, current};
-use std::fs;
-use std::path::Path;
+use std::thread::{self};
 use rand::Rng;
-use dialoguer::{Select, Input};
+use dialoguer::Select;
 use crossterm::{execute, terminal::{Clear, ClearType}};
 
 use crate::utils::*;

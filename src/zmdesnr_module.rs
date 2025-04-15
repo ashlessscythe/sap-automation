@@ -1,7 +1,7 @@
 use sap_scripting::*;
 use std::io::{self};
 use windows::core::Result;
-use dialoguer::{Input, Select};
+use dialoguer::Input;
 use crossterm::{execute, terminal::{Clear, ClearType}};
 use std::collections::HashMap;
 

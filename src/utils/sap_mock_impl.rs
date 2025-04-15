@@ -2,7 +2,6 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 use windows::core::{Result, Error, HRESULT};
-use crate::utils::sap_constants::CtrlCheck;
 use crate::utils::sap_interfaces::{SapComponent, SapSession, SapSessionInfo, SapComponentFactory};
 
 /// Mock component for testing

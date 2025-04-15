@@ -1,6 +1,5 @@
 use std::path::Path;
-use std::fs::File;
-use std::io::{self, Error, ErrorKind};
+use std::io::{self, ErrorKind};
 use calamine::{open_workbook, Reader, Xlsx, Range, DataType};
 use anyhow::{Result, Context};
 

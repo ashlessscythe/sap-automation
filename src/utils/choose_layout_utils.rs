@@ -1,12 +1,9 @@
 use sap_scripting::*;
 use std::time::Duration;
 use std::thread;
-use std::collections::HashMap;
 
 use crate::utils::utils::*;
-use crate::utils::sap_constants::*;
 use crate::utils::sap_ctrl_utils::*;
-use crate::utils::sap_tcode_utils::*;
 use crate::utils::sap_wnd_utils::*;
 
 /// Struct to hold layout parameters
@@ -41,7 +38,7 @@ pub fn choose_layout(session: &GuiSession, tcode: &str, layout_row: &str) -> win
     
     // Loop until a valid layout is found or user chooses to exit
     loop {
-        let mut msg;
+        let msg;
         
         // Check if window exists
         eprintln!("DEBUG: Checking if window exists");

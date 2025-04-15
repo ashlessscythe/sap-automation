@@ -12,7 +12,6 @@ mod zmdesnr;
 mod zmdesnr_module;
 mod app;
 
-use utils::{sap_ctrl_utils::*, sap_tcode_utils::*, sap_wnd_utils::*};
 use utils::excel_file_ops::handle_read_excel_file;
 use utils::config_ops::handle_configure_reports_dir;
 use vt11_module::{run_vt11_module, run_vt11_auto};

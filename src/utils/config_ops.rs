@@ -1,7 +1,7 @@
 use std::env;
 use std::fs;
 use std::path::Path;
-use std::io::{self, Write};
+use std::io::{self};
 use std::collections::HashMap;
 use anyhow::{Result, anyhow};
 use dialoguer::{Select, Input};

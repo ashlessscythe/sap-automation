@@ -1,5 +1,5 @@
 use windows::core::Result;
-use sap_automation::utils::sap_interfaces::{SapSession, exist_ctrl, hit_ctrl};
+use sap_automation::utils::sap_interfaces::{exist_ctrl, hit_ctrl};
 use sap_automation::utils::sap_mock_impl::create_test_session;
 
 #[test]

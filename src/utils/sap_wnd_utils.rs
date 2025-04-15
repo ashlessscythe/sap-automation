@@ -1,6 +1,4 @@
 use sap_scripting::*;
-use std::time::Duration;
-use std::thread;
 use windows::core::Result;
 use chrono;
 use crate::utils::sap_constants::{ErrorCheck, ParamsStruct, TIME_FORMAT};

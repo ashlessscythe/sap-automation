@@ -17,6 +17,7 @@ pub struct ZMDESNRParams {
     pub t_code: String,
     pub exclude_serials: Option<Vec<String>>,
     pub serial_number: Option<String>,
+    pub column_name: Option<String>,
 }
 
 impl Default for ZMDESNRParams {
@@ -28,6 +29,7 @@ impl Default for ZMDESNRParams {
             t_code: "ZMDESNR".to_string(),
             exclude_serials: None,
             serial_number: None,
+            column_name: None,
         }
     }
 }

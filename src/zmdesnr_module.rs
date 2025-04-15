@@ -5,10 +5,14 @@ use crossterm::{
 use dialoguer::Input;
 use sap_scripting::*;
 use std::collections::HashMap;
+use std::fs;
 use std::io::{self};
+use std::path::Path;
 use windows::core::Result;
 
-use crate::utils::config_ops::SapConfig;
+use crate::utils::config_ops::{get_reports_dir, SapConfig};
+use crate::utils::excel_file_ops::read_excel_column;
+use crate::utils::excel_path_utils::get_newest_file;
 use crate::zmdesnr::{run_export, ZMDESNRParams};
 
 pub fn run_zmdesnr_module(session: &GuiSession) -> Result<()> {
@@ -58,7 +62,7 @@ pub fn run_zmdesnr_auto(session: &GuiSession) -> Result<()> {
     };
 
     // Get ZMDESNR specific configuration
-    let tcode_config = match config.get_tcode_config("ZMDESNR") {
+    let tcode_config = match config.get_tcode_config("ZMDESNR", Some(true)) {
         Some(cfg) => cfg,
         None => {
             println!("No configuration found for ZMDESNR.");
@@ -71,13 +75,67 @@ pub fn run_zmdesnr_auto(session: &GuiSession) -> Result<()> {
     };
 
     // Create ZMDESNRParams from configuration
-    let params = create_zmdesnr_params_from_config(&tcode_config);
+    println!("Getting zmdesnr params from config");
+    let mut params = create_zmdesnr_params_from_config(&tcode_config);
+
+    // Check if we need to get delivery numbers from Excel
+    if let Some(column_name) = &params.column_name {
+        println!(
+            "Reading delivery numbers from Excel column: {}",
+            column_name
+        );
+
+        // Get the reports directory
+        let reports_dir = get_reports_dir();
+
+        // Create the ZMDESNR subdirectory path
+        let zmdesnr_dir = format!("{}\\zmdesnr", reports_dir);
+
+        // Check if the ZMDESNR directory exists
+        let zmdesnr_path = Path::new(&zmdesnr_dir);
+        if !zmdesnr_path.exists() {
+            println!("ZMDESNR directory not found: {}", zmdesnr_dir);
+            println!("Creating directory...");
+            if let Err(e) = fs::create_dir_all(&zmdesnr_dir) {
+                println!("Error creating directory: {}", e);
+            }
+        }
+
+        // Get the newest Excel file in the ZMDESNR directory
+        let excel_path = get_newest_file(&zmdesnr_dir, "xlsx")?;
+
+        if excel_path.is_empty() {
+            println!("No Excel files found in ZMDESNR directory.");
+            println!("Please run ZMDESNR export first to generate an Excel file.");
+        } else {
+            println!("Using newest Excel file: {}", excel_path);
+
+            // Read the delivery numbers from the Excel file
+            match read_excel_column(&excel_path, "Sheet1", column_name) {
+                Ok(delivery_numbers) => {
+                    if delivery_numbers.is_empty() {
+                        println!("No delivery numbers found in Excel file.");
+                    } else {
+                        println!(
+                            "Found {} delivery numbers in Excel file.",
+                            delivery_numbers.len()
+                        );
+                        params.delivery_numbers = delivery_numbers;
+                    }
+                }
+                Err(e) => {
+                    println!("Error reading Excel file: {}", e);
+                }
+            }
+        }
+    }
 
     println!("Running ZMDESNR with the following parameters:");
     println!("--------------------------------------------");
     println!("Variant: {:?}", params.sap_variant_name);
     println!("Layout: {:?}", params.layout_row);
     println!("Serial Number: {:?}", params.serial_number);
+    println!("Delivery Numbers: {} found", params.delivery_numbers.len());
     println!("--------------------------------------------");
 
     // Run the export
@@ -92,11 +150,6 @@ pub fn run_zmdesnr_auto(session: &GuiSession) -> Result<()> {
             println!("Error running ZMDESNR export: {}", e);
         }
     }
-
-    // Wait for user to press enter before returning to main menu
-    println!("\nPress Enter to return to main menu...");
-    let mut input = String::new();
-    io::stdin().read_line(&mut input).unwrap();
 
     Ok(())
 }
@@ -114,6 +167,11 @@ fn create_zmdesnr_params_from_config(config: &HashMap<String, String>) -> ZMDESN
         params.layout_row = Some(layout.clone());
     }
 
+    // Set column_name if available
+    if let Some(column_name) = config.get("column_name") {
+        params.column_name = Some(column_name.clone());
+    }
+
     // Set serial_number if available
     if let Some(serial_number) = config.get("serial_number") {
         params.serial_number = Some(serial_number.clone());
@@ -128,6 +186,73 @@ fn clear_screen() {
 
 fn get_zmdesnr_parameters() -> Result<ZMDESNRParams> {
     let mut params = ZMDESNRParams::default();
+
+    // Get Delivery Numbers
+    let column_name: String = Input::new()
+        .with_prompt("Column name for delivery numbers (leave empty for none)")
+        .allow_empty(true)
+        .interact_text()
+        .unwrap();
+
+    params.column_name = if column_name.is_empty() {
+        None
+    } else {
+        Some(column_name)
+    };
+
+    // If column name is provided, ask for Excel file path
+    if let Some(col_name) = &params.column_name {
+        println!("Column name provided: {}", col_name);
+
+        // Ask for Excel file path
+        let excel_path: String = Input::new()
+            .with_prompt("Enter Excel file path (or press Enter to skip)")
+            .allow_empty(true)
+            .interact_text()
+            .unwrap();
+
+        if !excel_path.is_empty() {
+            // Read delivery numbers from Excel file
+            match read_excel_column(&excel_path, "Sheet1", col_name) {
+                Ok(delivery_numbers) => {
+                    if delivery_numbers.is_empty() {
+                        println!("No delivery numbers found in Excel file.");
+                    } else {
+                        println!(
+                            "Found {} delivery numbers in Excel file.",
+                            delivery_numbers.len()
+                        );
+                        params.delivery_numbers = delivery_numbers;
+                    }
+                }
+                Err(e) => {
+                    println!("Error reading Excel file: {}", e);
+                }
+            }
+        } else {
+            // Ask for delivery numbers
+            let delivery_numbers_str: String = Input::new()
+                .with_prompt("Enter delivery numbers (comma-separated, or press Enter to skip)")
+                .allow_empty(true)
+                .interact_text()
+                .unwrap();
+
+            if !delivery_numbers_str.is_empty() {
+                let delivery_numbers: Vec<String> = delivery_numbers_str
+                    .split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+
+                if delivery_numbers.is_empty() {
+                    println!("No delivery numbers entered.");
+                } else {
+                    println!("Found {} delivery numbers.", delivery_numbers.len());
+                    params.delivery_numbers = delivery_numbers;
+                }
+            }
+        }
+    }
 
     // Get serial number
     let serial_number: String = Input::new()

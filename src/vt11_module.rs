@@ -13,6 +13,7 @@ use crate::utils::config_ops::SapConfig;
 use crate::vt11::{run_export, VT11Params};
 
 pub fn run_vt11_module(session: &GuiSession) -> Result<()> {
+
     clear_screen();
     println!("VT11 - Shipment List Planning");
     println!("============================");
@@ -42,6 +43,7 @@ pub fn run_vt11_module(session: &GuiSession) -> Result<()> {
 }
 
 pub fn run_vt11_auto(session: &GuiSession) -> Result<()> {
+
     clear_screen();
     println!("VT11 - Auto Run from Configuration");
     println!("=================================");
@@ -59,7 +61,7 @@ pub fn run_vt11_auto(session: &GuiSession) -> Result<()> {
     };
 
     // Get VT11 specific configuration
-    let tcode_config = match config.get_tcode_config("VT11") {
+    let tcode_config = match config.get_tcode_config("VT11", Some(true)) {
         Some(cfg) => cfg,
         None => {
             println!("No configuration found for VT11.");
@@ -100,11 +102,7 @@ pub fn run_vt11_auto(session: &GuiSession) -> Result<()> {
         }
     }
 
-    // Wait for user to press enter before returning to main menu
-    println!("\nPress Enter to return to main menu...");
-    let mut input = String::new();
-    io::stdin().read_line(&mut input).unwrap();
-
+    // no wait for user since this is auto
     Ok(())
 }
 

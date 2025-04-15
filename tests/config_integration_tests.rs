@@ -41,7 +41,7 @@ fn mock_auto_run_vl06o(config_path: &str) -> Result<MockVL06OParams, String> {
     };
 
     // Get VL06O specific configuration
-    let tcode_config = match config.get_tcode_config("VL06O") {
+    let tcode_config = match config.get_tcode_config("VL06O", None) {
         Some(cfg) => cfg,
         None => return Err("No configuration found for VL06O".to_string()),
     };
@@ -93,7 +93,7 @@ fn mock_auto_run_vt11(config_path: &str) -> Result<MockVT11Params, String> {
     };
 
     // Get VT11 specific configuration
-    let tcode_config = match config.get_tcode_config("VT11") {
+    let tcode_config = match config.get_tcode_config("VT11", None) {
         Some(cfg) => cfg,
         None => return Err("No configuration found for VT11".to_string()),
     };
@@ -140,7 +140,7 @@ fn mock_auto_run_zmdesnr(config_path: &str) -> Result<MockZMDESNRParams, String>
     };
 
     // Get ZMDESNR specific configuration
-    let tcode_config = match config.get_tcode_config("ZMDESNR") {
+    let tcode_config = match config.get_tcode_config("ZMDESNR", None) {
         Some(cfg) => cfg,
         None => return Err("No configuration found for ZMDESNR".to_string()),
     };

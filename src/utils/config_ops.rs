@@ -79,6 +79,14 @@ impl SapConfig {
                 config.date_range = Some((start_date.unwrap(), end_date.unwrap()));
             }
 
+            // Parse loop_tcode and add to additional_params
+            if let Some(loop_tcode) = parse_config_value(&content, "loop_tcode") {
+                config.additional_params.insert("loop_tcode".to_string(), loop_tcode);
+            } else if let Some(tcode) = &config.tcode {
+                // If loop_tcode is not specified, use tcode as the default
+                config.additional_params.insert("loop_tcode".to_string(), tcode.clone());
+            }
+
             // Parse any additional parameters (those not explicitly handled above)
             for line in content.lines() {
                 let line = line.trim();
@@ -98,6 +106,7 @@ impl SapConfig {
                         "column_name",
                         "date_range_start",
                         "date_range_end",
+                        "loop_tcode",
                     ]
                     .contains(&key)
                     {
@@ -181,9 +190,17 @@ impl SapConfig {
             content.push_str(&format!("date_range_end = \"{}\"\n", end));
         }
 
+        // Add loop_tcode from additional_params if it exists
+        if let Some(loop_tcode) = self.additional_params.get("loop_tcode") {
+            content.push_str(&format!("loop_tcode = \"{}\"\n", loop_tcode));
+        }
+
         // Add additional parameters
         for (key, value) in &self.additional_params {
-            content.push_str(&format!("{} = \"{}\"\n", key, value));
+            // Skip loop_tcode as we've already handled it
+            if key != "loop_tcode" {
+                content.push_str(&format!("{} = \"{}\"\n", key, value));
+            }
         }
 
         // Write updated config
@@ -193,12 +210,26 @@ impl SapConfig {
     }
 
     /// Get configuration for a specific tcode
-    pub fn get_tcode_config(&self, tcode: &str) -> Option<HashMap<String, String>> {
-        let mut config = HashMap::new();
+    pub fn get_tcode_config(&self, tcode: &str, is_loop_run: Option<bool>) -> Option<HashMap<String, String>> {
+        let is_loop_run = is_loop_run.unwrap_or(false);
 
-        // If the configured tcode matches the requested one, add the configuration
-        if let Some(configured_tcode) = &self.tcode {
-            if configured_tcode == tcode {
+        let mut config = HashMap::new();
+        
+        // Get the configured tcode based on whether this is a loop run or not
+        let configured_tcode = if is_loop_run {
+            // For loop runs, use loop_tcode if available, otherwise fall back to regular tcode
+            self.additional_params.get("loop_tcode").or(self.tcode.as_ref())
+        } else {
+            // For normal runs, use the regular tcode
+            self.tcode.as_ref()
+        };
+        
+        // If we have a configured tcode, add it to the config
+        if let Some(t) = configured_tcode {
+            config.insert("tcode".to_string(), t.clone());
+            
+            // If the configured tcode matches the requested one, add the configuration
+            if t == tcode {
                 if let Some(variant) = &self.variant {
                     config.insert("variant".to_string(), variant.clone());
                 }

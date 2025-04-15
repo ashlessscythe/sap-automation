@@ -230,7 +230,7 @@ fn test_get_tcode_config() {
     config.additional_params = additional_params;
     
     // Get the VL06O config
-    let vl06o_config = config.get_tcode_config("VL06O").expect("Failed to get VL06O config");
+    let vl06o_config = config.get_tcode_config("VL06O", None).expect("Failed to get VL06O config");
     
     // Verify the VL06O config
     assert_eq!(vl06o_config.get("variant"), Some(&"TEST_VARIANT".to_string()));
@@ -241,7 +241,7 @@ fn test_get_tcode_config() {
     assert_eq!(vl06o_config.get("by_date"), Some(&"true".to_string()));
     
     // Get the VT11 config
-    let vt11_config = config.get_tcode_config("VT11").expect("Failed to get VT11 config");
+    let vt11_config = config.get_tcode_config("VT11", None).expect("Failed to get VT11 config");
     
     // Verify the VT11 config has the custom parameter but not the VL06O-specific ones
     assert_eq!(vt11_config.get("custom_param"), Some(&"custom_value".to_string()));
@@ -367,7 +367,7 @@ fn test_tcode_specific_params() {
     config.additional_params = additional_params;
     
     // Get the VL06O config
-    let vl06o_config = config.get_tcode_config("VL06O").expect("Failed to get VL06O config");
+    let vl06o_config = config.get_tcode_config("VL06O", None).expect("Failed to get VL06O config");
     
     // Verify the VL06O config has the VL06O-specific parameters
     assert_eq!(vl06o_config.get("by_date"), Some(&"true".to_string()));
@@ -375,14 +375,14 @@ fn test_tcode_specific_params() {
     assert!(vl06o_config.get("serial_number").is_none());
     
     // Get the VT11 config
-    let vt11_config = config.get_tcode_config("VT11").expect("Failed to get VT11 config");
+    let vt11_config = config.get_tcode_config("VT11", None).expect("Failed to get VT11 config");
     
     // Verify the VT11 config has the VT11-specific parameters
     assert_eq!(vt11_config.get("custom_param"), Some(&"vt11_value".to_string()));
     assert!(vt11_config.get("by_date").is_none());
     
     // Get the ZMDESNR config
-    let zmdesnr_config = config.get_tcode_config("ZMDESNR").expect("Failed to get ZMDESNR config");
+    let zmdesnr_config = config.get_tcode_config("ZMDESNR", None).expect("Failed to get ZMDESNR config");
     
     // Verify the ZMDESNR config has the ZMDESNR-specific parameters
     assert_eq!(zmdesnr_config.get("serial_number"), Some(&"123456789".to_string()));

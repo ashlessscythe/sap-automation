@@ -63,7 +63,7 @@ pub fn run_vl06o_auto(session: &GuiSession) -> Result<()> {
     };
 
     // Get VL06O specific configuration
-    let tcode_config = match config.get_tcode_config("VL06O") {
+    let tcode_config = match config.get_tcode_config("VL06O", Some(true)) {
         Some(cfg) => cfg,
         None => {
             println!("No configuration found for VL06O.");
@@ -157,11 +157,6 @@ pub fn run_vl06o_auto(session: &GuiSession) -> Result<()> {
             println!("Error running VL06O export: {}", e);
         }
     }
-
-    // Wait for user to press enter before returning to main menu
-    println!("\nPress Enter to return to main menu...");
-    let mut input = String::new();
-    io::stdin().read_line(&mut input).unwrap();
 
     Ok(())
 }

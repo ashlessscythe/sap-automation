@@ -76,6 +76,7 @@ pub fn run_vl06o_auto(session: &GuiSession) -> Result<()> {
     };
 
     // Create VL06OParams from configuration
+    println!("Getting vl06o params from config");
     let mut params = create_vl06o_params_from_config(&tcode_config);
 
     // Check if we need to get shipment numbers from Excel
@@ -89,7 +90,7 @@ pub fn run_vl06o_auto(session: &GuiSession) -> Result<()> {
         let reports_dir = get_reports_dir();
 
         // Create the VL06O subdirectory path
-        let vl06o_dir = format!("{}\\VL06O", reports_dir);
+        let vl06o_dir = format!("{}\\vt11", reports_dir);
 
         // Check if the VL06O directory exists
         let vl06o_path = Path::new(&vl06o_dir);

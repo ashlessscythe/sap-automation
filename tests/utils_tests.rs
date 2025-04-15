@@ -110,5 +110,5 @@ fn test_generate_timestamp() {
     assert_eq!(timestamp.len(), 14);
     
     // Verify it contains only digits
-    assert!(timestamp.chars().all(|c| c.is_digit(10)));
+    assert!(timestamp.chars().all(|c| c.is_ascii_digit()));
 }

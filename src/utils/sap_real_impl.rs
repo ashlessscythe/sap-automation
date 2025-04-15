@@ -166,6 +166,12 @@ pub struct RealSapComponentFactory {
     // For simplicity, we'll create sessions directly
 }
 
+impl Default for RealSapComponentFactory {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RealSapComponentFactory {
     pub fn new() -> Self {
         Self {}

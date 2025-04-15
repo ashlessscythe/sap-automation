@@ -333,7 +333,7 @@ pub fn handle_configure_reports_dir() -> Result<()> {
             }
             // Handle slug (no path separators)
             else {
-                let needles = vec!["\\", "/", "\\\\"];
+                let needles = ["\\", "/", "\\\\"];
                 if !needles.iter().any(|n| new_dir.contains(n)) {
                     println!("Attempting to use relative path: {}", new_dir);
                     new_dir = format!("{}\\{}", current_dir, new_dir);

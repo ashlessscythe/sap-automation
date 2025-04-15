@@ -10,6 +10,7 @@ use crate::utils::sap_wnd_utils::*;
 
 /// Struct to hold layout parameters
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub struct Params {
     pub run_check: bool,
     pub err: String,
@@ -17,16 +18,6 @@ pub struct Params {
     pub type_name: String,
 }
 
-impl Default for Params {
-    fn default() -> Self {
-        Self {
-            run_check: false,
-            err: String::new(),
-            name: String::new(),
-            type_name: String::new(),
-        }
-    }
-}
 
 /// Select a layout from the layout selection window
 ///
@@ -319,7 +310,7 @@ pub fn check_select_layout(session: &GuiSession, tcode: &str, layout_row: &str,
     };
 
     // debug
-    println!("DEBUG: layout_row is: {}", layout_row.to_string());
+    println!("DEBUG: layout_row is: {}", layout_row);
     
     // Check window
     if !layout_row.is_empty() && layout_row.len() > 1 {
@@ -383,7 +374,7 @@ pub fn check_select_layout(session: &GuiSession, tcode: &str, layout_row: &str,
             if err_ctl.cband {
                 if contains(&err_ctl.ctext, "change layout", Some(false)) {
                     // Setup layout
-                    goto_setup(session, tcode, &layout_row)?;
+                    goto_setup(session, tcode, layout_row)?;
                 } else if contains(&err_ctl.ctext, "choose", Some(false)) {
                     // Choose layout
                     println!("DEBUG:layout wnd is choose");

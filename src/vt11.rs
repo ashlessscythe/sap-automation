@@ -41,7 +41,7 @@ pub fn run_export(session: &GuiSession, params: &VT11Params) -> Result<bool> {
     println!("Running VT11 export...");
     
     // Check if tCode is active
-    if !assert_tcode(session, "VT11".into(), Some(0))? {
+    if !assert_tcode(session, "VT11", Some(0))? {
         println!("Failed to activate VT11 transaction");
         return Ok(false);
     }
@@ -52,11 +52,9 @@ pub fn run_export(session: &GuiSession, params: &VT11Params) -> Result<bool> {
     
     // Apply variant if provided
     if let Some(variant_name) = &params.sap_variant_name {
-        if !variant_name.is_empty() {
-            if !variant_select(session, &params.t_code, variant_name)? {
-                println!("Failed to select variant '{}' for tCode '{}'", variant_name, params.t_code);
-                // Continue with export even if variant selection failed
-            }
+        if !variant_name.is_empty() && !variant_select(session, &params.t_code, variant_name)? {
+            println!("Failed to select variant '{}' for tCode '{}'", variant_name, params.t_code);
+            // Continue with export even if variant selection failed
         }
     }
     
@@ -160,7 +158,7 @@ pub fn run_export(session: &GuiSession, params: &VT11Params) -> Result<bool> {
                 // String layout name
                 let msg = choose_layout(session, &params.t_code, layout_row);
                 match msg {
-                    Ok(message) if message == "" => {},    // no-op
+                    Ok(message) if message.is_empty() => {},    // no-op
                     Ok(message) => {
                         eprintln!("Message after choosing layout {}: {}", layout_row, message);
                     }

@@ -216,7 +216,7 @@ pub fn resolve_path(path_str: &str) -> String {
     }
     
     // Check if it's a slug (no path separators)
-    let needles = vec!["\\", "/", "\\\\"];
+    let needles = ["\\", "/", "\\\\"];
     if !needles.iter().any(|n| path_str.contains(n)) {
         // It's a slug, try to resolve it relative to the reports directory
         let reports_dir = get_reports_dir();

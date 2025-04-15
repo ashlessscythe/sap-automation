@@ -170,6 +170,12 @@ pub struct MockSapComponentFactory {
     // This would typically hold configuration for creating mock components
 }
 
+impl Default for MockSapComponentFactory {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MockSapComponentFactory {
     pub fn new() -> Self {
         Self {}

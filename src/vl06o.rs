@@ -44,7 +44,7 @@ pub fn run_export(session: &GuiSession, params: &VL06OParams) -> Result<bool> {
     println!("Running VL06O export...");
     
     // Check if tCode is active
-    if !assert_tcode(session, "VL06O".into(), Some(0))? {
+    if !assert_tcode(session, "VL06O", Some(0))? {
         println!("Failed to activate VL06O transaction");
         return Ok(false);
     }
@@ -59,11 +59,9 @@ pub fn run_export(session: &GuiSession, params: &VL06OParams) -> Result<bool> {
     
     // Apply variant if provided
     if let Some(variant_name) = &params.sap_variant_name {
-        if !variant_name.is_empty() {
-            if !variant_select(session, &params.t_code, variant_name)? {
-                println!("Failed to select variant '{}' for tCode '{}'", variant_name, params.t_code);
-                // Continue with export even if variant selection failed
-            }
+        if !variant_name.is_empty() && !variant_select(session, &params.t_code, variant_name)? {
+            println!("Failed to select variant '{}' for tCode '{}'", variant_name, params.t_code);
+            // Continue with export even if variant selection failed
         }
     }
 

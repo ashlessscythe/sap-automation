@@ -36,11 +36,8 @@ pub fn check_tcode(session: &GuiSession, tcode: &str, run: Option<bool>, _kill_p
     
     println!("Checking if tCode ({}) is active", tcode);
     
-    match b_kill_popups {
-        true => {
-            close_popups(session, None, None)?;
-        },
-        _ => {}
+    if b_kill_popups {
+        close_popups(session, None, None)?;
     }
     
     // Get current transaction
@@ -49,7 +46,7 @@ pub fn check_tcode(session: &GuiSession, tcode: &str, run: Option<bool>, _kill_p
     // Check if on tCode
     if current.contains(tcode) {
         println!("tCode ({}) is active", tcode);
-        return Ok(true);
+        Ok(true)
     } else if run_val {
         // Run if requested
         println!("tCode mismatch, attempting to run tCode ({})", tcode);

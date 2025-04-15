@@ -49,6 +49,12 @@ pub struct ExcelDataFrame {
     pub data: Vec<Vec<ExcelValue>>,
 }
 
+impl Default for ExcelDataFrame {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ExcelDataFrame {
     /// Creates a new empty dataframe
     pub fn new() -> Self {

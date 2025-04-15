@@ -39,18 +39,16 @@ pub fn run_export(session: &GuiSession, params: &ZMDESNRParams) -> Result<bool> 
     println!("Running ZMDESNR export...");
     
     // Check if tCode is active
-    if !assert_tcode(session, "ZMDESNR".into(), Some(0))? {
+    if !assert_tcode(session, "ZMDESNR", Some(0))? {
         println!("Failed to activate ZMDESNR transaction");
         return Ok(false);
     }
     
     // Apply variant if provided
     if let Some(variant_name) = &params.sap_variant_name {
-        if !variant_name.is_empty() {
-            if !variant_select(session, &params.t_code, variant_name)? {
-                println!("Failed to select variant '{}' for tCode '{}'", variant_name, params.t_code);
-                // Continue with export even if variant selection failed
-            }
+        if !variant_name.is_empty() && !variant_select(session, &params.t_code, variant_name)? {
+            println!("Failed to select variant '{}' for tCode '{}'", variant_name, params.t_code);
+            // Continue with export even if variant selection failed
         }
     }
     
@@ -97,7 +95,7 @@ pub fn run_export(session: &GuiSession, params: &ZMDESNRParams) -> Result<bool> 
                     
                     // Use the existing layout selection utility
                     println!("DEBUG:Selecting layout with check_select_layout");
-                    let layout_select = check_select_layout(session, "ZMDESNR".into(), layout_row, None);
+                    let layout_select = check_select_layout(session, "ZMDESNR", layout_row, None);
                     match layout_select {
                         Ok(_) => {
                             println!("Layout selected: {}", layout_row);
@@ -265,7 +263,7 @@ pub fn run_export(session: &GuiSession, params: &ZMDESNRParams) -> Result<bool> 
             
             // Use the existing layout selection utility
             println!("DEBUG:Selecting layout with check_select_layout");
-            let layout_select = check_select_layout(session, "ZMDESNR".into(), layout_row, None);
+            let layout_select = check_select_layout(session, "ZMDESNR", layout_row, None);
             match layout_select {
                 Ok(_) => {
                     println!("Layout selected: {}", layout_row);

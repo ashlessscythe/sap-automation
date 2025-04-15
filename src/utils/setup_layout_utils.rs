@@ -6,6 +6,7 @@ use crate::utils::sap_ctrl_utils::*;
 
 /// Struct to hold layout parameters
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub struct LayoutParams {
     pub run_check: bool,
     pub err: String,
@@ -13,16 +14,6 @@ pub struct LayoutParams {
     pub type_name: String,
 }
 
-impl Default for LayoutParams {
-    fn default() -> Self {
-        Self {
-            run_check: false,
-            err: String::new(),
-            name: String::new(),
-            type_name: String::new(),
-        }
-    }
-}
 
 /// Setup a layout with the given parameters
 ///

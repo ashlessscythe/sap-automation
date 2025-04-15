@@ -101,9 +101,9 @@ pub fn save_sap_file(session: &GuiSession, file_path: &str, file_name: &str) -> 
         thread::sleep(Duration::from_millis(500));
         
         println!("File saved successfully");
-        return Ok(true);
+        Ok(true)
     } else {
         println!("Error: Save dialog window not found");
-        return Ok(false);
+        Ok(false)
     }
 }

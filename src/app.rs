@@ -1,7 +1,6 @@
 use sap_scripting::*;
 use std::env;
 use std::io::{self, Write, stdout};
-use rpassword;
 use std::time::Duration;
 use std::thread::{self};
 use rand::Rng;

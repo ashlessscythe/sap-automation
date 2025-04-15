@@ -8,6 +8,7 @@ use crate::utils::sap_wnd_utils::*;
 
 /// Struct to hold layout parameters
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub struct LayoutParams {
     pub run_check: bool,
     pub err: String,
@@ -15,16 +16,6 @@ pub struct LayoutParams {
     pub type_name: String,
 }
 
-impl Default for LayoutParams {
-    fn default() -> Self {
-        Self {
-            run_check: false,
-            err: String::new(),
-            name: String::new(),
-            type_name: String::new(),
-        }
-    }
-}
 
 /// Choose a layout from the layout selection window
 ///

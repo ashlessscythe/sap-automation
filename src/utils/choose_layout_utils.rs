@@ -1,14 +1,13 @@
 use sap_scripting::*;
-use std::time::Duration;
 use std::thread;
+use std::time::Duration;
 
-use crate::utils::utils::*;
 use crate::utils::sap_ctrl_utils::*;
 use crate::utils::sap_wnd_utils::*;
+use crate::utils::utils::*;
 
 /// Struct to hold layout parameters
-#[derive(Debug, Clone)]
-#[derive(Default)]
+#[derive(Debug, Clone, Default)]
 pub struct LayoutParams {
     pub run_check: bool,
     pub err: String,
@@ -16,21 +15,27 @@ pub struct LayoutParams {
     pub type_name: String,
 }
 
-
 /// Choose a layout from the layout selection window
 ///
 /// This function is a port of the VBA function choose_layout
 /// If layout not found, it will ask the user to type in another layout name or exit
-pub fn choose_layout(session: &GuiSession, tcode: &str, layout_row: &str) -> windows::core::Result<String> {
-    eprintln!("DEBUG: Entering choose_layout function with tcode={}, layout_row={}", tcode, layout_row);
-    
+pub fn choose_layout(
+    session: &GuiSession,
+    tcode: &str,
+    layout_row: &str,
+) -> windows::core::Result<String> {
+    eprintln!(
+        "DEBUG: Entering choose_layout function with tcode={}, layout_row={}",
+        tcode, layout_row
+    );
+
     // Create a mutable copy of layout_row that we can modify in the loop
     let mut current_layout = layout_row.to_string();
-    
+
     // Loop until a valid layout is found or user chooses to exit
     loop {
         let msg;
-        
+
         // Check if window exists
         eprintln!("DEBUG: Checking if window exists");
         let err_wnd = exist_ctrl(session, 1, "", true)?;
@@ -38,7 +43,7 @@ pub fn choose_layout(session: &GuiSession, tcode: &str, layout_row: &str) -> win
             // If window doesn't exist, trigger layout popup
             eprintln!("DEBUG: Window doesn't exist, triggering layout popup");
             layout_popup(session, tcode)?;
-            
+
             // Check again if window exists after triggering popup
             let err_wnd = exist_ctrl(session, 1, "", true)?;
             if !err_wnd.cband {
@@ -48,7 +53,7 @@ pub fn choose_layout(session: &GuiSession, tcode: &str, layout_row: &str) -> win
         } else {
             eprintln!("DEBUG: Window exists with title: {}", err_wnd.ctext);
         }
-        
+
         // Check title based on window content
         if contains(&err_wnd.ctext.to_lowercase(), "choose", Some(false)) {
             // Window is a "choose" layout window
@@ -57,13 +62,16 @@ pub fn choose_layout(session: &GuiSession, tcode: &str, layout_row: &str) -> win
             // Window is a "change" layout window
             eprintln!("DEBUG: Window is a 'change' layout window");
         } else {
-            eprintln!("DEBUG: Window is neither 'choose' nor 'change' layout window: {}", err_wnd.ctext);
+            eprintln!(
+                "DEBUG: Window is neither 'choose' nor 'change' layout window: {}",
+                err_wnd.ctext
+            );
         }
-        
+
         // Find button - try both possible button IDs
         eprintln!("DEBUG: Finding search button");
         let mut button_found = false;
-        
+
         // First try the standard button ID
         if let Ok(button) = session.find_by_id("wnd[1]/tbar[0]/btn[71]".to_string()) {
             if let Some(btn) = button.downcast::<GuiButton>() {
@@ -72,7 +80,7 @@ pub fn choose_layout(session: &GuiSession, tcode: &str, layout_row: &str) -> win
                 button_found = true;
             }
         }
-        
+
         // If standard button not found, try alternative button ID for vl06o
         if !button_found {
             if let Ok(button) = session.find_by_id("wnd[1]/tbar[0]/btn[16]".to_string()) {
@@ -83,25 +91,28 @@ pub fn choose_layout(session: &GuiSession, tcode: &str, layout_row: &str) -> win
                 }
             }
         }
-        
+
         if !button_found {
             eprintln!("DEBUG: Search button not found, trying to continue anyway");
         }
-        
+
         // Wait for window 2 to appear
         thread::sleep(Duration::from_millis(500));
-        
+
         // Check if window 2 exists
         let err_wnd2 = exist_ctrl(session, 2, "", true)?;
         if !err_wnd2.cband {
             eprintln!("DEBUG: Window 2 does not exist, trying alternative approach");
-            
+
             // Try to find the search field directly in window 1
             if let Ok(text_field) = session.find_by_id("wnd[1]/usr/txtRSYSF-STRING".to_string()) {
                 if let Some(txt) = text_field.downcast::<GuiTextField>() {
-                    eprintln!("DEBUG: Text field found in window 1, setting text to '{}'", current_layout);
+                    eprintln!(
+                        "DEBUG: Text field found in window 1, setting text to '{}'",
+                        current_layout
+                    );
                     txt.set_text(current_layout.clone())?;
-                    
+
                     // Press Enter
                     if let Ok(window) = session.find_by_id("wnd[1]".to_string()) {
                         if let Some(wnd) = window.downcast::<GuiFrameWindow>() {
@@ -116,13 +127,15 @@ pub fn choose_layout(session: &GuiSession, tcode: &str, layout_row: &str) -> win
             }
         } else {
             eprintln!("DEBUG: Window 2 exists with title: {}", err_wnd2.ctext);
-            
+
             // Handle checkbox if it exists
             eprintln!("DEBUG: Checking if checkbox exists");
             let checkbox_exists = exist_ctrl(session, 2, "/usr/chkSCAN_STRING-START", true)?;
             if checkbox_exists.cband {
                 eprintln!("DEBUG: Checkbox exists, attempting to unselect it");
-                if let Ok(checkbox) = session.find_by_id("wnd[2]/usr/chkSCAN_STRING-START".to_string()) {
+                if let Ok(checkbox) =
+                    session.find_by_id("wnd[2]/usr/chkSCAN_STRING-START".to_string())
+                {
                     if let Some(chk) = checkbox.downcast::<GuiCheckBox>() {
                         eprintln!("DEBUG: Checkbox found, setting to unselected");
                         chk.set_selected(false)?;
@@ -135,23 +148,31 @@ pub fn choose_layout(session: &GuiSession, tcode: &str, layout_row: &str) -> win
             } else {
                 eprintln!("DEBUG: Checkbox does not exist");
             }
-            
+
             // Set layout name in text field
             eprintln!("DEBUG: Setting layout name in text field");
             if let Ok(text_field) = session.find_by_id("wnd[2]/usr/txtRSYSF-STRING".to_string()) {
                 if let Some(txt) = text_field.downcast::<GuiTextField>() {
-                    eprintln!("DEBUG: Text field found, setting text to '{}'", current_layout);
+                    eprintln!(
+                        "DEBUG: Text field found, setting text to '{}'",
+                        current_layout
+                    );
                     txt.set_text(current_layout.clone())?;
                 } else {
                     eprintln!("DEBUG: Text field found but downcast failed");
                 }
             } else {
                 eprintln!("DEBUG: Text field not found");
-                
+
                 // Try alternative text field ID
-                if let Ok(text_field) = session.find_by_id("wnd[2]/usr/txtGS_SEARCH-VALUE".to_string()) {
+                if let Ok(text_field) =
+                    session.find_by_id("wnd[2]/usr/txtGS_SEARCH-VALUE".to_string())
+                {
                     if let Some(txt) = text_field.downcast::<GuiTextField>() {
-                        eprintln!("DEBUG: Alternative text field found, setting text to '{}'", current_layout);
+                        eprintln!(
+                            "DEBUG: Alternative text field found, setting text to '{}'",
+                            current_layout
+                        );
                         txt.set_text(current_layout.clone())?;
                     } else {
                         eprintln!("DEBUG: Alternative text field found but downcast failed");
@@ -161,7 +182,7 @@ pub fn choose_layout(session: &GuiSession, tcode: &str, layout_row: &str) -> win
                     return Ok("Failed to find search field".to_string());
                 }
             }
-            
+
             // Press Enter
             eprintln!("DEBUG: Pressing Enter on window 2");
             if let Ok(window) = session.find_by_id("wnd[2]".to_string()) {
@@ -175,10 +196,10 @@ pub fn choose_layout(session: &GuiSession, tcode: &str, layout_row: &str) -> win
                 eprintln!("DEBUG: Window 2 not found");
             }
         }
-        
+
         // Wait for search results
         thread::sleep(Duration::from_millis(500));
-        
+
         // Check window 3
         eprintln!("DEBUG: Checking if window 3 exists");
         let err_wnd = exist_ctrl(session, 3, "", true)?;
@@ -188,7 +209,10 @@ pub fn choose_layout(session: &GuiSession, tcode: &str, layout_row: &str) -> win
             eprintln!("DEBUG: Checking if result label exists");
             let result_exists = exist_ctrl(session, 3, "/usr/lbl[1,2]", true)?;
             if result_exists.cband {
-                eprintln!("DEBUG: Result label exists with text: {}", result_exists.ctext);
+                eprintln!(
+                    "DEBUG: Result label exists with text: {}",
+                    result_exists.ctext
+                );
                 // Highlight
                 eprintln!("DEBUG: Setting focus on result label");
                 if let Ok(label) = session.find_by_id("wnd[3]/usr/lbl[1,2]".to_string()) {
@@ -221,9 +245,9 @@ pub fn choose_layout(session: &GuiSession, tcode: &str, layout_row: &str) -> win
                     eprintln!("DEBUG: Window 3 still exists, closing it");
                     close_popups(session, Some(3), None)?;
                 } else {
-                   eprintln!("DEBUG: Window 3 does not exist");
+                    eprintln!("DEBUG: Window 3 does not exist");
                 }
-                
+
                 // make sure wnd2 is closed
                 let wnd2 = exist_ctrl(session, 2, "", true)?;
                 if wnd2.cband {
@@ -246,22 +270,21 @@ pub fn choose_layout(session: &GuiSession, tcode: &str, layout_row: &str) -> win
                     eprintln!("DEBUG: Window 1 not found for clicking");
                 }
 
-                
                 // Layout found, break out of the loop
                 eprintln!("DEBUG: Break loop after wnd1");
                 break;
             } else {
                 // Error info window - layout not found
                 eprintln!("DEBUG: Result label does not exist, layout not found");
-                
+
                 // Close error window if it exists
                 close_popups(session, Some(-1), Some(1))?;
-                
+
                 // Ask user for a new layout name or to exit
-                use dialoguer::{Select, Input};
-                
+                use dialoguer::{Input, Select};
+
                 println!("Layout '{}' not found.", current_layout);
-                
+
                 let options = vec!["Enter another layout name", "Exit layout selection"];
                 let selection = Select::new()
                     .with_prompt("What would you like to do?")
@@ -269,31 +292,31 @@ pub fn choose_layout(session: &GuiSession, tcode: &str, layout_row: &str) -> win
                     .default(0)
                     .interact()
                     .unwrap_or(1); // Default to exit if interaction fails
-                
+
                 if selection == 0 {
                     // User wants to try another layout name
                     let new_layout: String = Input::new()
                         .with_prompt("Enter new layout name")
                         .interact_text()
                         .unwrap_or_else(|_| String::new());
-                    
+
                     if new_layout.is_empty() {
                         // If user entered empty string, exit
                         msg = "Layout selection cancelled".to_string();
                         close_popups(session, None, None)?;
                         return Ok(msg);
                     }
-                    
+
                     // Update current_layout and try again
                     current_layout = new_layout;
-                    
+
                     // Close any remaining popups before retrying
                     close_popups(session, None, None)?;
-                    
+
                     // Trigger layout popup again for the next iteration
                     eprintln!("LAYOUT:calling layout_popup");
                     layout_popup(session, tcode)?;
-                    
+
                     // Continue to next iteration of the loop
                     continue;
                 } else {
@@ -306,25 +329,28 @@ pub fn choose_layout(session: &GuiSession, tcode: &str, layout_row: &str) -> win
         } else {
             eprintln!("DEBUG: Window 3 does not exist");
         }
-        
+
         // Close any remaining windows using the improved close_popups function
         eprintln!("DEBUG: Closing any remaining windows");
         close_popups(session, None, None)?;
-        
+
         // Break out of the loop if we've reached this point
         break;
     }
 
     // pause for a couple secs
     thread::sleep(Duration::from_secs(2));
-    
+
     // Get status bar message
     eprintln!("DEBUG: Getting status bar message");
     let msg = hit_ctrl(session, 0, "/sbar", "Text", "Get", "")?;
-    
+
     eprintln!("DEBUG: Status bar message: {}", msg);
     println!("{}", msg);
-    eprintln!("DEBUG: Exiting choose_layout function with message: {}", msg);
+    eprintln!(
+        "DEBUG: Exiting choose_layout function with message: {}",
+        msg
+    );
     Ok(msg)
 }
 
@@ -340,23 +366,25 @@ pub fn layout_popup(session: &GuiSession, tcode: &str) -> windows::core::Result<
                     btn.press()?;
                 }
             }
-        },
+        }
         "vt11" => {
             // Choose Layout Button
-            if let Ok(menu) = session.find_by_id("wnd[0]/mbar/menu[3]/menu[0]/menu[1]".to_string()) {
+            if let Ok(menu) = session.find_by_id("wnd[0]/mbar/menu[3]/menu[0]/menu[1]".to_string())
+            {
                 if let Some(menu_item) = menu.downcast::<GuiMenu>() {
                     menu_item.select()?;
                 }
             }
-        },
+        }
         "vl06o" => {
             // Choose Layout Button for VL06O
-            if let Ok(menu) = session.find_by_id("wnd[0]/mbar/menu[3]/menu[2]/menu[1]".to_string()) {
+            if let Ok(menu) = session.find_by_id("wnd[0]/mbar/menu[3]/menu[2]/menu[1]".to_string())
+            {
                 if let Some(menu_item) = menu.downcast::<GuiMenu>() {
                     menu_item.select()?;
                 }
             }
-        },
+        }
         "zmdesnr" => {
             // Check if button exists
             let err_ctl = exist_ctrl(session, 0, "/tbar[1]/btn[33]", true)?;
@@ -367,9 +395,9 @@ pub fn layout_popup(session: &GuiSession, tcode: &str) -> windows::core::Result<
                     }
                 }
             }
-        },
+        }
         _ => {}
     }
-    
+
     Ok(true)
 }

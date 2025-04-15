@@ -1,6 +1,6 @@
-use windows::core::{Result, Error, HRESULT};
+use crate::utils::sap_interfaces::{SapComponent, SapComponentFactory, SapSession, SapSessionInfo};
 use sap_scripting::*;
-use crate::utils::sap_interfaces::{SapComponent, SapSession, SapSessionInfo, SapComponentFactory};
+use windows::core::{Error, Result, HRESULT};
 
 /// Implementation of SapComponent for real SAP GUI components
 pub struct RealSapComponent {
@@ -17,11 +17,11 @@ impl SapComponent for RealSapComponent {
     fn r_type(&self) -> Result<String> {
         self.component.r_type()
     }
-    
+
     fn name(&self) -> Result<String> {
         self.component.name()
     }
-    
+
     fn get_text(&self) -> Result<String> {
         // Try to get text based on component type
         if let Some(text_field) = self.component.downcast::<GuiTextField>() {
@@ -41,7 +41,7 @@ impl SapComponent for RealSapComponent {
             self.component.name()
         }
     }
-    
+
     fn set_text(&self, text: String) -> Result<()> {
         if let Some(text_field) = self.component.downcast::<GuiTextField>() {
             text_field.set_text(text)
@@ -49,10 +49,13 @@ impl SapComponent for RealSapComponent {
             password_field.set_text(text)
         } else {
             // If the component doesn't support setting text, return an error
-            Err(Error::new(HRESULT(-2147467259), "Component does not support setting text".into()))
+            Err(Error::new(
+                HRESULT(-2147467259),
+                "Component does not support setting text".into(),
+            ))
         }
     }
-    
+
     fn set_focus(&self) -> Result<()> {
         if let Some(field) = self.component.downcast::<GuiTextField>() {
             field.set_focus()
@@ -62,52 +65,70 @@ impl SapComponent for RealSapComponent {
             radio.set_focus()
         } else {
             // If the component doesn't support setting focus, return an error
-            Err(Error::new(HRESULT(-2147467259), "Component does not support setting focus".into()))
+            Err(Error::new(
+                HRESULT(-2147467259),
+                "Component does not support setting focus".into(),
+            ))
         }
     }
-    
+
     fn press(&self) -> Result<()> {
         if let Some(button) = self.component.downcast::<GuiButton>() {
             button.press()
         } else {
             // If the component is not a button, return an error
-            Err(Error::new(HRESULT(-2147467259), "Component is not a button".into()))
+            Err(Error::new(
+                HRESULT(-2147467259),
+                "Component is not a button".into(),
+            ))
         }
     }
-    
+
     fn select(&self) -> Result<()> {
         if let Some(radio_button) = self.component.downcast::<GuiRadioButton>() {
             radio_button.select()
         } else {
             // If the component is not a radio button, return an error
-            Err(Error::new(HRESULT(-2147467259), "Component is not a radio button".into()))
+            Err(Error::new(
+                HRESULT(-2147467259),
+                "Component is not a radio button".into(),
+            ))
         }
     }
-    
+
     fn selected(&self) -> Result<bool> {
         if let Some(checkbox) = self.component.downcast::<GuiCheckBox>() {
             checkbox.selected()
         } else {
             // If the component is not a checkbox, return an error
-            Err(Error::new(HRESULT(-2147467259), "Component is not a checkbox".into()))
+            Err(Error::new(
+                HRESULT(-2147467259),
+                "Component is not a checkbox".into(),
+            ))
         }
     }
-    
+
     fn set_selected(&self, selected: bool) -> Result<()> {
         if let Some(checkbox) = self.component.downcast::<GuiCheckBox>() {
             checkbox.set_selected(selected)
         } else {
             // If the component is not a checkbox, return an error
-            Err(Error::new(HRESULT(-2147467259), "Component is not a checkbox".into()))
+            Err(Error::new(
+                HRESULT(-2147467259),
+                "Component is not a checkbox".into(),
+            ))
         }
     }
-    
+
     fn maximize(&self) -> Result<()> {
         if let Some(window) = self.component.downcast::<GuiFrameWindow>() {
             window.maximize()
         } else {
             // If the component is not a window, return an error
-            Err(Error::new(HRESULT(-2147467259), "Component is not a window".into()))
+            Err(Error::new(
+                HRESULT(-2147467259),
+                "Component is not a window".into(),
+            ))
         }
     }
 }
@@ -145,16 +166,16 @@ impl SapSession for RealSapSession {
         let component = self.session.find_by_id(id)?;
         Ok(Box::new(RealSapComponent::new(component)))
     }
-    
+
     fn info(&self) -> Result<Box<dyn SapSessionInfo>> {
         let info = self.session.info()?;
         Ok(Box::new(RealSapSessionInfo::new(info)))
     }
-    
+
     fn start_transaction(&self, transaction: String) -> Result<()> {
         self.session.start_transaction(transaction)
     }
-    
+
     fn end_transaction(&self) -> Result<()> {
         self.session.end_transaction()
     }

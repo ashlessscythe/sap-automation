@@ -2,7 +2,8 @@ use sap_scripting::*;
 
 // Constants from VBA
 pub const TIME_FORMAT: &str = "mm-dd-yy hh:mm:ss";
-pub const STR_FORM: &str = "\n****************************************************************************\n";
+pub const STR_FORM: &str =
+    "\n****************************************************************************\n";
 
 // Window types from VBA
 pub const WORD: &str = "OpusApp";

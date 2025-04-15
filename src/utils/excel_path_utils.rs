@@ -1,9 +1,9 @@
-use std::path::{Path, PathBuf};
+use anyhow::{Context, Result};
+use dialoguer::{Input, Select};
 use std::fs::{self, DirEntry};
 use std::io::{self, Error, ErrorKind};
+use std::path::{Path, PathBuf};
 use std::time::SystemTime;
-use dialoguer::{Select, Input};
-use anyhow::{Result, Context};
 use windows::core;
 
 use crate::utils::config_ops::get_reports_dir;
@@ -11,24 +11,28 @@ use crate::utils::config_ops::get_reports_dir;
 /// Private helper function to list files with specified extensions in a directory, sorted by modification time
 fn list_files_with_extensions(dir_path: &str, extensions: &[&str]) -> io::Result<Vec<DirEntry>> {
     let path = Path::new(dir_path);
-    
+
     // Check if path exists and is a directory
     if !path.exists() {
-        return Err(Error::new(ErrorKind::NotFound, 
-            format!("Directory not found: {}", dir_path)));
+        return Err(Error::new(
+            ErrorKind::NotFound,
+            format!("Directory not found: {}", dir_path),
+        ));
     }
-    
+
     if !path.is_dir() {
-        return Err(Error::new(ErrorKind::InvalidInput, 
-            format!("Not a directory: {}", dir_path)));
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            format!("Not a directory: {}", dir_path),
+        ));
     }
-    
+
     // Read directory entries
     let entries = fs::read_dir(path)?
         .filter_map(|entry| {
             let entry = entry.ok()?;
             let path = entry.path();
-            
+
             // Check if it's a file with one of the specified extensions
             if path.is_file() {
                 if let Some(ext) = path.extension() {
@@ -41,15 +45,21 @@ fn list_files_with_extensions(dir_path: &str, extensions: &[&str]) -> io::Result
             None
         })
         .collect::<Vec<_>>();
-    
+
     // Sort by modification time (newest first)
     let mut sorted_entries = entries;
     sorted_entries.sort_by(|a, b| {
-        let time_a = a.metadata().and_then(|m| m.modified()).unwrap_or(SystemTime::UNIX_EPOCH);
-        let time_b = b.metadata().and_then(|m| m.modified()).unwrap_or(SystemTime::UNIX_EPOCH);
+        let time_a = a
+            .metadata()
+            .and_then(|m| m.modified())
+            .unwrap_or(SystemTime::UNIX_EPOCH);
+        let time_b = b
+            .metadata()
+            .and_then(|m| m.modified())
+            .unwrap_or(SystemTime::UNIX_EPOCH);
         time_b.cmp(&time_a) // Reverse order for newest first
     });
-    
+
     Ok(sorted_entries)
 }
 
@@ -66,14 +76,17 @@ pub fn get_newest_file(dir_path: &str, extension: &str) -> core::Result<String> 
     match list_files_with_extensions(dir_path, &[extension]) {
         Ok(files) => {
             if files.is_empty() {
-                println!("No files with extension .{} found in directory: {}", extension, dir_path);
+                println!(
+                    "No files with extension .{} found in directory: {}",
+                    extension, dir_path
+                );
                 Ok(String::new())
             } else {
                 // Return the path of the newest file
                 let newest_file = files[0].path();
                 Ok(newest_file.to_string_lossy().to_string())
             }
-        },
+        }
         Err(e) => {
             println!("Error listing files in {}: {}", dir_path, e);
             Ok(String::new())
@@ -87,12 +100,15 @@ pub fn get_newest_file(dir_path: &str, extension: &str) -> core::Result<String> 
 pub fn select_excel_file(dir_path: &str) -> Result<String> {
     // List Excel files in the directory
     let entries = list_excel_files(dir_path)?;
-    
+
     if entries.is_empty() {
-        return Err(Error::new(ErrorKind::NotFound, 
-            format!("No Excel files found in directory: {}", dir_path)).into());
+        return Err(Error::new(
+            ErrorKind::NotFound,
+            format!("No Excel files found in directory: {}", dir_path),
+        )
+        .into());
     }
-    
+
     // Determine how many files to show
     let show_limited = entries.len() > 10;
     let display_entries = if show_limited {
@@ -100,13 +116,14 @@ pub fn select_excel_file(dir_path: &str) -> Result<String> {
     } else {
         &entries
     };
-    
+
     // Create selection items
     let mut items = display_entries
         .iter()
         .map(|entry| {
             let filename = entry.file_name().to_string_lossy().to_string();
-            let modified = entry.metadata()
+            let modified = entry
+                .metadata()
                 .and_then(|m| m.modified())
                 .map(|time| {
                     time.duration_since(SystemTime::UNIX_EPOCH)
@@ -114,26 +131,29 @@ pub fn select_excel_file(dir_path: &str) -> Result<String> {
                         .unwrap_or(0)
                 })
                 .unwrap_or(0);
-            
+
             // Format the modified time as a date string
             let datetime = chrono::DateTime::<chrono::Utc>::from_timestamp(modified as i64, 0)
                 .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
                 .unwrap_or_else(|| "Unknown date".to_string());
-            
+
             format!("{} ({})", filename, datetime)
         })
         .collect::<Vec<_>>();
-    
+
     // Add option for custom path
     items.push("Enter a custom path...".to_string());
-    
+
     // Add message about limited display if needed
     let prompt = if show_limited {
-        format!("Select an Excel file [showing 10 newest files from {}]", dir_path)
+        format!(
+            "Select an Excel file [showing 10 newest files from {}]",
+            dir_path
+        )
     } else {
         format!("Select an Excel file from {}", dir_path)
     };
-    
+
     // Show selection dialog
     let selection = Select::new()
         .with_prompt(&prompt)
@@ -141,7 +161,7 @@ pub fn select_excel_file(dir_path: &str) -> Result<String> {
         .default(0)
         .interact()
         .with_context(|| "Failed to display selection dialog")?;
-    
+
     // Handle selection
     if selection < display_entries.len() {
         // User selected a file from the list
@@ -154,34 +174,46 @@ pub fn select_excel_file(dir_path: &str) -> Result<String> {
             .with_prompt("Enter the full path to an Excel file")
             .interact()
             .with_context(|| "Failed to get custom path input")?;
-        
+
         // Handle the custom path (could be a slug, relative path, or full path)
         let resolved_path = resolve_path(&custom_path);
-        
+
         // Validate the resolved path
         let path_buf = PathBuf::from(&resolved_path);
         if !path_buf.exists() {
-            return Err(Error::new(ErrorKind::NotFound, 
-                format!("File not found: {}", resolved_path)).into());
+            return Err(Error::new(
+                ErrorKind::NotFound,
+                format!("File not found: {}", resolved_path),
+            )
+            .into());
         }
-        
+
         if !path_buf.is_file() {
-            return Err(Error::new(ErrorKind::InvalidInput, 
-                format!("Not a file: {}", resolved_path)).into());
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                format!("Not a file: {}", resolved_path),
+            )
+            .into());
         }
-        
+
         // Check extension
         if let Some(ext) = path_buf.extension() {
             let ext_str = ext.to_string_lossy().to_lowercase();
             if ext_str != "xlsx" && ext_str != "xls" {
-                return Err(Error::new(ErrorKind::InvalidInput, 
-                    format!("Not an Excel file: {}", resolved_path)).into());
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    format!("Not an Excel file: {}", resolved_path),
+                )
+                .into());
             }
         } else {
-            return Err(Error::new(ErrorKind::InvalidInput, 
-                format!("Not an Excel file (no extension): {}", resolved_path)).into());
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                format!("Not an Excel file (no extension): {}", resolved_path),
+            )
+            .into());
         }
-        
+
         Ok(resolved_path)
     }
 }
@@ -189,32 +221,33 @@ pub fn select_excel_file(dir_path: &str) -> Result<String> {
 /// Helper function to resolve a path that might be a slug or relative path
 pub fn resolve_path(path_str: &str) -> String {
     let path = Path::new(path_str);
-    
+
     // If the path exists as-is, return it
     if path.exists() {
         return path_str.to_string();
     }
-    
+
     // Handle "../" at the beginning of the path (up one directory from reports dir)
     if path_str.starts_with("../") || path_str.starts_with("..\\") {
         let reports_dir = get_reports_dir();
         let reports_path = PathBuf::from(&reports_dir);
-        
+
         // Get the parent directory of the reports directory
         if let Some(parent_dir) = reports_path.parent() {
             // Remove the "../" prefix and append the rest to the parent directory
             let rest_of_path = if path_str.starts_with("../") {
                 &path_str[3..]
-            } else { // starts_with("..\\")
+            } else {
+                // starts_with("..\\")
                 &path_str[3..]
             };
-            
+
             let resolved_path = format!("{}\\{}", parent_dir.to_string_lossy(), rest_of_path);
             println!("Attempting to use parent directory path: {}", resolved_path);
             return resolved_path;
         }
     }
-    
+
     // Check if it's a slug (no path separators)
     let needles = ["\\", "/", "\\\\"];
     if !needles.iter().any(|n| path_str.contains(n)) {
@@ -224,7 +257,7 @@ pub fn resolve_path(path_str: &str) -> String {
         println!("Attempting to use relative path: {}", resolved_path);
         return resolved_path;
     }
-    
+
     // It has path separators but doesn't exist, return as-is
     path_str.to_string()
 }
@@ -234,7 +267,7 @@ pub fn get_excel_file_path(path_or_dir: &str) -> Result<String> {
     // First, try to resolve the path if it's a slug or relative path
     let resolved_path = resolve_path(path_or_dir);
     let path = Path::new(&resolved_path);
-    
+
     if path.exists() {
         if path.is_dir() {
             // It's a directory, let the user select a file
@@ -246,19 +279,31 @@ pub fn get_excel_file_path(path_or_dir: &str) -> Result<String> {
                 if ext_str == "xlsx" || ext_str == "xls" {
                     Ok(resolved_path)
                 } else {
-                    Err(Error::new(ErrorKind::InvalidInput, 
-                        format!("Not an Excel file: {}", resolved_path)).into())
+                    Err(Error::new(
+                        ErrorKind::InvalidInput,
+                        format!("Not an Excel file: {}", resolved_path),
+                    )
+                    .into())
                 }
             } else {
-                Err(Error::new(ErrorKind::InvalidInput, 
-                    format!("Not an Excel file (no extension): {}", resolved_path)).into())
+                Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    format!("Not an Excel file (no extension): {}", resolved_path),
+                )
+                .into())
             }
         } else {
-            Err(Error::new(ErrorKind::InvalidInput, 
-                format!("Not a file or directory: {}", resolved_path)).into())
+            Err(Error::new(
+                ErrorKind::InvalidInput,
+                format!("Not a file or directory: {}", resolved_path),
+            )
+            .into())
         }
     } else {
-        Err(Error::new(ErrorKind::NotFound, 
-            format!("Path not found: {}", resolved_path)).into())
+        Err(Error::new(
+            ErrorKind::NotFound,
+            format!("Path not found: {}", resolved_path),
+        )
+        .into())
     }
 }

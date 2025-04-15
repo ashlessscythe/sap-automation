@@ -1,7 +1,7 @@
-use std::path::Path;
+use anyhow::{Context, Result};
+use calamine::{open_workbook, DataType, Range, Reader, Xlsx};
 use std::io::{self, ErrorKind};
-use calamine::{open_workbook, Reader, Xlsx, Range, DataType};
-use anyhow::{Result, Context};
+use std::path::Path;
 
 /// Represents a cell value from an Excel file
 #[derive(Debug, Clone)]
@@ -67,7 +67,12 @@ impl ExcelDataFrame {
     /// Gets a column by name
     pub fn get_column(&self, column_name: &str) -> Option<Vec<ExcelValue>> {
         let column_index = self.headers.iter().position(|h| h == column_name)?;
-        Some(self.data.iter().map(|row| row[column_index].clone()).collect())
+        Some(
+            self.data
+                .iter()
+                .map(|row| row[column_index].clone())
+                .collect(),
+        )
     }
 
     /// Gets multiple columns by name
@@ -105,7 +110,7 @@ impl ExcelDataFrame {
     /// Formats multiple columns for SAP multi-value field (tab-separated values)
     pub fn format_columns_for_sap(&self, column_names: &[&str]) -> Option<String> {
         let columns = self.get_columns(column_names)?;
-        
+
         // Transpose the columns to rows
         let mut rows: Vec<Vec<String>> = Vec::new();
         if !columns.is_empty() {
@@ -137,10 +142,11 @@ impl ExcelDataFrame {
 /// Reads an Excel file and returns a dataframe
 pub fn read_excel_file(file_path: &str, sheet_name: &str) -> Result<ExcelDataFrame> {
     let path = Path::new(file_path);
-    let mut workbook: Xlsx<_> = open_workbook(path)
-        .with_context(|| format!("Failed to open Excel file: {}", file_path))?;
-    
-    let range = workbook.worksheet_range(sheet_name)
+    let mut workbook: Xlsx<_> =
+        open_workbook(path).with_context(|| format!("Failed to open Excel file: {}", file_path))?;
+
+    let range = workbook
+        .worksheet_range(sheet_name)
         .with_context(|| format!("Failed to read sheet '{}' from Excel file", sheet_name))?;
 
     parse_excel_range(range)
@@ -149,7 +155,7 @@ pub fn read_excel_file(file_path: &str, sheet_name: &str) -> Result<ExcelDataFra
 /// Parses an Excel range into a dataframe
 fn parse_excel_range(range: Range<DataType>) -> Result<ExcelDataFrame> {
     let mut df = ExcelDataFrame::new();
-    
+
     // Get dimensions
     let (height, width) = range.get_size();
     if height == 0 {
@@ -182,50 +188,82 @@ fn parse_excel_range(range: Range<DataType>) -> Result<ExcelDataFrame> {
 }
 
 /// Reads specific columns from an Excel file
-pub fn read_excel_columns(file_path: &str, sheet_name: &str, column_names: &[&str]) -> Result<Vec<Vec<ExcelValue>>> {
+pub fn read_excel_columns(
+    file_path: &str,
+    sheet_name: &str,
+    column_names: &[&str],
+) -> Result<Vec<Vec<ExcelValue>>> {
     let df = read_excel_file(file_path, sheet_name)?;
-    
-    df.get_columns(column_names)
-        .ok_or_else(|| io::Error::new(ErrorKind::NotFound, 
-            format!("One or more columns not found: {:?}", column_names)).into())
+
+    df.get_columns(column_names).ok_or_else(|| {
+        io::Error::new(
+            ErrorKind::NotFound,
+            format!("One or more columns not found: {:?}", column_names),
+        )
+        .into()
+    })
 }
 
 /// Reads a specific column from an Excel file
-pub fn read_excel_column(file_path: &str, sheet_name: &str, column_name: &str) -> Result<Vec<ExcelValue>> {
+pub fn read_excel_column(
+    file_path: &str,
+    sheet_name: &str,
+    column_name: &str,
+) -> Result<Vec<ExcelValue>> {
     let df = read_excel_file(file_path, sheet_name)?;
-    
-    df.get_column(column_name)
-        .ok_or_else(|| io::Error::new(ErrorKind::NotFound, 
-            format!("Column not found: {}", column_name)).into())
+
+    df.get_column(column_name).ok_or_else(|| {
+        io::Error::new(
+            ErrorKind::NotFound,
+            format!("Column not found: {}", column_name),
+        )
+        .into()
+    })
 }
 
 /// Formats a specific column from an Excel file for SAP multi-value field
-pub fn format_excel_column_for_sap(file_path: &str, sheet_name: &str, column_name: &str) -> Result<String> {
+pub fn format_excel_column_for_sap(
+    file_path: &str,
+    sheet_name: &str,
+    column_name: &str,
+) -> Result<String> {
     let df = read_excel_file(file_path, sheet_name)?;
-    
-    df.format_column_for_sap(column_name)
-        .ok_or_else(|| io::Error::new(ErrorKind::NotFound, 
-            format!("Column not found: {}", column_name)).into())
+
+    df.format_column_for_sap(column_name).ok_or_else(|| {
+        io::Error::new(
+            ErrorKind::NotFound,
+            format!("Column not found: {}", column_name),
+        )
+        .into()
+    })
 }
 
 /// Formats multiple columns from an Excel file for SAP multi-value field
-pub fn format_excel_columns_for_sap(file_path: &str, sheet_name: &str, column_names: &[&str]) -> Result<String> {
+pub fn format_excel_columns_for_sap(
+    file_path: &str,
+    sheet_name: &str,
+    column_names: &[&str],
+) -> Result<String> {
     let df = read_excel_file(file_path, sheet_name)?;
-    
-    df.format_columns_for_sap(column_names)
-        .ok_or_else(|| io::Error::new(ErrorKind::NotFound, 
-            format!("One or more columns not found: {:?}", column_names)).into())
+
+    df.format_columns_for_sap(column_names).ok_or_else(|| {
+        io::Error::new(
+            ErrorKind::NotFound,
+            format!("One or more columns not found: {:?}", column_names),
+        )
+        .into()
+    })
 }
 
 /// Reads an Excel file and returns it as a vector of vectors (rows)
 pub fn read_excel_as_vec_of_vecs(file_path: &str, sheet_name: &str) -> Result<Vec<Vec<String>>> {
     let df = read_excel_file(file_path, sheet_name)?;
-    
+
     let mut result = Vec::with_capacity(df.data.len());
     for row in &df.data {
         let string_row: Vec<String> = row.iter().map(|val| val.to_string()).collect();
         result.push(string_row);
     }
-    
+
     Ok(result)
 }

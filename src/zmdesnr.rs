@@ -196,7 +196,7 @@ pub fn run_export(session: &GuiSession, params: &ZMDESNRParams) -> Result<bool> 
             
             // Use the existing layout selection utility
             println!("DEBUG:Selecting layout with check_select_layout");
-            let layout_select = check_select_layout(session, "ZMDESNR".into(), layout_row, None, false);
+            let layout_select = check_select_layout(session, "ZMDESNR".into(), layout_row, None);
             match layout_select {
                 Ok(_) => {
                     println!("Layout selected: {}", layout_row);

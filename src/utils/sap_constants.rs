@@ -66,6 +66,7 @@ pub struct CtrlCheck {
 
 #[derive(Debug, Clone)]
 pub struct ParamsStruct {
+    pub instance_id: String,
     pub client_id: String,
     pub user: String,
     pub pass: String,

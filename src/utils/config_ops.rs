@@ -11,6 +11,7 @@ use std::time::Duration;
 /// Configuration structure for SAP automation
 #[derive(Debug, Clone)]
 pub struct SapConfig {
+    pub instance_id: String,
     pub reports_dir: String,
     pub tcode: Option<String>,
     pub variant: Option<String>,
@@ -23,6 +24,7 @@ pub struct SapConfig {
 impl Default for SapConfig {
     fn default() -> Self {
         Self {
+            instance_id: "rs".into(),
             reports_dir: get_default_reports_dir(),
             tcode: None,
             variant: None,
@@ -46,6 +48,13 @@ impl SapConfig {
 
         // Try to read from config file
         if let Ok(content) = fs::read_to_string("config.toml") {
+            // Parse instance_id
+            if let Some(instance_id) = parse_config_value(&content, "instance_id") {
+                config.instance_id = instance_id;
+            } else {
+                // If instance_id i
+                config.instance_id = "rs".into();
+            }
             // Parse reports_dir
             if let Some(reports_dir) = parse_config_value(&content, "reports_dir") {
                 config.reports_dir = reports_dir;
@@ -167,6 +176,7 @@ impl SapConfig {
 
         // Add [sap_config] section with our values
         content.push_str("[sap_config]\n");
+        content.push_str(&format!("instance_id = \"{}\"\n", self.instance_id));
         content.push_str(&format!("reports_dir = \"{}\"\n", self.reports_dir));
 
         if let Some(tcode) = &self.tcode {
@@ -441,6 +451,7 @@ pub fn handle_configure_sap_params() -> Result<()> {
 
     // Present options to the user
     let options = vec![
+        "Configure Instance ID",
         "Configure TCode",
         "Configure Variant",
         "Configure Layout",
@@ -462,6 +473,20 @@ pub fn handle_configure_sap_params() -> Result<()> {
 
         match selection {
             0 => {
+                // Configure Instance ID
+                let current = config.instance_id.clone();
+                let instance_id: String = Input::new()
+                    .with_prompt("Enter Instance ID (default: rs)")
+                    .allow_empty(false)
+                    .default(current)
+                    .interact()
+                    .unwrap();
+
+                config.instance_id = instance_id.clone();
+                println!("Instance ID set to: {}", instance_id);
+                println!("Note: This will use different credential files for each instance ID.");
+            }
+            1 => {
                 // Configure TCode
                 let current = config.tcode.clone().unwrap_or_default();
                 let tcode: String = Input::new()
@@ -479,7 +504,7 @@ pub fn handle_configure_sap_params() -> Result<()> {
                     println!("TCode set to: {}", tcode);
                 }
             }
-            1 => {
+            2 => {
                 // Configure Variant
                 let current = config.variant.clone().unwrap_or_default();
                 let variant: String = Input::new()
@@ -497,7 +522,7 @@ pub fn handle_configure_sap_params() -> Result<()> {
                     println!("Variant set to: {}", variant);
                 }
             }
-            2 => {
+            3 => {
                 // Configure Layout
                 let current = config.layout.clone().unwrap_or_default();
                 let layout: String = Input::new()
@@ -515,7 +540,7 @@ pub fn handle_configure_sap_params() -> Result<()> {
                     println!("Layout set to: {}", layout);
                 }
             }
-            3 => {
+            4 => {
                 // Configure Column Name
                 let current = config.column_name.clone().unwrap_or_default();
                 let column_name: String = Input::new()
@@ -533,7 +558,7 @@ pub fn handle_configure_sap_params() -> Result<()> {
                     println!("Column Name set to: {}", column_name);
                 }
             }
-            4 => {
+            5 => {
                 // Configure Date Range
                 let current_start = config
                     .date_range
@@ -568,7 +593,7 @@ pub fn handle_configure_sap_params() -> Result<()> {
                     println!("Date Range set to: {} - {}", start_date, end_date);
                 }
             }
-            5 => {
+            6 => {
                 // Add Custom Parameter
                 let param_name: String = Input::new()
                     .with_prompt("Enter Parameter Name")
@@ -592,7 +617,7 @@ pub fn handle_configure_sap_params() -> Result<()> {
                     println!("Parameter '{}' set to: {}", param_name, param_value);
                 }
             }
-            6 => {
+            7 => {
                 // Remove Parameter
                 let mut param_names: Vec<String> = Vec::new();
 
@@ -667,7 +692,7 @@ pub fn handle_configure_sap_params() -> Result<()> {
                     }
                 }
             }
-            7 => {
+            8 => {
                 // Show Current Configuration
                 println!("\nCurrent Configuration:");
                 println!("---------------------");

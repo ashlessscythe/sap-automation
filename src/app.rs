@@ -10,11 +10,13 @@ use std::io::{self, stdout, Write};
 use std::thread::{self};
 use std::time::Duration;
 
+use crate::utils::config_ops::SapConfig;
 use crate::utils::utils::{decrypt_data, encrypt_data, KEY_FILE_SUFFIX};
 use crate::utils::*;
 
 // Struct to hold login parameters
 pub struct LoginParams {
+    pub instance_id: String,
     pub client_id: String,
     pub user: String,
     pub password: String,
@@ -25,6 +27,7 @@ pub struct LoginParams {
 impl From<&LoginParams> for ParamsStruct {
     fn from(params: &LoginParams) -> Self {
         ParamsStruct {
+            instance_id: params.instance_id.clone(),
             client_id: params.client_id.clone(),
             user: params.user.clone(),
             pass: params.password.clone(),
@@ -126,10 +129,23 @@ pub fn get_login_parameters() -> windows::core::Result<LoginParams> {
     // Default values
     let mut params = LoginParams {
         client_id: "025".to_string(),
+        instance_id: "rs".to_string(),
         user: String::new(),
         password: String::new(),
         language: "EN".to_string(),
     };
+
+    // Load configuration
+    let config = match SapConfig::load() {
+        Ok(cfg) => cfg,
+        Err(e) => {
+            eprintln!("Failed to load configuration: {}", e);
+            return Err(windows::core::Error::from_win32());
+        }
+    };
+
+    // Update instance_id from config
+    params.instance_id = config.instance_id.clone();
 
     // Try to read from auth file
     let auth_path = match env::var("USERPROFILE") {
@@ -140,10 +156,9 @@ pub fn get_login_parameters() -> windows::core::Result<LoginParams> {
         }
     };
 
-    // Get instance ID from environment or use default
-    let instance_id = env::var("SAP_INSTANCE_ID").unwrap_or_else(|_| "rs".to_string());
-    let auth_file = format!("{}cryptauth_{}.txt", auth_path, instance_id);
-    let key_file = format!("{}cryptauth_{}{}", auth_path, instance_id, KEY_FILE_SUFFIX);
+    // Use instance_id from params (which was updated from config)
+    let auth_file = format!("{}sap_auto_{}.txt", auth_path, params.instance_id);
+    let key_file = format!("{}sap_auto_{}{}", auth_path, params.instance_id, KEY_FILE_SUFFIX);
 
     // Try to read credentials from file
     let mut ask_for_credentials = true;
@@ -271,6 +286,13 @@ pub fn login(session: &GuiSession, params: &LoginParams) -> windows::core::Resul
                     }
                 }
             }
+        }
+    }
+
+    // check for failed attempts popup
+    if let Ok(wnd) = session.find_by_id("wnd[1]".to_string()) {
+        if let Some(w) = wnd.downcast::<GuiModalWindow>() {
+            w.send_v_key(0)?;
         }
     }
 

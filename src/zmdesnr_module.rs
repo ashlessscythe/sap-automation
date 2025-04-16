@@ -20,7 +20,7 @@ pub fn run_zmdesnr_module(session: &GuiSession) -> Result<()> {
     println!("ZMDESNR - Serial Number History");
     println!("==============================");
 
-    // Get parameters from user
+    // Get parameters from use
     let params = get_zmdesnr_parameters()?;
 
     // Run the export
@@ -175,6 +175,16 @@ fn create_zmdesnr_params_from_config(config: &HashMap<String, String>) -> ZMDESN
     // Set serial_number if available
     if let Some(serial_number) = config.get("serial_number") {
         params.serial_number = Some(serial_number.clone());
+    }
+
+    if let Some(tab_number) = config.get("loop_zmdesnr_tab") {
+        if let Ok(tab_number) = tab_number.parse::<i32>() {
+            params.tab_number = Some(tab_number);
+        }
+    }
+
+    if let Some(pre_export_back) = config.get("loop_param_pre_export_back") {
+        params.additional_params.pre_export_back = Some(pre_export_back.to_string());
     }
 
     params

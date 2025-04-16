@@ -1,0 +1,14 @@
+[build]
+target = "i686-pc-windows-msvc"
+
+[sap_config]
+target = "i686-pc-windows-msvc"
+instance_id = "XK2"
+reports_dir = "C:\\temp\\reports"
+tcode = "VL06O"
+variant = "variant_name"
+loop_tcode = "VT11"
+loop_iterations = "4"
+loop_delay_seconds = "15"
+loop_vt11_randomarg = "randomvalue"
+loop_param_argname = "valuegoeshere"

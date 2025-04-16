@@ -8,6 +8,12 @@ use crate::utils::sap_ctrl_utils::hit_ctrl;
 use crate::utils::sap_tcode_utils::*;
 use crate::utils::sap_wnd_utils::*;
 
+/// Struct to hold additional parameters for ZMDESNR export
+#[derive(Debug, Default)]
+pub struct ZMDESNRAdditionalParams {
+    pub pre_export_back: Option<String>,
+}
+
 /// Struct to hold ZMDESNR export parameters
 #[derive(Debug)]
 pub struct ZMDESNRParams {
@@ -18,6 +24,8 @@ pub struct ZMDESNRParams {
     pub exclude_serials: Option<Vec<String>>,
     pub serial_number: Option<String>,
     pub column_name: Option<String>,
+    pub tab_number: Option<i32>,
+    pub additional_params: ZMDESNRAdditionalParams,
 }
 
 impl Default for ZMDESNRParams {
@@ -30,6 +38,8 @@ impl Default for ZMDESNRParams {
             exclude_serials: None,
             serial_number: None,
             column_name: None,
+            tab_number: None,
+            additional_params: ZMDESNRAdditionalParams::default(),
         }
     }
 }
@@ -57,21 +67,112 @@ pub fn run_export(session: &GuiSession, params: &ZMDESNRParams) -> Result<bool> 
         }
     }
 
-    // Select the General Selection tab
-    if let Ok(tab) = session.find_by_id("wnd[0]/usr/tabsTABSTRIP_TABB1/tabpUCOMM2".to_string()) {
+    // Get tab number (default to 2)
+    let tab_number = params.tab_number.unwrap_or(2);
+
+    // Select the specified tab based on tab_number
+    let tab_id = format!("wnd[0]/usr/tabsTABSTRIP_TABB1/tabpUCOMM{}", tab_number);
+    if let Ok(tab) = session.find_by_id(tab_id) {
         if let Some(tab_strip) = tab.downcast::<GuiTab>() {
             tab_strip.select()?;
         }
     }
 
-    // Clear the Palletized field
-    if let Ok(txt) = session.find_by_id("wnd[0]/usr/tabsTABSTRIP_TABB1/tabpUCOMM2/ssub%_SUBSCREEN_TABB1:ZMDE_SERIALNUMBER_HISTORY:9002/ctxtS_PALLTD-LOW".to_string()) {
-        if let Some(text_field) = txt.downcast::<GuiCTextField>() {
-            text_field.set_text("".to_string())?;
+    // Handle tab-specific operations
+    let tab_operation_success = if tab_number == 2 {
+        // Tab 2 specific operations
+        handle_tab2_operations(session, params)?
+    } else {
+        // Default operations for unspecified tabs
+        println!("Tab number {} not specifically handled", tab_number);
+        // For now, we'll just execute the query
+        if let Ok(btn) = session.find_by_id("wnd[0]/tbar[1]/btn[8]".to_string()) {
+            if let Some(button) = btn.downcast::<GuiButton>() {
+                button.press()?;
+            }
+        }
+        true // Assume success for unhandled tabs
+    };            
+    
+    // Execute
+    if let Ok(btn) = session.find_by_id("wnd[0]/tbar[1]/btn[8]".to_string()) {
+        if let Some(button) = btn.downcast::<GuiButton>() {
+            button.press()?;
+        }
+    }
+            
+
+    // If tab operations failed, return early
+    if !tab_operation_success {
+        return Ok(false);
+    }
+
+    // Check if we need to send vkey 3 after export (before layout selection)
+    if let Some(pre_export_back) = &params.additional_params.pre_export_back {
+        if pre_export_back == "true" {
+            println!("Sending vkey 3 (back) after export before layout selection");
+            // Send vkey 3 (back)
+            if let Ok(window) = session.find_by_id("wnd[0]".to_string()) {
+                if let Some(main_window) = window.downcast::<GuiMainWindow>() {
+                    main_window.send_v_key(3)?; // Send vkey 3 (back)
+                }
+            }
         }
     }
 
-    // Set serial number if provided
+    // Apply layout if provided (common for all tabs)
+    if let Some(layout_row) = &params.layout_row {
+        if !layout_row.is_empty() {
+            apply_layout(session, layout_row)?;
+        }
+    }
+
+    // Get statusbar message
+    let bar_msg = hit_ctrl(session, 0, "/sbar", "Text", "Get", "")?;
+    match bar_msg.as_str() {
+        "" => {}
+        "No layouts found" => {
+            println!(
+                "Statusbar message: No layouts found for layout {}",
+                params.layout_row.as_deref().unwrap_or("")
+            );
+            return Ok(false);
+        }
+        _ => {
+            println!("Statusbar message: {}", bar_msg);
+        }
+    }
+
+    // Export as Excel (common for all tabs)
+    if let Ok(menu) = session.find_by_id("wnd[0]/mbar/menu[0]/menu[3]/menu[1]".to_string()) {
+        if let Some(menu_item) = menu.downcast::<GuiMenu>() {
+            menu_item.select()?;
+        }
+    }
+
+    // Check export window
+    let run_check = check_export_window(
+        session,
+        "ZMDESNR",
+        "ZMDEMAIN SERIAL NUMBER HISTORY CONTENTS",
+    )?;
+    if !run_check {
+        println!("Error checking export window");
+        return Ok(false);
+    }
+
+    // Get file path using the utility function
+    let (file_path, file_name) = get_tcode_file_path("ZMDESNR", "xlsx");
+
+    // Save SAP file
+    let run_check = save_sap_file(session, &file_path, &file_name)?;
+
+    Ok(run_check)
+}
+
+/// Handle operations specific to tab 2
+fn handle_tab2_operations(session: &GuiSession, params: &ZMDESNRParams) -> Result<bool> {
+    // Check if we're using serial number or delivery numbers
     if let Some(serial) = &params.serial_number {
         if !serial.is_empty() {
             // Set the serial number field
@@ -80,72 +181,14 @@ pub fn run_export(session: &GuiSession, params: &ZMDESNRParams) -> Result<bool> 
                     text_field.set_text(serial.clone())?;
                 }
             }
+            
 
-            // Execute the search
-            if let Ok(btn) = session.find_by_id("wnd[0]/tbar[1]/btn[8]".to_string()) {
-                if let Some(button) = btn.downcast::<GuiButton>() {
-                    button.press()?;
-                }
-            }
-
-            // Check for layout
-            if let Some(layout_row) = &params.layout_row {
-                if !layout_row.is_empty() {
-                    // Choose Layout
-                    if let Ok(btn) = session.find_by_id("wnd[0]/tbar[1]/btn[33]".to_string()) {
-                        if let Some(button) = btn.downcast::<GuiButton>() {
-                            button.press()?;
-                        }
-                    }
-
-                    // Use the existing layout selection utility
-                    println!("DEBUG:Selecting layout with check_select_layout");
-                    let layout_select = check_select_layout(session, "ZMDESNR", layout_row, None);
-                    match layout_select {
-                        Ok(_) => {
-                            println!("Layout selected: {}", layout_row);
-                        }
-                        Err(e) => {
-                            eprintln!("Error selecting layout ({}): {}", layout_row, e);
-                            // If layout selection failed, close any open layout selection windows
-                            close_popups(session, None, None)?;
-                            println!("Layout selection failed. Exporting as-is.");
-                        }
-                    }
-                }
-            }
-
-            // Export as Excel
-            if let Ok(menu) = session.find_by_id("wnd[0]/mbar/menu[0]/menu[3]/menu[1]".to_string())
-            {
-                if let Some(menu_item) = menu.downcast::<GuiMenu>() {
-                    menu_item.select()?;
-                }
-            }
-
-            // Check export window
-            let run_check = check_export_window(
-                session,
-                "ZMDESNR",
-                "ZMDEMAIN SERIAL NUMBER HISTORY CONTENTS",
-            )?;
-            if !run_check {
-                println!("Error checking export window");
-                return Ok(false);
-            }
-
-            // Get file path using the utility function
-            let (file_path, file_name) = get_tcode_file_path("ZMDESNR", "xlsx");
-
-            // Save SAP file
-            let run_check = save_sap_file(session, &file_path, &file_name)?;
-
-            return Ok(run_check);
+            return Ok(true);
         }
     }
 
     // If no serial number provided, continue with delivery numbers
-
+    
     // Clear the Low Delivery Number field
     if let Ok(txt) = session.find_by_id("wnd[0]/usr/tabsTABSTRIP_TABB1/tabpUCOMM2/ssub%_SUBSCREEN_TABB1:ZMDE_SERIALNUMBER_HISTORY:9002/txtS_VBELN-LOW".to_string()) {
         if let Some(text_field) = txt.downcast::<GuiTextField>() {
@@ -156,6 +199,13 @@ pub fn run_export(session: &GuiSession, params: &ZMDESNRParams) -> Result<bool> 
     // Clear the High Delivery Number field
     if let Ok(txt) = session.find_by_id("wnd[0]/usr/tabsTABSTRIP_TABB1/tabpUCOMM2/ssub%_SUBSCREEN_TABB1:ZMDE_SERIALNUMBER_HISTORY:9002/txtS_VBELN-HIGH".to_string()) {
         if let Some(text_field) = txt.downcast::<GuiTextField>() {
+            text_field.set_text("".to_string())?;
+        }
+    }
+
+    // Clear the Palletized field
+    if let Ok(txt) = session.find_by_id("wnd[0]/usr/tabsTABSTRIP_TABB1/tabpUCOMM2/ssub%_SUBSCREEN_TABB1:ZMDE_SERIALNUMBER_HISTORY:9002/ctxtS_PALLTD-LOW".to_string()) {
+        if let Some(text_field) = txt.downcast::<GuiCTextField>() {
             text_field.set_text("".to_string())?;
         }
     }
@@ -261,74 +311,34 @@ pub fn run_export(session: &GuiSession, params: &ZMDESNRParams) -> Result<bool> 
         }
     }
 
-    // Check for layout
-    if let Some(layout_row) = &params.layout_row {
-        if !layout_row.is_empty() {
-            // Choose Layout
-            if let Ok(btn) = session.find_by_id("wnd[0]/tbar[1]/btn[33]".to_string()) {
-                if let Some(button) = btn.downcast::<GuiButton>() {
-                    button.press()?;
-                }
-            }
+    Ok(true)
+}
 
-            // Use the existing layout selection utility
-            println!("DEBUG:Selecting layout with check_select_layout");
-            let layout_select = check_select_layout(session, "ZMDESNR", layout_row, None);
-            match layout_select {
-                Ok(_) => {
-                    println!("Layout selected: {}", layout_row);
-                }
-                Err(e) => {
-                    eprintln!("Error selecting layout ({}): {}", layout_row, e);
-                    // If layout selection failed, close any open layout selection windows
-                    close_popups(session, None, None)?;
-                    println!("Layout selection failed. Exporting as-is.");
-                }
-            }
+/// Apply layout to the current view
+fn apply_layout(session: &GuiSession, layout_row: &str) -> Result<bool> {
+    // Choose Layout
+    if let Ok(btn) = session.find_by_id("wnd[0]/tbar[1]/btn[33]".to_string()) {
+        if let Some(button) = btn.downcast::<GuiButton>() {
+            button.press()?;
         }
     }
 
-    // Get statusbar message
-    let bar_msg = hit_ctrl(session, 0, "/sbar", "Text", "Get", "")?;
-    match bar_msg.as_str() {
-        "" => {}
-        "No layouts found" => {
-            println!(
-                "Statusbar message: No layouts found for layout {}",
-                params.layout_row.as_deref().unwrap_or("")
-            );
-            return Ok(false);
+    // Use the existing layout selection utility
+    println!("DEBUG:Selecting layout with check_select_layout");
+    let layout_select = check_select_layout(session, "ZMDESNR", layout_row, None);
+    match layout_select {
+        Ok(_) => {
+            println!("Layout selected: {}", layout_row);
+            Ok(true)
         }
-        _ => {
-            println!("Statusbar message: {}", bar_msg);
-        }
-    }
-
-    // Export as Excel
-    if let Ok(menu) = session.find_by_id("wnd[0]/mbar/menu[0]/menu[3]/menu[1]".to_string()) {
-        if let Some(menu_item) = menu.downcast::<GuiMenu>() {
-            menu_item.select()?;
+        Err(e) => {
+            eprintln!("Error selecting layout ({}): {}", layout_row, e);
+            // If layout selection failed, close any open layout selection windows
+            close_popups(session, None, None)?;
+            println!("Layout selection failed. Exporting as-is.");
+            Ok(false)
         }
     }
-
-    // Check export window
-    let run_check = check_export_window(
-        session,
-        "ZMDESNR",
-        "ZMDEMAIN SERIAL NUMBER HISTORY CONTENTS",
-    )?;
-    if !run_check {
-        println!("Error checking export window");
-        return Ok(false);
-    }
-
-    // Get file path using the utility function
-    let (file_path, file_name) = get_tcode_file_path("ZMDESNR", "xlsx");
-
-    // Save SAP file
-    let run_check = save_sap_file(session, &file_path, &file_name)?;
-
-    Ok(run_check)
 }
 
 /// Check if items were pasted successfully in the multi-selection window
@@ -353,6 +363,7 @@ fn check_sn_paste(session: &GuiSession, tcode: &str, wnd_idx: i32, row_idx: i32)
     );
     Ok(false)
 }
+
 /// Check if items were pasted successfully in the multi-selection window
 ///
 /// This is a helper function for run_export

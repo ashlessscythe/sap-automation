@@ -60,9 +60,16 @@ impl LoopConfig {
                     config.delay_seconds = delay_val;
                 }
                 
-                // Get parameters
+                // Get parameters - now handling params without loop_ prefix
                 for (key, value) in &loop_config.params {
-                    config.params.insert(key.clone(), value.clone());
+                    // If key starts with param_, remove it to get the actual parameter name
+                    if key.starts_with("param_") {
+                        let param_name = key.replacen("param_", "", 1);
+                        config.params.insert(param_name, value.clone());
+                    } else {
+                        // Otherwise, use the key as is
+                        config.params.insert(key.clone(), value.clone());
+                    }
                 }
             } else {
                 // Fall back to legacy format
@@ -103,11 +110,18 @@ impl LoopConfig {
         let mut sap_config = SapConfig::load()?;
         
         // Create or update loop configuration
+        let mut loop_params = HashMap::new();
+        
+        // Add parameters with param_ prefix
+        for (key, value) in &self.params {
+            loop_params.insert(format!("param_{}", key), value.clone());
+        }
+        
         let loop_config = ConfigLoopConfig {
             tcode: self.tcode.clone(),
             iterations: self.iterations.to_string(),
             delay_seconds: self.delay_seconds.to_string(),
-            params: self.params.clone(),
+            params: loop_params,
         };
         
         sap_config.loop_config = Some(loop_config);

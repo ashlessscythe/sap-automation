@@ -6,7 +6,8 @@ use std::io;
 use std::thread;
 use std::time::Duration;
 
-use crate::utils::config_ops::SapConfig;
+use crate::utils::config_types::SapConfig;
+use crate::utils::config_types::{LoopConfig as ConfigLoopConfig, default_iterations, default_delay_seconds};
 use crate::utils::sap_tcode_utils::{assert_tcode, check_tcode, variant_select};
 use crate::vl06o_module::run_vl06o_auto;
 use crate::vt11_module::run_vt11_auto;
@@ -44,36 +45,52 @@ impl LoopConfig {
         
         // Try to read from config file via SapConfig
         if let Ok(sap_config) = SapConfig::load() {
-            // Check if loop configuration exists in additional_params or top-level config
-            // First, try to get tcode from the main config's tcode field
-            if let Some(tcode) = &sap_config.tcode {
-                config.tcode = tcode.clone();
-            }
-            
-            // Then check additional_params for loop_tcode
-            if let Some(tcode) = sap_config.additional_params.get("loop_tcode") {
-                config.tcode = tcode.clone();
-            }
-            
-            // Get loop iterations from additional_params or top-level config
-            if let Some(iterations) = sap_config.additional_params.get("loop_iterations") {
-                if let Ok(iter_val) = iterations.parse::<usize>() {
+            // Check if loop configuration exists in the new format
+            if let Some(loop_config) = &sap_config.loop_config {
+                // Get tcode
+                config.tcode = loop_config.tcode.clone();
+                
+                // Get iterations
+                if let Ok(iter_val) = loop_config.iterations.parse::<usize>() {
                     config.iterations = iter_val;
                 }
-            }
-            
-            // Get loop delay from additional_params or top-level config
-            if let Some(delay) = sap_config.additional_params.get("loop_delay_seconds") {
-                if let Ok(delay_val) = delay.parse::<u64>() {
+                
+                // Get delay seconds
+                if let Ok(delay_val) = loop_config.delay_seconds.parse::<u64>() {
                     config.delay_seconds = delay_val;
                 }
-            }
-            
-            // Load any parameters that start with "loop_param_"
-            for (key, value) in &sap_config.additional_params {
-                if key.starts_with("loop_param_") {
-                    let param_name = key.replacen("loop_param_", "", 1);
-                    config.params.insert(param_name, value.clone());
+                
+                // Get parameters
+                for (key, value) in &loop_config.params {
+                    config.params.insert(key.clone(), value.clone());
+                }
+            } else {
+                // Fall back to legacy format
+                // First, try to get tcode from the main config's default tcode
+                if let Some(global) = &sap_config.global {
+                    if let Some(tcode) = &global.default_tcode {
+                        config.tcode = tcode.clone();
+                    }
+                }
+                
+                // Check if there are any loop-related parameters in the global additional_params
+                if let Some(global) = &sap_config.global {
+                    for (key, value) in &global.additional_params {
+                        if key == "loop_tcode" {
+                            config.tcode = value.clone();
+                        } else if key == "loop_iterations" {
+                            if let Ok(iter_val) = value.parse::<usize>() {
+                                config.iterations = iter_val;
+                            }
+                        } else if key == "loop_delay_seconds" {
+                            if let Ok(delay_val) = value.parse::<u64>() {
+                                config.delay_seconds = delay_val;
+                            }
+                        } else if key.starts_with("loop_param_") {
+                            let param_name = key.replacen("loop_param_", "", 1);
+                            config.params.insert(param_name, value.clone());
+                        }
+                    }
                 }
             }
         }
@@ -85,15 +102,15 @@ impl LoopConfig {
     pub fn save(&self) -> Result<()> {
         let mut sap_config = SapConfig::load()?;
         
-        // Save loop configuration to additional_params
-        sap_config.additional_params.insert("loop_tcode".to_string(), self.tcode.clone());
-        sap_config.additional_params.insert("loop_iterations".to_string(), self.iterations.to_string());
-        sap_config.additional_params.insert("loop_delay_seconds".to_string(), self.delay_seconds.to_string());
+        // Create or update loop configuration
+        let loop_config = ConfigLoopConfig {
+            tcode: self.tcode.clone(),
+            iterations: self.iterations.to_string(),
+            delay_seconds: self.delay_seconds.to_string(),
+            params: self.params.clone(),
+        };
         
-        // Save loop parameters
-        for (key, value) in &self.params {
-            sap_config.additional_params.insert(format!("loop_param_{}", key), value.clone());
-        }
+        sap_config.loop_config = Some(loop_config);
         
         // Save the updated configuration
         sap_config.save()?;

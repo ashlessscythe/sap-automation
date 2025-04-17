@@ -1,14 +1,33 @@
 [build]
 target = "i686-pc-windows-msvc"
 
-[sap_config]
-target = "i686-pc-windows-msvc"
-instance_id = "XK2"
+[global]
+instance_id = "ES1"
 reports_dir = "C:\\temp\\reports"
-tcode = "VL06O"
-variant = "variant_name"
-loop_tcode = "VT11"
-loop_iterations = "4"
-loop_delay_seconds = "15"
-loop_vt11_randomarg = "randomvalue"
-loop_param_argname = "valuegoeshere"
+default_tcode = "VT11"
+
+[tcode.VT11]
+variant = "testing_7"
+layout = "my_layout"
+date_range_start = "01/01/2023"
+date_range_end = "12/31/2023"
+by_date = "true"
+
+[tcode.VL06O]
+variant = "delivery_layout"
+layout = "delivery_view"
+column_name = "Shipment Number"
+
+[tcode.ZMDESNR]
+variant = "serial_variant"
+layout = "serial_layout"
+tab_number = "2"
+serial_number = "SN12345"
+
+[loop]
+tcode = "VT11"
+iterations = "4"
+delay_seconds = "15"
+param_list_header = "Shipment Number"
+param_set_field = "date"
+param_set_value = ""

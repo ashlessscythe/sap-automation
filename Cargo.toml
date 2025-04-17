@@ -34,3 +34,5 @@ crossterm = "0.29.0"
 calamine = "0.23.0"  # Using an older version that's compatible with zip 2.x
 rpassword = "7.3.1"  # For secure password input
 clippy = "0.0.302"
+serde = { version = "1.0", features = ["derive"] }
+toml = "0.8.10"

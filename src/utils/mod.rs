@@ -3,10 +3,16 @@ pub use self::choose_layout_utils::choose_layout;
 pub use self::sap_constants::*;
 pub use self::sap_interfaces::*;
 pub use self::sap_wnd_utils::*;
+pub use self::config_types::SapConfig;
+pub use self::config_ops::get_reports_dir;
+pub use self::config_ops::handle_configure_reports_dir;
+pub use self::config_handlers::handle_configure_sap_params;
 
 // Declare and re-export submodules
 pub mod choose_layout_utils;
+pub mod config_types;
 pub mod config_ops;
+pub mod config_handlers;
 pub mod excel_file_ops;
 pub mod excel_fileread_utils;
 pub mod excel_path_utils;

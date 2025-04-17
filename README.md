@@ -15,6 +15,7 @@ Key features include:
 - Management of popups and error messages
 - Support for transaction code execution and verification
 - Data export capabilities
+- Per-tcode configuration management
 
 ## Dependencies
 
@@ -24,6 +25,7 @@ This project relies on the following key dependencies:
 - `windows` - For Windows COM interface integration
 - `aes-gcm` and `base64` - For secure credential encryption
 - `dialoguer` and `crossterm` - For terminal UI components
+- `toml` and `serde` - For configuration file parsing and serialization
 
 ## Configuration
 
@@ -39,40 +41,60 @@ The application uses a `config.toml` file for configuration. To get started:
 
 2. Edit the `config.toml` file to match your environment and requirements
 
-### Configuration Parameters
+### Configuration System
 
-The configuration file is divided into sections:
+The configuration system has been redesigned to support:
+
+- Global settings that apply to all operations
+- Per-tcode settings that apply only to specific transaction codes
+- Loop operation settings for automated repetitive tasks
+
+For detailed information about the configuration system, see [CONFIG.md](CONFIG.md).
+
+### Configuration Sections
+
+The configuration file is divided into several sections:
 
 #### [build] Section
 
 - `target` - Specifies the build target architecture (e.g., `i686-pc-windows-msvc` for 32-bit Windows)
 
-#### [sap_config] Section
-
-##### Core Parameters
+#### [global] Section
 
 - `instance_id` - SAP instance identifier (default: "rs")
 - `reports_dir` - Directory where reports will be saved (default: User's Documents\Reports folder)
-- `tcode` - Default transaction code to execute (e.g., "VL06O")
-- `variant` - SAP variant name to use with the transaction
-- `layout` - Layout name for SAP screens
-- `column_name` - Column name for specific operations
-- `date_range_start` and `date_range_end` - Date range for reports (format: MM/DD/YYYY)
+- `default_tcode` - Default transaction code to execute (e.g., "VL06O")
 
-##### Loop Operation Parameters
+#### [tcode.XXX] Sections
 
-- `loop_tcode` - Transaction code to use for loop operations (defaults to `tcode` if not specified)
-- `loop_iterations` - Number of times to repeat the operation
-- `loop_delay_seconds` - Delay between iterations in seconds
-- `loop_vt11_randomarg` - Random argument for VT11 transaction in loop mode
-- `loop_param_argname` - Parameter name for loop operations
+Each transaction code can have its own configuration section:
 
-##### Transaction-Specific Parameters
+```toml
+[tcode.VT11]
+variant = "testing_7"
+layout = "my_layout"
+date_range_start = "01/01/2023"
+date_range_end = "12/31/2023"
+```
 
-You can add transaction-specific parameters by prefixing them with the transaction code:
+#### [loop] Section
 
-- `VL06O_parameter_name` - Parameter specific to VL06O transaction
-- `VT11_parameter_name` - Parameter specific to VT11 transaction
+Configuration for loop operations:
+
+```toml
+[loop]
+tcode = "VT11"
+iterations = "4"
+delay_seconds = "15"
+```
+
+### Migration from Legacy Format
+
+If you're upgrading from a previous version, you can use the migration tool to convert your configuration file to the new format:
+
+```
+cargo run --bin migrate_config
+```
 
 ## Usage
 
@@ -84,7 +106,7 @@ cargo run --bin sap_login
 
 This will present a menu with options to log in to SAP, with support for saving encrypted credentials for future use.
 
-The application looks for credentials in the user's Documents folder under `SAP/cryptauth_*.txt`. The instance ID can be configured via the `SAP_INSTANCE_ID` environment variable.
+The application looks for credentials in the user's Documents folder under `SAP/cryptauth_*.txt`. The instance ID can be configured via the `SAP_INSTANCE_ID` environment variable or in the configuration file.
 
 ## Line Endings
 

@@ -8,30 +8,22 @@ use std::path::Path;
 use std::thread;
 use std::time::Duration;
 
-/// Configuration structure for SAP automation
-#[derive(Debug, Clone)]
-pub struct SapConfig {
-    pub instance_id: String,
-    pub reports_dir: String,
-    pub tcode: Option<String>,
-    pub variant: Option<String>,
-    pub layout: Option<String>,
-    pub column_name: Option<String>,
-    pub date_range: Option<(String, String)>,
-    pub additional_params: HashMap<String, String>,
-}
+use crate::utils::config_types::*;
 
 impl Default for SapConfig {
     fn default() -> Self {
         Self {
-            instance_id: "rs".into(),
-            reports_dir: get_default_reports_dir(),
-            tcode: None,
-            variant: None,
-            layout: None,
-            column_name: None,
-            date_range: None,
-            additional_params: HashMap::new(),
+            config_path: "config.toml".to_string(),
+            global: Some(GlobalConfig {
+                instance_id: default_instance_id(),
+                reports_dir: get_default_reports_dir(),
+                default_tcode: None,
+                additional_params: HashMap::new(),
+            }),
+            build: None,
+            tcode: Some(HashMap::new()),
+            loop_config: None,
+            raw_config: None,
         }
     }
 }
@@ -44,247 +36,545 @@ impl SapConfig {
 
     /// Load configuration from config.toml file
     pub fn load() -> Result<Self> {
+        Self::load_from_path("config.toml")
+    }
+
+    /// Load configuration from a specific path
+    pub fn load_from_path(path: &str) -> Result<Self> {
         let mut config = Self::default();
-
+        config.config_path = path.to_string();
+        
         // Try to read from config file
-        if let Ok(content) = fs::read_to_string("config.toml") {
-            // Parse instance_id
-            if let Some(instance_id) = parse_config_value(&content, "instance_id") {
-                config.instance_id = instance_id;
-            } else {
-                // If instance_id i
-                config.instance_id = "rs".into();
-            }
-            // Parse reports_dir
-            if let Some(reports_dir) = parse_config_value(&content, "reports_dir") {
-                config.reports_dir = reports_dir;
-            }
-
-            // Parse tcode
-            if let Some(tcode) = parse_config_value(&content, "tcode") {
-                config.tcode = Some(tcode);
-            }
-
-            // Parse variant
-            if let Some(variant) = parse_config_value(&content, "variant") {
-                config.variant = Some(variant);
-            }
-
-            // Parse layout
-            if let Some(layout) = parse_config_value(&content, "layout") {
-                config.layout = Some(layout);
-            }
-
-            // Parse column_name
-            if let Some(column_name) = parse_config_value(&content, "column_name") {
-                config.column_name = Some(column_name);
-            }
-
-            // Parse date_range_start and date_range_end
-            let start_date = parse_config_value(&content, "date_range_start");
-            let end_date = parse_config_value(&content, "date_range_end");
-
-            if start_date.is_some() && end_date.is_some() {
-                config.date_range = Some((start_date.unwrap(), end_date.unwrap()));
-            }
-
-            // Parse loop_tcode and add to additional_params
-            if let Some(loop_tcode) = parse_config_value(&content, "loop_tcode") {
-                config.additional_params.insert("loop_tcode".to_string(), loop_tcode);
-            } else if let Some(tcode) = &config.tcode {
-                // If loop_tcode is not specified, use tcode as the default
-                config.additional_params.insert("loop_tcode".to_string(), tcode.clone());
-            }
-
-            // Parse any additional parameters (those not explicitly handled above)
-            for line in content.lines() {
-                let line = line.trim();
-                if line.is_empty() || line.starts_with('#') || line.starts_with('[') {
-                    continue;
-                }
-
-                if let Some(pos) = line.find('=') {
-                    let key = line[..pos].trim();
-
-                    // Skip keys we've already processed
-                    if [
-                        "reports_dir",
-                        "tcode",
-                        "variant",
-                        "layout",
-                        "column_name",
-                        "date_range_start",
-                        "date_range_end",
-                        "loop_tcode",
-                    ]
-                    .contains(&key)
-                    {
-                        continue;
+        if let Ok(content) = fs::read_to_string(path) {
+            // Parse the TOML content
+            match toml::from_str::<toml::Value>(&content) {
+                Ok(parsed) => {
+                    config.raw_config = Some(parsed.clone());
+                    
+                    // Extract build section
+                    if let Some(build) = parsed.get("build").and_then(|v| v.as_table()) {
+                        let mut build_config = BuildConfig {
+                            target: build.get("target")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("i686-pc-windows-msvc")
+                                .to_string(),
+                            additional_params: HashMap::new(),
+                        };
+                        
+                        // Extract additional build parameters
+                        for (key, value) in build {
+                            if key != "target" {
+                                if let Some(val_str) = value.as_str() {
+                                    build_config.additional_params.insert(key.clone(), val_str.to_string());
+                                }
+                            }
+                        }
+                        
+                        config.build = Some(build_config);
                     }
-
-                    if let Some(value) = parse_config_value(&content, key) {
-                        config.additional_params.insert(key.to_string(), value);
+                    
+                    // Check for new format (with global and tcode sections)
+                    let is_new_format = parsed.get("global").is_some() || parsed.get("tcode").is_some();
+                    
+                    if is_new_format {
+                        // Extract global section
+                        if let Some(global) = parsed.get("global").and_then(|v| v.as_table()) {
+                            let mut global_config = GlobalConfig {
+                                instance_id: global.get("instance_id")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or(&default_instance_id())
+                                    .to_string(),
+                                reports_dir: global.get("reports_dir")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or(&get_default_reports_dir())
+                                    .to_string(),
+                                default_tcode: global.get("default_tcode")
+                                    .and_then(|v| v.as_str())
+                                    .map(|s| s.to_string()),
+                                additional_params: HashMap::new(),
+                            };
+                            
+                            // Extract additional global parameters
+                            for (key, value) in global {
+                                if !["instance_id", "reports_dir", "default_tcode"].contains(&key.as_str()) {
+                                    if let Some(val_str) = value.as_str() {
+                                        global_config.additional_params.insert(key.clone(), val_str.to_string());
+                                    }
+                                }
+                            }
+                            
+                            config.global = Some(global_config);
+                        }
+                        
+                        // Extract tcode sections
+                        if let Some(tcode_table) = parsed.get("tcode").and_then(|v| v.as_table()) {
+                            let mut tcode_configs = HashMap::new();
+                            
+                            for (tcode_name, tcode_value) in tcode_table {
+                                if let Some(tcode_table) = tcode_value.as_table() {
+                                    let mut tcode_config = TcodeConfig::default();
+                                    
+                                    // Extract standard fields
+                                    tcode_config.variant = tcode_table.get("variant")
+                                        .and_then(|v| v.as_str())
+                                        .map(|s| s.to_string());
+                                        
+                                    tcode_config.layout = tcode_table.get("layout")
+                                        .and_then(|v| v.as_str())
+                                        .map(|s| s.to_string());
+                                        
+                                    tcode_config.column_name = tcode_table.get("column_name")
+                                        .and_then(|v| v.as_str())
+                                        .map(|s| s.to_string());
+                                        
+                                    tcode_config.date_range_start = tcode_table.get("date_range_start")
+                                        .and_then(|v| v.as_str())
+                                        .map(|s| s.to_string());
+                                        
+                                    tcode_config.date_range_end = tcode_table.get("date_range_end")
+                                        .and_then(|v| v.as_str())
+                                        .map(|s| s.to_string());
+                                        
+                                    tcode_config.by_date = tcode_table.get("by_date")
+                                        .and_then(|v| v.as_str())
+                                        .map(|s| s.to_string());
+                                        
+                                    tcode_config.serial_number = tcode_table.get("serial_number")
+                                        .and_then(|v| v.as_str())
+                                        .map(|s| s.to_string());
+                                        
+                                    tcode_config.tab_number = tcode_table.get("tab_number")
+                                        .and_then(|v| v.as_str())
+                                        .map(|s| s.to_string());
+                                    
+                                    // Extract additional parameters
+                                    for (key, value) in tcode_table {
+                                        if !["variant", "layout", "column_name", "date_range_start", 
+                                             "date_range_end", "by_date", "serial_number", "tab_number"]
+                                            .contains(&key.as_str()) {
+                                            if let Some(val_str) = value.as_str() {
+                                                tcode_config.additional_params.insert(key.clone(), val_str.to_string());
+                                            }
+                                        }
+                                    }
+                                    
+                                    tcode_configs.insert(tcode_name.clone(), tcode_config);
+                                }
+                            }
+                            
+                            config.tcode = Some(tcode_configs);
+                        }
+                        
+                        // Extract loop section
+                        if let Some(loop_table) = parsed.get("loop").and_then(|v| v.as_table()) {
+                            let mut loop_config = LoopConfig {
+                                tcode: loop_table.get("tcode")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("")
+                                    .to_string(),
+                                iterations: loop_table.get("iterations")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or(&default_iterations())
+                                    .to_string(),
+                                delay_seconds: loop_table.get("delay_seconds")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or(&default_delay_seconds())
+                                    .to_string(),
+                                params: HashMap::new(),
+                            };
+                            
+                            // Extract additional loop parameters
+                            for (key, value) in loop_table {
+                                if !["tcode", "iterations", "delay_seconds"].contains(&key.as_str()) {
+                                    if let Some(val_str) = value.as_str() {
+                                        loop_config.params.insert(key.clone(), val_str.to_string());
+                                    }
+                                }
+                            }
+                            
+                            config.loop_config = Some(loop_config);
+                        }
+                    } else {
+                        // Handle legacy format (with sap_config section)
+                        config = Self::load_legacy_format(parsed, config)?;
                     }
+                },
+                Err(e) => {
+                    return Err(anyhow!("Failed to parse config file: {}", e));
                 }
             }
         }
-
+        
+        Ok(config)
+    }
+    
+    /// Load configuration from legacy format
+    fn load_legacy_format(parsed: toml::Value, mut config: SapConfig) -> Result<SapConfig> {
+        // Extract sap_config section
+        if let Some(sap_config) = parsed.get("sap_config").and_then(|v| v.as_table()) {
+            // Create global config
+            let mut global_config = GlobalConfig {
+                instance_id: sap_config.get("instance_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or(&default_instance_id())
+                    .to_string(),
+                reports_dir: sap_config.get("reports_dir")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or(&get_default_reports_dir())
+                    .to_string(),
+                default_tcode: sap_config.get("tcode")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+                additional_params: HashMap::new(),
+            };
+            
+            // Get the default tcode from the config
+            let default_tcode = global_config.default_tcode.clone().unwrap_or_else(|| "".to_string());
+            
+            // Create tcode config for the default tcode
+            let mut tcode_config = TcodeConfig::default();
+            
+            // Extract standard fields
+            tcode_config.variant = sap_config.get("variant")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+                
+            tcode_config.layout = sap_config.get("layout")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+                
+            tcode_config.column_name = sap_config.get("column_name")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+                
+            tcode_config.date_range_start = sap_config.get("date_range_start")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+                
+            tcode_config.date_range_end = sap_config.get("date_range_end")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            
+            // Create loop config
+            let mut loop_config = LoopConfig {
+                tcode: sap_config.get("loop_tcode")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or(&default_tcode)
+                    .to_string(),
+                iterations: sap_config.get("loop_iterations")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or(&default_iterations())
+                    .to_string(),
+                delay_seconds: sap_config.get("loop_delay_seconds")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or(&default_delay_seconds())
+                    .to_string(),
+                params: HashMap::new(),
+            };
+            
+            // Extract additional parameters
+            for (key, value) in sap_config {
+                if !["instance_id", "reports_dir", "tcode", "variant", "layout", "column_name", 
+                     "date_range_start", "date_range_end", "loop_tcode", "loop_iterations", 
+                     "loop_delay_seconds"].contains(&key.as_str()) {
+                    if let Some(val_str) = value.as_str() {
+                        // Check if it's a loop parameter
+                        if key.starts_with("loop_param_") {
+                            let param_name = key.replacen("loop_param_", "", 1);
+                            loop_config.params.insert(param_name, val_str.to_string());
+                        } else if key.starts_with("loop_") {
+                            // Other loop-related parameters
+                            let param_name = key.replacen("loop_", "", 1);
+                            loop_config.params.insert(param_name, val_str.to_string());
+                        } else if !default_tcode.is_empty() && key.starts_with(&format!("{}_", default_tcode)) {
+                            // TCode-specific parameters
+                            let param_name = key.replacen(&format!("{}_", default_tcode), "", 1);
+                            tcode_config.additional_params.insert(param_name, val_str.to_string());
+                        } else {
+                            // Global parameters
+                            global_config.additional_params.insert(key.clone(), val_str.to_string());
+                        }
+                    }
+                }
+            }
+            
+            // Update config
+            config.global = Some(global_config);
+            
+            if !default_tcode.is_empty() {
+                let mut tcode_configs = HashMap::new();
+                tcode_configs.insert(default_tcode, tcode_config);
+                config.tcode = Some(tcode_configs);
+            }
+            
+            if !loop_config.tcode.is_empty() {
+                config.loop_config = Some(loop_config);
+            }
+        }
+        
         Ok(config)
     }
 
     /// Save configuration to config.toml file
     pub fn save(&self) -> Result<()> {
+        self.save_to_path(&self.config_path)
+    }
+    
+    /// Save configuration to a specific path
+    pub fn save_to_path(&self, path: &str) -> Result<()> {
         let mut content = String::new();
-
-        // Read existing content to preserve sections like [build]
-        let existing_content = fs::read_to_string("config.toml").unwrap_or_default();
-        let mut sections: HashMap<String, Vec<String>> = HashMap::new();
-        let mut current_section = String::new();
-        let mut non_section_lines = Vec::new();
-
-        for line in existing_content.lines() {
-            if line.starts_with('[') && line.ends_with(']') {
-                current_section = line.to_string();
-                sections.entry(current_section.clone()).or_default();
-            } else if !current_section.is_empty() {
-                sections
-                    .get_mut(&current_section)
-                    .unwrap()
-                    .push(line.to_string());
-            } else {
-                non_section_lines.push(line.to_string());
-            }
-        }
-
-        // Add non-section lines first
-        for line in non_section_lines {
-            content.push_str(&line);
-            content.push('\n');
-        }
-
-        // Add sections except [sap_config]
-        for (section, lines) in &sections {
-            if section != "[sap_config]" {
-                content.push_str(section);
-                content.push('\n');
-                for line in lines {
-                    content.push_str(line);
-                    content.push('\n');
+        
+        // Preserve any sections from the original config that we don't explicitly handle
+        if let Some(raw_config) = &self.raw_config {
+            // Get all top-level keys that aren't "build", "global", "tcode", or "loop"
+            let preserved_keys: Vec<&String> = raw_config.as_table()
+                .map(|t| t.keys().filter(|k| !["build", "global", "tcode", "loop", "sap_config"].contains(&k.as_str())).collect())
+                .unwrap_or_default();
+            
+            // Add preserved sections to the content
+            for key in preserved_keys {
+                if let Some(section) = raw_config.get(key) {
+                    if let Some(table) = section.as_table() {
+                        content.push_str(&format!("[{}]\n", key));
+                        for (k, v) in table {
+                            if let Some(val_str) = v.as_str() {
+                                content.push_str(&format!("{} = \"{}\"\n", k, val_str));
+                            } else {
+                                // For non-string values, use the TOML representation
+                                content.push_str(&format!("{} = {}\n", k, v));
+                            }
+                        }
+                        content.push('\n');
+                    }
                 }
             }
         }
-
-        // Add [sap_config] section with our values
-        content.push_str("[sap_config]\n");
-        content.push_str(&format!("instance_id = \"{}\"\n", self.instance_id));
-        content.push_str(&format!("reports_dir = \"{}\"\n", self.reports_dir));
-
-        if let Some(tcode) = &self.tcode {
-            content.push_str(&format!("tcode = \"{}\"\n", tcode));
-        }
-
-        if let Some(variant) = &self.variant {
-            content.push_str(&format!("variant = \"{}\"\n", variant));
-        }
-
-        if let Some(layout) = &self.layout {
-            content.push_str(&format!("layout = \"{}\"\n", layout));
-        }
-
-        if let Some(column_name) = &self.column_name {
-            content.push_str(&format!("column_name = \"{}\"\n", column_name));
-        }
-
-        if let Some((start, end)) = &self.date_range {
-            content.push_str(&format!("date_range_start = \"{}\"\n", start));
-            content.push_str(&format!("date_range_end = \"{}\"\n", end));
-        }
-
-        // Add loop_tcode from additional_params if it exists
-        if let Some(loop_tcode) = self.additional_params.get("loop_tcode") {
-            content.push_str(&format!("loop_tcode = \"{}\"\n", loop_tcode));
-        }
-
-        // Add additional parameters
-        for (key, value) in &self.additional_params {
-            // Skip loop_tcode as we've already handled it
-            if key != "loop_tcode" {
+        
+        // Add build section
+        if let Some(build) = &self.build {
+            content.push_str("[build]\n");
+            content.push_str(&format!("target = \"{}\"\n", build.target));
+            
+            // Add additional build parameters
+            for (key, value) in &build.additional_params {
                 content.push_str(&format!("{} = \"{}\"\n", key, value));
             }
+            
+            content.push('\n');
         }
-
+        
+        // Add global section
+        if let Some(global) = &self.global {
+            content.push_str("[global]\n");
+            content.push_str(&format!("instance_id = \"{}\"\n", global.instance_id));
+            content.push_str(&format!("reports_dir = \"{}\"\n", global.reports_dir));
+            
+            if let Some(default_tcode) = &global.default_tcode {
+                content.push_str(&format!("default_tcode = \"{}\"\n", default_tcode));
+            }
+            
+            // Add additional global parameters
+            for (key, value) in &global.additional_params {
+                content.push_str(&format!("{} = \"{}\"\n", key, value));
+            }
+            
+            content.push('\n');
+        }
+        
+        // Add tcode sections
+        if let Some(tcode_configs) = &self.tcode {
+            for (tcode_name, tcode_config) in tcode_configs {
+                content.push_str(&format!("[tcode.{}]\n", tcode_name));
+                
+                if let Some(variant) = &tcode_config.variant {
+                    content.push_str(&format!("variant = \"{}\"\n", variant));
+                }
+                
+                if let Some(layout) = &tcode_config.layout {
+                    content.push_str(&format!("layout = \"{}\"\n", layout));
+                }
+                
+                if let Some(column_name) = &tcode_config.column_name {
+                    content.push_str(&format!("column_name = \"{}\"\n", column_name));
+                }
+                
+                if let Some(date_range_start) = &tcode_config.date_range_start {
+                    content.push_str(&format!("date_range_start = \"{}\"\n", date_range_start));
+                }
+                
+                if let Some(date_range_end) = &tcode_config.date_range_end {
+                    content.push_str(&format!("date_range_end = \"{}\"\n", date_range_end));
+                }
+                
+                if let Some(by_date) = &tcode_config.by_date {
+                    content.push_str(&format!("by_date = \"{}\"\n", by_date));
+                }
+                
+                if let Some(serial_number) = &tcode_config.serial_number {
+                    content.push_str(&format!("serial_number = \"{}\"\n", serial_number));
+                }
+                
+                if let Some(tab_number) = &tcode_config.tab_number {
+                    content.push_str(&format!("tab_number = \"{}\"\n", tab_number));
+                }
+                
+                // Add additional tcode parameters
+                for (key, value) in &tcode_config.additional_params {
+                    content.push_str(&format!("{} = \"{}\"\n", key, value));
+                }
+                
+                content.push('\n');
+            }
+        }
+        
+        // Add loop section
+        if let Some(loop_config) = &self.loop_config {
+            content.push_str("[loop]\n");
+            content.push_str(&format!("tcode = \"{}\"\n", loop_config.tcode));
+            content.push_str(&format!("iterations = \"{}\"\n", loop_config.iterations));
+            content.push_str(&format!("delay_seconds = \"{}\"\n", loop_config.delay_seconds));
+            
+            // Add additional loop parameters
+            for (key, value) in &loop_config.params {
+                content.push_str(&format!("param_{} = \"{}\"\n", key, value));
+            }
+            
+            content.push('\n');
+        }
+        
         // Write updated config
-        fs::write("config.toml", content)?;
-
+        fs::write(path, content)?;
+        
         Ok(())
     }
 
     /// Get configuration for a specific tcode
     pub fn get_tcode_config(&self, tcode: &str, is_loop_run: Option<bool>) -> Option<HashMap<String, String>> {
         let is_loop_run = is_loop_run.unwrap_or(false);
-
+        
         let mut config = HashMap::new();
         
         // Get the configured tcode based on whether this is a loop run or not
         let configured_tcode = if is_loop_run {
-            // For loop runs, use loop_tcode if available, otherwise fall back to regular tcode
-            self.additional_params.get("loop_tcode").or(self.tcode.as_ref())
+            // For loop runs, use loop_tcode if available
+            self.loop_config.as_ref().map(|l| l.tcode.clone())
         } else {
-            // For normal runs, use the regular tcode
-            self.tcode.as_ref()
+            // For normal runs, use the default tcode from global config
+            self.global.as_ref().and_then(|g| g.default_tcode.clone())
         };
         
         // If we have a configured tcode, add it to the config
         if let Some(t) = configured_tcode {
             config.insert("tcode".to_string(), t.clone());
-            
-            // If the configured tcode matches the requested one, add the configuration
-            if t == tcode {
-                if let Some(variant) = &self.variant {
+        }
+        
+        // Get tcode-specific configuration
+        if let Some(tcode_configs) = &self.tcode {
+            if let Some(tcode_config) = tcode_configs.get(tcode) {
+                // Add standard fields if they exist
+                if let Some(variant) = &tcode_config.variant {
                     config.insert("variant".to_string(), variant.clone());
                 }
-
-                if let Some(layout) = &self.layout {
+                
+                if let Some(layout) = &tcode_config.layout {
                     config.insert("layout".to_string(), layout.clone());
                 }
-
-                if let Some(column_name) = &self.column_name {
+                
+                if let Some(column_name) = &tcode_config.column_name {
                     config.insert("column_name".to_string(), column_name.clone());
                 }
-
-                if let Some((start, end)) = &self.date_range {
-                    config.insert("date_range_start".to_string(), start.clone());
-                    config.insert("date_range_end".to_string(), end.clone());
+                
+                if let Some(date_range_start) = &tcode_config.date_range_start {
+                    config.insert("date_range_start".to_string(), date_range_start.clone());
                 }
-
-                // Add any additional parameters
-                for (key, value) in &self.additional_params {
-                    if key.starts_with(&format!("{}_", tcode)) {
-                        let param_name = key.replacen(&format!("{}_", tcode), "", 1);
-                        config.insert(param_name, value.clone());
-                    } else {
-                        config.insert(key.clone(), value.clone());
-                    }
+                
+                if let Some(date_range_end) = &tcode_config.date_range_end {
+                    config.insert("date_range_end".to_string(), date_range_end.clone());
                 }
-
+                
+                if let Some(by_date) = &tcode_config.by_date {
+                    config.insert("by_date".to_string(), by_date.clone());
+                }
+                
+                if let Some(serial_number) = &tcode_config.serial_number {
+                    config.insert("serial_number".to_string(), serial_number.clone());
+                }
+                
+                if let Some(tab_number) = &tcode_config.tab_number {
+                    config.insert("tab_number".to_string(), tab_number.clone());
+                }
+                
+                // Add additional parameters
+                for (key, value) in &tcode_config.additional_params {
+                    config.insert(key.clone(), value.clone());
+                }
+                
                 return Some(config);
             }
         }
-
-        // Check for tcode-specific parameters even if tcode doesn't match the configured one
-        let mut has_tcode_params = false;
-        for (key, value) in &self.additional_params {
-            if key.starts_with(&format!("{}_", tcode)) {
-                let param_name = key.replacen(&format!("{}_", tcode), "", 1);
-                config.insert(param_name, value.clone());
-                has_tcode_params = true;
+        
+        // If we're in a loop run, add loop parameters
+        if is_loop_run && self.loop_config.is_some() {
+            let loop_config = self.loop_config.as_ref().unwrap();
+            
+            // Add loop parameters with tcode-specific prefix
+            for (key, value) in &loop_config.params {
+                if key.starts_with(&format!("{}_", tcode)) {
+                    let param_name = key.replacen(&format!("{}_", tcode), "", 1);
+                    config.insert(param_name, value.clone());
+                } else {
+                    config.insert(key.clone(), value.clone());
+                }
+            }
+            
+            if !config.is_empty() {
+                return Some(config);
             }
         }
-
-        if has_tcode_params {
+        
+        // If we have any configuration, return it
+        if !config.is_empty() {
             Some(config)
         } else {
             None
+        }
+    }
+    
+    /// Get the instance ID
+    pub fn get_instance_id(&self) -> String {
+        self.global.as_ref().map(|g| g.instance_id.clone()).unwrap_or_else(default_instance_id)
+    }
+    
+    /// Get the reports directory
+    pub fn get_reports_dir(&self) -> String {
+        self.global.as_ref().map(|g| g.reports_dir.clone()).unwrap_or_else(get_default_reports_dir)
+    }
+    
+    /// Set the instance ID
+    pub fn set_instance_id(&mut self, instance_id: &str) {
+        if let Some(global) = &mut self.global {
+            global.instance_id = instance_id.to_string();
+        } else {
+            self.global = Some(GlobalConfig {
+                instance_id: instance_id.to_string(),
+                reports_dir: get_default_reports_dir(),
+                default_tcode: None,
+                additional_params: HashMap::new(),
+            });
+        }
+    }
+    
+    /// Set the reports directory
+    pub fn set_reports_dir(&mut self, reports_dir: &str) {
+        if let Some(global) = &mut self.global {
+            global.reports_dir = reports_dir.to_string();
+        } else {
+            self.global = Some(GlobalConfig {
+                instance_id: default_instance_id(),
+                reports_dir: reports_dir.to_string(),
+                default_tcode: None,
+                additional_params: HashMap::new(),
+            });
         }
     }
 }
@@ -293,38 +583,11 @@ impl SapConfig {
 pub fn get_reports_dir() -> String {
     // Try to read from config file first
     if let Ok(config) = SapConfig::load() {
-        return config.reports_dir;
+        return config.get_reports_dir();
     }
 
     // If loading config fails, use default path
     get_default_reports_dir()
-}
-
-/// Gets the default reports directory path
-fn get_default_reports_dir() -> String {
-    match env::var("USERPROFILE") {
-        Ok(profile) => format!("{}\\Documents\\Reports", profile),
-        Err(_) => {
-            eprintln!("Could not determine user profile directory");
-            String::from(".\\Reports")
-        }
-    }
-}
-
-/// Parse a value from the config file
-fn parse_config_value(content: &str, key: &str) -> Option<String> {
-    for line in content.lines() {
-        let line = line.trim();
-        if line.starts_with(&format!("{} =", key)) || line.starts_with(&format!("{}=", key)) {
-            if let Some(pos) = line.find('=') {
-                let value = line[pos + 1..].trim().trim_matches('"').trim_matches('\'');
-                if !value.is_empty() {
-                    return Some(value.to_string());
-                }
-            }
-        }
-    }
-    None
 }
 
 /// Handle configuring the reports directory
@@ -334,7 +597,7 @@ pub fn handle_configure_reports_dir() -> Result<()> {
 
     // Get current reports directory
     let mut config = SapConfig::load()?;
-    let current_dir = &config.reports_dir;
+    let current_dir = config.get_reports_dir();
     println!("Current reports directory: {}", current_dir);
 
     // Present options to the user
@@ -364,7 +627,7 @@ pub fn handle_configure_reports_dir() -> Result<()> {
                 .unwrap();
 
             // Handle empty input
-            if new_dir.is_empty() || new_dir == *current_dir {
+            if new_dir.is_empty() || new_dir == current_dir {
                 println!("No changes made to reports directory.");
                 thread::sleep(Duration::from_secs(2));
                 return Ok(());
@@ -372,7 +635,7 @@ pub fn handle_configure_reports_dir() -> Result<()> {
 
             // Handle "../" at the beginning (up one directory)
             if new_dir.starts_with("../") || new_dir.starts_with("..\\") {
-                let current_path = Path::new(current_dir);
+                let current_path = Path::new(&current_dir);
                 if let Some(parent) = current_path.parent() {
                     let rest_of_path = if new_dir.starts_with("../") {
                         &new_dir[3..]
@@ -428,7 +691,7 @@ pub fn handle_configure_reports_dir() -> Result<()> {
     }
 
     // Update config
-    config.reports_dir = new_dir.clone();
+    config.set_reports_dir(&new_dir);
     if let Err(e) = config.save() {
         eprintln!("Failed to update config file: {}", e);
         thread::sleep(Duration::from_secs(2));
@@ -437,314 +700,6 @@ pub fn handle_configure_reports_dir() -> Result<()> {
 
     println!("Reports directory updated to: {}", new_dir);
     thread::sleep(Duration::from_secs(2));
-
-    Ok(())
-}
-
-/// Handle configuring SAP automation parameters
-pub fn handle_configure_sap_params() -> Result<()> {
-    println!("Configure SAP Automation Parameters");
-    println!("==================================");
-
-    // Load current configuration
-    let mut config = SapConfig::load()?;
-
-    // Present options to the user
-    let options = vec![
-        "Configure Instance ID",
-        "Configure TCode",
-        "Configure Variant",
-        "Configure Layout",
-        "Configure Column Name",
-        "Configure Date Range",
-        "Add Custom Parameter",
-        "Remove Parameter",
-        "Show Current Configuration",
-        "Back to Main Menu",
-    ];
-
-    loop {
-        let selection = Select::new()
-            .with_prompt("Choose an option")
-            .items(&options)
-            .default(0)
-            .interact()
-            .unwrap();
-
-        match selection {
-            0 => {
-                // Configure Instance ID
-                let current = config.instance_id.clone();
-                let instance_id: String = Input::new()
-                    .with_prompt("Enter Instance ID (default: rs)")
-                    .allow_empty(false)
-                    .default(current)
-                    .interact()
-                    .unwrap();
-
-                config.instance_id = instance_id.clone();
-                println!("Instance ID set to: {}", instance_id);
-                println!("Note: This will use different credential files for each instance ID.");
-            }
-            1 => {
-                // Configure TCode
-                let current = config.tcode.clone().unwrap_or_default();
-                let tcode: String = Input::new()
-                    .with_prompt("Enter TCode (e.g., VT11, VL06O, ZMDESNR)")
-                    .allow_empty(true)
-                    .default(current)
-                    .interact()
-                    .unwrap();
-
-                if tcode.is_empty() {
-                    config.tcode = None;
-                    println!("TCode configuration cleared.");
-                } else {
-                    config.tcode = Some(tcode.clone());
-                    println!("TCode set to: {}", tcode);
-                }
-            }
-            2 => {
-                // Configure Variant
-                let current = config.variant.clone().unwrap_or_default();
-                let variant: String = Input::new()
-                    .with_prompt("Enter SAP Variant Name")
-                    .allow_empty(true)
-                    .default(current)
-                    .interact()
-                    .unwrap();
-
-                if variant.is_empty() {
-                    config.variant = None;
-                    println!("Variant configuration cleared.");
-                } else {
-                    config.variant = Some(variant.clone());
-                    println!("Variant set to: {}", variant);
-                }
-            }
-            3 => {
-                // Configure Layout
-                let current = config.layout.clone().unwrap_or_default();
-                let layout: String = Input::new()
-                    .with_prompt("Enter Layout Name")
-                    .allow_empty(true)
-                    .default(current)
-                    .interact()
-                    .unwrap();
-
-                if layout.is_empty() {
-                    config.layout = None;
-                    println!("Layout configuration cleared.");
-                } else {
-                    config.layout = Some(layout.clone());
-                    println!("Layout set to: {}", layout);
-                }
-            }
-            4 => {
-                // Configure Column Name
-                let current = config.column_name.clone().unwrap_or_default();
-                let column_name: String = Input::new()
-                    .with_prompt("Enter Column Name")
-                    .allow_empty(true)
-                    .default(current)
-                    .interact()
-                    .unwrap();
-
-                if column_name.is_empty() {
-                    config.column_name = None;
-                    println!("Column Name configuration cleared.");
-                } else {
-                    config.column_name = Some(column_name.clone());
-                    println!("Column Name set to: {}", column_name);
-                }
-            }
-            5 => {
-                // Configure Date Range
-                let current_start = config
-                    .date_range
-                    .as_ref()
-                    .map(|(s, _)| s.clone())
-                    .unwrap_or_default();
-                let current_end = config
-                    .date_range
-                    .as_ref()
-                    .map(|(_, e)| e.clone())
-                    .unwrap_or_default();
-
-                let start_date: String = Input::new()
-                    .with_prompt("Enter Start Date (MM/DD/YYYY)")
-                    .allow_empty(true)
-                    .default(current_start)
-                    .interact()
-                    .unwrap();
-
-                let end_date: String = Input::new()
-                    .with_prompt("Enter End Date (MM/DD/YYYY)")
-                    .allow_empty(true)
-                    .default(current_end)
-                    .interact()
-                    .unwrap();
-
-                if start_date.is_empty() || end_date.is_empty() {
-                    config.date_range = None;
-                    println!("Date Range configuration cleared.");
-                } else {
-                    config.date_range = Some((start_date.clone(), end_date.clone()));
-                    println!("Date Range set to: {} - {}", start_date, end_date);
-                }
-            }
-            6 => {
-                // Add Custom Parameter
-                let param_name: String = Input::new()
-                    .with_prompt("Enter Parameter Name")
-                    .allow_empty(false)
-                    .interact()
-                    .unwrap();
-
-                let param_value: String = Input::new()
-                    .with_prompt("Enter Parameter Value")
-                    .allow_empty(true)
-                    .interact()
-                    .unwrap();
-
-                if param_value.is_empty() {
-                    config.additional_params.remove(&param_name);
-                    println!("Parameter '{}' removed.", param_name);
-                } else {
-                    config
-                        .additional_params
-                        .insert(param_name.clone(), param_value.clone());
-                    println!("Parameter '{}' set to: {}", param_name, param_value);
-                }
-            }
-            7 => {
-                // Remove Parameter
-                let mut param_names: Vec<String> = Vec::new();
-
-                // Add standard parameters if they exist
-                if config.tcode.is_some() {
-                    param_names.push("tcode".to_string());
-                }
-                if config.variant.is_some() {
-                    param_names.push("variant".to_string());
-                }
-                if config.layout.is_some() {
-                    param_names.push("layout".to_string());
-                }
-                if config.column_name.is_some() {
-                    param_names.push("column_name".to_string());
-                }
-                if config.date_range.is_some() {
-                    param_names.push("date_range".to_string());
-                }
-
-                // Add additional parameters
-                for key in config.additional_params.keys() {
-                    param_names.push(key.clone());
-                }
-
-                if param_names.is_empty() {
-                    println!("No parameters to remove.");
-                    thread::sleep(Duration::from_secs(2));
-                    continue;
-                }
-
-                param_names.push("Cancel".to_string());
-
-                let selection = Select::new()
-                    .with_prompt("Select parameter to remove")
-                    .items(&param_names)
-                    .default(0)
-                    .interact()
-                    .unwrap();
-
-                if selection == param_names.len() - 1 {
-                    // User selected Cancel
-                    continue;
-                }
-
-                let param_name = &param_names[selection];
-
-                match param_name.as_str() {
-                    "tcode" => {
-                        config.tcode = None;
-                        println!("TCode configuration cleared.");
-                    }
-                    "variant" => {
-                        config.variant = None;
-                        println!("Variant configuration cleared.");
-                    }
-                    "layout" => {
-                        config.layout = None;
-                        println!("Layout configuration cleared.");
-                    }
-                    "column_name" => {
-                        config.column_name = None;
-                        println!("Column Name configuration cleared.");
-                    }
-                    "date_range" => {
-                        config.date_range = None;
-                        println!("Date Range configuration cleared.");
-                    }
-                    _ => {
-                        config.additional_params.remove(param_name);
-                        println!("Parameter '{}' removed.", param_name);
-                    }
-                }
-            }
-            8 => {
-                // Show Current Configuration
-                println!("\nCurrent Configuration:");
-                println!("---------------------");
-                println!("Reports Directory: {}", config.reports_dir);
-
-                if let Some(tcode) = &config.tcode {
-                    println!("TCode: {}", tcode);
-                }
-
-                if let Some(variant) = &config.variant {
-                    println!("Variant: {}", variant);
-                }
-
-                if let Some(layout) = &config.layout {
-                    println!("Layout: {}", layout);
-                }
-
-                if let Some(column_name) = &config.column_name {
-                    println!("Column Name: {}", column_name);
-                }
-
-                if let Some((start, end)) = &config.date_range {
-                    println!("Date Range: {} - {}", start, end);
-                }
-
-                if !config.additional_params.is_empty() {
-                    println!("\nAdditional Parameters:");
-                    for (key, value) in &config.additional_params {
-                        println!("  {}: {}", key, value);
-                    }
-                }
-
-                println!("\nPress Enter to continue...");
-                let mut input = String::new();
-                io::stdin().read_line(&mut input).unwrap();
-                continue;
-            }
-            _ => {
-                // Back to Main Menu
-                break;
-            }
-        }
-
-        // Save configuration after each change
-        if let Err(e) = config.save() {
-            eprintln!("Failed to save configuration: {}", e);
-            thread::sleep(Duration::from_secs(2));
-        } else {
-            println!("Configuration saved successfully.");
-            thread::sleep(Duration::from_secs(1));
-        }
-    }
 
     Ok(())
 }

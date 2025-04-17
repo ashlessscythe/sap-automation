@@ -10,7 +10,7 @@ use std::io::{self, stdout, Write};
 use std::thread::{self};
 use std::time::Duration;
 
-use crate::utils::config_ops::SapConfig;
+use crate::utils::config_types::SapConfig;
 use crate::utils::utils::{decrypt_data, encrypt_data, KEY_FILE_SUFFIX};
 use crate::utils::*;
 
@@ -145,7 +145,7 @@ pub fn get_login_parameters() -> windows::core::Result<LoginParams> {
     };
 
     // Update instance_id from config
-    params.instance_id = config.instance_id.clone();
+    params.instance_id = config.get_instance_id();
 
     // Try to read from auth file
     let auth_path = match env::var("USERPROFILE") {

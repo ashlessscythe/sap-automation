@@ -3,8 +3,9 @@ use std::fs;
 use std::path::Path;
 use chrono::NaiveDate;
 
+use sap_automation::app::handle_configure_reports_dir;
 // Import the necessary modules from the crate
-use sap_automation::utils::config_ops::SapConfig;
+use sap_automation::utils::config_types::SapConfig;
 
 // Mock function to create VL06O params from config (similar to the one in vl06o_module.rs)
 fn create_vl06o_params_from_config(config: &HashMap<String, String>) -> TestVL06OParams {
@@ -163,7 +164,7 @@ fn create_test_config(content: &str) -> String {
 // Helper function to create a SapConfig with a specific reports_dir
 fn create_test_sap_config(reports_dir: &str) -> SapConfig {
     let mut config = SapConfig::default();
-    config.reports_dir = reports_dir.to_string();
+    config.global.reports_dir = reports_dir.to_string();
     config
 }
 

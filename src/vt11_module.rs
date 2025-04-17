@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::io::{self};
 use windows::core::Result;
 
-use crate::utils::config_ops::SapConfig;
+use crate::utils::config_types::SapConfig;
 use crate::vt11::{run_export, VT11Params};
 
 pub fn run_vt11_module(session: &GuiSession) -> Result<()> {

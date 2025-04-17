@@ -3,7 +3,7 @@ use std::path::Path;
 use chrono::NaiveDate;
 
 // Import the necessary modules from the crate
-use sap_automation::utils::config_ops::SapConfig;
+use sap_automation::utils::config_types::SapConfig;
 
 // Mock structs for testing
 #[derive(Debug, Default, PartialEq, Clone)]

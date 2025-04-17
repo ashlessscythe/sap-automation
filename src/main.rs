@@ -304,7 +304,7 @@ fn main() -> anyhow::Result<()> {
             }
             9 => {
                 // Configure SAP Parameters (available regardless of SAP connection)
-                if let Err(e) = utils::config_ops::handle_configure_sap_params() {
+                if let Err(e) = utils::config_handlers::handle_configure_sap_params() {
                     eprintln!("Error configuring SAP parameters: {}", e);
                     thread::sleep(Duration::from_secs(2));
                 }

@@ -96,15 +96,13 @@ pub struct LoopConfig {
     pub params: HashMap<String, String>,
 }
 
-/// Gets the default reports directory path
+/// Gets the default reports directory path with \\\\
+// return double backslash based on userprofile
 pub fn get_default_reports_dir() -> String {
-    match env::var("USERPROFILE") {
-        Ok(profile) => format!("{}\\Documents\\Reports", profile),
-        Err(_) => {
-            eprintln!("Could not determine user profile directory");
-            String::from(".\\Reports")
-        }
-    }
+    let user_profile = env::var("USERPROFILE").unwrap_or_else(|_| ".".to_string());
+    let formatted_path = format!("{}\\Documents\\Reports", user_profile); // Ensure double backslashes
+
+    formatted_path.replace("\\", "\\\\") // Replace single backslashes with double backslashes
 }
 
 /// Default instance ID

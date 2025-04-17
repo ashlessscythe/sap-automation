@@ -200,8 +200,8 @@ pub fn run_export(session: &GuiSession, params: &VL06OParams) -> Result<bool> {
     // Get file path using the utility function
     let (file_path, file_name) = get_tcode_file_path("VL06O", "xlsx");
 
-    // Save SAP file
-    let run_check = save_sap_file(session, &file_path, &file_name)?;
+    // Save SAP file with prevent_excel_open set to true (don't open Excel)
+    let run_check = save_sap_file(session, &file_path, &file_name, Some(true))?;
 
     Ok(run_check)
 }

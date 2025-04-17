@@ -225,8 +225,8 @@ pub fn run_export(session: &GuiSession, params: &VT11Params) -> Result<bool> {
     // Get file path using the utility function
     let (file_path, file_name) = get_tcode_file_path("VT11", "xlsx");
 
-    // save sap file
-    let run_check = save_sap_file(session, &file_path, &file_name)?;
+    // save sap file with prevent_excel_open set to true
+    let run_check = save_sap_file(session, &file_path, &file_name, Some(true))?;
 
     Ok(run_check)
 }

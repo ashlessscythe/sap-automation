@@ -165,7 +165,7 @@ pub fn run_export(session: &GuiSession, params: &ZMDESNRParams) -> Result<bool> 
     let (file_path, file_name) = get_tcode_file_path("ZMDESNR", "xlsx");
 
     // Save SAP file
-    let run_check = save_sap_file(session, &file_path, &file_name)?;
+    let run_check = save_sap_file(session, &file_path, &file_name, Some(true))?;
 
     Ok(run_check)
 }

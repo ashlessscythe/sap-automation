@@ -178,13 +178,13 @@ fn create_zmdesnr_params_from_config(config: &HashMap<String, String>) -> ZMDESN
         params.serial_number = Some(serial_number.clone());
     }
 
-    if let Some(tab_number) = config.get("loop_zmdesnr_tab") {
+    if let Some(tab_number) = config.get("tab_number") {
         if let Ok(tab_number) = tab_number.parse::<i32>() {
             params.tab_number = Some(tab_number);
         }
     }
 
-    if let Some(pre_export_back) = config.get("loop_param_pre_export_back") {
+    if let Some(pre_export_back) = config.get("pre_export_back") {
         params.additional_params.pre_export_back = Some(pre_export_back.to_string());
     }
 

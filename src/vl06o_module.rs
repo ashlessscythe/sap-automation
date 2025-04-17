@@ -91,7 +91,7 @@ pub fn run_vl06o_auto(session: &GuiSession) -> Result<()> {
         let reports_dir = get_reports_dir();
 
         // Create the VL06O subdirectory path
-        let vl06o_dir = format!("{}\\vt11", reports_dir);
+        let vl06o_dir = format!("{}\\vl06o", reports_dir);
 
         // Check if the VL06O directory exists
         let vl06o_path = Path::new(&vl06o_dir);
@@ -104,11 +104,12 @@ pub fn run_vl06o_auto(session: &GuiSession) -> Result<()> {
         }
 
         // Get the newest Excel file in the VL06O directory
-        let excel_path = get_newest_file(&vl06o_dir, "xlsx")?;
+        let vt11_dir = format!("{}\\vt11", get_reports_dir());
+        let excel_path = get_newest_file(&vt11_dir, "xlsx")?;
 
         if excel_path.is_empty() {
-            println!("No Excel files found in VL06O directory.");
-            println!("Please run VL06O export first to generate an Excel file.");
+            println!("No Excel files found in VT11 directory.");
+            println!("Please run VT11 export first to generate an Excel file.");
         } else {
             println!("Using newest Excel file: {}", excel_path);
 

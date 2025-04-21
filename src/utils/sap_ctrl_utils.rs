@@ -170,3 +170,74 @@ pub fn hit_ctrl(
 
     Ok(aux_str)
 }
+
+/// Gets error text messages from SAP controls
+///
+/// This function retrieves error messages from SAP controls by iterating through
+/// a range of indices and checking if controls exist at those indices.
+///
+/// # Arguments
+///
+/// * `session` - The SAP GUI session
+/// * `n_wnd` - The window number
+/// * `ctrl_id` - The control ID base
+/// * `count` - The number of controls to check
+/// * `start_index` - Optional starting index (defaults to 1)
+///
+/// # Returns
+///
+/// A Result containing the concatenated error messages as a String
+pub fn get_sap_text_errors(
+    session: &GuiSession,
+    n_wnd: i32,
+    ctrl_id: &str,
+    count: i32,
+    start_index: Option<i32>,
+) -> Result<String> {
+    let start = start_index.unwrap_or(1);
+    let mut result = String::new();
+
+    println!("Getting SAP errors...");
+
+    for i in start..=count {
+        let mut current_ctrl_id = ctrl_id.to_string();
+
+        if ctrl_id.contains('[') {
+            // Handle controls with array indices
+            let err_ctl = exist_ctrl(session, n_wnd, &format!("{}{},0]", ctrl_id, i), true)?;
+            if err_ctl.cband {
+                let err_msg = hit_ctrl(session, n_wnd, &format!("{}{},0]", ctrl_id, i), "Text", "Get", "")?;
+                println!("{}", err_msg);
+                result.push_str(&format!("\n {}", err_msg));
+            }
+        } else if ctrl_id.contains("txtMESSTXT") {
+            // Handle message text controls
+            let mut modified_ctrl_id = ctrl_id.to_string();
+            
+            // Replace right numeric if exists
+            if let Some(last_char) = modified_ctrl_id.chars().last() {
+                if last_char.is_numeric() {
+                    modified_ctrl_id = modified_ctrl_id[0..modified_ctrl_id.len()-1].to_string();
+                }
+            }
+            
+            let err_ctl = exist_ctrl(session, n_wnd, &format!("{}{}", modified_ctrl_id, i), true)?;
+            if err_ctl.cband {
+                let err_msg = hit_ctrl(session, n_wnd, &format!("{}{}", modified_ctrl_id, i), "Text", "Get", "")?;
+                println!("{}", err_msg);
+                result.push_str(&format!("\n {}", err_msg));
+            }
+        } else {
+            // Handle other controls
+            let err_ctl = exist_ctrl(session, n_wnd, &format!("{}{}", ctrl_id, i), true)?;
+            if err_ctl.cband {
+                let err_msg = hit_ctrl(session, n_wnd, &format!("{}{}", ctrl_id, i), "Text", "Get", "")?;
+                println!("{}", err_msg);
+                result.push_str(&format!("\n {}", err_msg));
+            }
+        }
+    }
+
+    println!("str contents are: ({})", result);
+    Ok(result)
+}

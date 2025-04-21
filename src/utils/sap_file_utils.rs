@@ -55,18 +55,89 @@ pub fn get_tcode_file_path(tcode: &str, ext: &str) -> (String, String) {
 /// # Returns
 ///
 /// * `Result<bool>` - Ok(true) if at least one window was closed, Ok(false) if no matching windows were found
+///                    or if the specified file was not found
 pub fn close_excel_windows(file_name: Option<&str>) -> Result<bool> {
     println!("Attempting to close Excel windows...");
     
+    // If no filename is provided, close all Excel windows
+    if file_name.is_none() {
+        return close_all_excel_windows();
+    }
+    
+    // If a filename is provided, first check if it exists
+    let file_exists = check_excel_file_exists(file_name.unwrap())?;
+    
+    // Only close the file if it was found
+    if file_exists {
+        return close_specific_excel_window(file_name.unwrap());
+    } else {
+        println!("Excel file '{}' not found, not closing any windows", file_name.unwrap());
+        return Ok(false);
+    }
+}
+
+/// Checks if an Excel window with the specified file name exists
+fn check_excel_file_exists(file_name: &str) -> Result<bool> {
     // Structure to hold data for the callback
     struct EnumWindowsData {
-        file_name: Option<String>,
+        file_name: String,
+        file_exists: bool,
+    }
+    
+    // Create data for the callback
+    let mut data = EnumWindowsData {
+        file_name: file_name.to_string(),
+        file_exists: false,
+    };
+    
+    // Define the callback function for EnumWindows
+    unsafe extern "system" fn enum_windows_callback(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let data = &mut *(lparam.0 as *mut EnumWindowsData);
+        
+        // Check if this is an Excel window
+        let class_name = HSTRING::from("XLMAIN");
+        let excel_hwnd = FindWindowW(PCWSTR::from_raw(class_name.as_ptr()), PCWSTR::null());
+        
+        if excel_hwnd != HWND(0) {
+            // Get the window title
+            let mut title_buffer = [0u16; 512];
+            let title_len = GetWindowTextW(hwnd, &mut title_buffer);
+            
+            if title_len > 0 {
+                let window_title = OsString::from_wide(&title_buffer[..title_len as usize]);
+                let window_title = window_title.to_string_lossy().to_string();
+                
+                // Check if the window title contains the file name
+                if window_title.contains(&data.file_name) {
+                    data.file_exists = true;
+                }
+            }
+        }
+        
+        // Continue enumeration
+        BOOL(1)
+    }
+    
+    // Enumerate all top-level windows
+    unsafe {
+        let lparam = LPARAM(&mut data as *mut _ as isize);
+        EnumWindows(Some(enum_windows_callback), lparam)?;
+    }
+    
+    Ok(data.file_exists)
+}
+
+/// Closes a specific Excel window that matches the given file name
+fn close_specific_excel_window(file_name: &str) -> Result<bool> {
+    // Structure to hold data for the callback
+    struct EnumWindowsData {
+        file_name: String,
         windows_closed: bool,
     }
     
     // Create data for the callback
     let mut data = EnumWindowsData {
-        file_name: file_name.map(String::from),
+        file_name: file_name.to_string(),
         windows_closed: false,
     };
     
@@ -87,13 +158,8 @@ pub fn close_excel_windows(file_name: Option<&str>) -> Result<bool> {
                 let window_title = OsString::from_wide(&title_buffer[..title_len as usize]);
                 let window_title = window_title.to_string_lossy().to_string();
                 
-                // Check if the window title contains the file name (if provided)
-                let should_close = match &data.file_name {
-                    Some(name) => window_title.contains(name),
-                    None => true, // Close all Excel windows if no file name is provided
-                };
-                
-                if should_close {
+                // Check if the window title contains the file name
+                if window_title.contains(&data.file_name) {
                     println!("Closing Excel window: {}", window_title);
                     SendMessageW(hwnd, WM_CLOSE, WPARAM(0), LPARAM(0));
                     data.windows_closed = true;
@@ -112,10 +178,64 @@ pub fn close_excel_windows(file_name: Option<&str>) -> Result<bool> {
     }
     
     if data.windows_closed {
-        println!("Excel windows closed successfully");
+        println!("Excel window with file '{}' closed successfully", file_name);
         Ok(true)
     } else {
-        println!("No matching Excel windows found to close");
+        println!("No Excel window with file '{}' found to close", file_name);
+        Ok(false)
+    }
+}
+
+/// Closes all Excel windows
+fn close_all_excel_windows() -> Result<bool> {
+    // Structure to hold data for the callback
+    struct EnumWindowsData {
+        windows_closed: bool,
+    }
+    
+    // Create data for the callback
+    let mut data = EnumWindowsData {
+        windows_closed: false,
+    };
+    
+    // Define the callback function for EnumWindows
+    unsafe extern "system" fn enum_windows_callback(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let data = &mut *(lparam.0 as *mut EnumWindowsData);
+        
+        // Check if this is an Excel window
+        let class_name = HSTRING::from("XLMAIN");
+        let excel_hwnd = FindWindowW(PCWSTR::from_raw(class_name.as_ptr()), PCWSTR::null());
+        
+        if excel_hwnd != HWND(0) {
+            // Get the window title
+            let mut title_buffer = [0u16; 512];
+            let title_len = GetWindowTextW(hwnd, &mut title_buffer);
+            
+            if title_len > 0 {
+                let window_title = OsString::from_wide(&title_buffer[..title_len as usize]);
+                let window_title = window_title.to_string_lossy().to_string();
+                
+                println!("Closing Excel window: {}", window_title);
+                SendMessageW(hwnd, WM_CLOSE, WPARAM(0), LPARAM(0));
+                data.windows_closed = true;
+            }
+        }
+        
+        // Continue enumeration
+        BOOL(1)
+    }
+    
+    // Enumerate all top-level windows
+    unsafe {
+        let lparam = LPARAM(&mut data as *mut _ as isize);
+        EnumWindows(Some(enum_windows_callback), lparam)?;
+    }
+    
+    if data.windows_closed {
+        println!("All Excel windows closed successfully");
+        Ok(true)
+    } else {
+        println!("No Excel windows found to close");
         Ok(false)
     }
 }

@@ -16,7 +16,7 @@ use app::*;
 use utils::config_ops::handle_configure_reports_dir;
 use utils::excel_file_ops::handle_read_excel_file;
 use utils::loop_config::{handle_configure_loop, run_loop};
-use vl06o_module::{run_vl06o_auto, run_vl06o_module};
+use vl06o_module::{run_vl06o_auto, run_vl06o_date_update_module, run_vl06o_module};
 use vt11_module::{run_vt11_auto, run_vt11_module};
 use zmdesnr_module::{run_zmdesnr_auto, run_zmdesnr_module};
 
@@ -123,6 +123,7 @@ fn main() -> anyhow::Result<()> {
                     "VT11 - Auto Run (from config)",
                     "VL06O - List of Outbound Deliveries",
                     "VL06O - Auto Run (from config)",
+                    "VL06O - Change Delivery Date",
                     "ZMDESNR - Serial Number History",
                     "ZMDESNR - Auto Run (from config)",
                     "Run Loop (using config)",
@@ -140,6 +141,7 @@ fn main() -> anyhow::Result<()> {
                     "VT11 - Auto Run (Not available - Login required)",
                     "VL06O - List of Outbound Deliveries (Not available - Login required)",
                     "VL06O - Auto Run (Not available - Login required)",
+                    "VL06O - Change Delivery Date (Not available - Login required)",
                     "ZMDESNR - Serial Number History (Not available - Login required)",
                     "ZMDESNR - Auto Run (Not available - Login required)",
                     "Run Loop (Not available - Login required)",
@@ -152,22 +154,23 @@ fn main() -> anyhow::Result<()> {
                 ]
             }
         } else {
-            vec![
-                "Log in to SAP (Not available - SAP connection required)",
-                "VT11 - Shipment List Planning (Not available - SAP connection required)",
-                "VT11 - Auto Run (Not available - SAP connection required)",
-                "VL06O - List of Outbound Deliveries (Not available - SAP connection required)",
-                "VL06O - Auto Run (Not available - SAP connection required)",
-                "ZMDESNR - Serial Number History (Not available - SAP connection required)",
-                "ZMDESNR - Auto Run (Not available - SAP connection required)",
-                "Run Loop (Not available - SAP connection required)",
-                "Configure Reports Directory",
-                "Configure SAP Parameters",
-                "Configure Loop",
-                "Read Excel File",
-                "Log out of SAP (Not available - SAP connection required)",
-                "Exit",
-            ]
+                vec![
+                    "Log in to SAP (Not available - SAP connection required)",
+                    "VT11 - Shipment List Planning (Not available - SAP connection required)",
+                    "VT11 - Auto Run (Not available - SAP connection required)",
+                    "VL06O - List of Outbound Deliveries (Not available - SAP connection required)",
+                    "VL06O - Auto Run (Not available - SAP connection required)",
+                    "VL06O - Change Delivery Date (Not available - SAP connection required)",
+                    "ZMDESNR - Serial Number History (Not available - SAP connection required)",
+                    "ZMDESNR - Auto Run (Not available - SAP connection required)",
+                    "Run Loop (Not available - SAP connection required)",
+                    "Configure Reports Directory",
+                    "Configure SAP Parameters",
+                    "Configure Loop",
+                    "Read Excel File",
+                    "Log out of SAP (Not available - SAP connection required)",
+                    "Exit",
+                ]
         };
 
         let choice = Select::new()
@@ -251,6 +254,21 @@ fn main() -> anyhow::Result<()> {
                 }
             }
             5 => {
+                // Run VL06O Date Update module (only if logged in and SAP connected)
+                if sap_connected && is_logged_in {
+                    if let Err(e) = run_vl06o_date_update_module(session.as_ref().unwrap()) {
+                        eprintln!("Error running VL06O date update module: {}", e);
+                        thread::sleep(Duration::from_secs(2));
+                    }
+                } else if sap_connected {
+                    println!("You need to log in first.");
+                    thread::sleep(Duration::from_secs(2));
+                } else {
+                    println!("SAP connection not available. Cannot run VL06O date update module.");
+                    thread::sleep(Duration::from_secs(2));
+                }
+            }
+            6 => {
                 // Run ZMDESNR module (only if logged in and SAP connected)
                 if sap_connected && is_logged_in {
                     if let Err(e) = run_zmdesnr_module(session.as_ref().unwrap()) {
@@ -265,7 +283,7 @@ fn main() -> anyhow::Result<()> {
                     thread::sleep(Duration::from_secs(2));
                 }
             }
-            6 => {
+            7 => {
                 // Run ZMDESNR Auto module (only if logged in and SAP connected)
                 if sap_connected && is_logged_in {
                     if let Err(e) = run_zmdesnr_auto(session.as_ref().unwrap()) {
@@ -280,7 +298,7 @@ fn main() -> anyhow::Result<()> {
                     thread::sleep(Duration::from_secs(2));
                 }
             }
-            7 => {
+            8 => {
                 // Run Loop (using config) (only if logged in and SAP connected)
                 if sap_connected && is_logged_in {
                     if let Err(e) = run_loop(session.as_ref().unwrap()) {
@@ -295,35 +313,35 @@ fn main() -> anyhow::Result<()> {
                     thread::sleep(Duration::from_secs(2));
                 }
             }
-            8 => {
+            9 => {
                 // Configure Reports Directory (available regardless of SAP connection)
                 if let Err(e) = handle_configure_reports_dir() {
                     eprintln!("Error configuring reports directory: {}", e);
                     thread::sleep(Duration::from_secs(2));
                 }
             }
-            9 => {
+            10 => {
                 // Configure SAP Parameters (available regardless of SAP connection)
                 if let Err(e) = utils::config_handlers::handle_configure_sap_params() {
                     eprintln!("Error configuring SAP parameters: {}", e);
                     thread::sleep(Duration::from_secs(2));
                 }
             }
-            10 => {
+            11 => {
                 // Configure Loop (available regardless of SAP connection)
                 if let Err(e) = handle_configure_loop() {
                     eprintln!("Error configuring loop: {}", e);
                     thread::sleep(Duration::from_secs(2));
                 }
             }
-            11 => {
+            12 => {
                 // Read Excel File (available regardless of SAP connection)
                 if let Err(e) = handle_read_excel_file() {
                     eprintln!("Error reading Excel file: {}", e);
                     thread::sleep(Duration::from_secs(2));
                 }
             }
-            12 => {
+            13 => {
                 // Log out of SAP (only if logged in and SAP connected)
                 if sap_connected && is_logged_in {
                     if let Err(e) = handle_logout(session.as_ref().unwrap()) {
@@ -338,7 +356,7 @@ fn main() -> anyhow::Result<()> {
                     thread::sleep(Duration::from_secs(2));
                 }
             }
-            13 => {
+            14 => {
                 // Exit application
                 clear_screen();
                 println!("Exiting application...");

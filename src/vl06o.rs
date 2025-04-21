@@ -410,10 +410,10 @@ pub fn run_date_update(session: &GuiSession, params: &VL06ODateUpdateParams) -> 
         if !date_changeable {
             println!("Delivery date not changeable for delivery {}", delivery_number);
             
-            // Yellow arrow back (back button)
-            if let Ok(btn) = session.find_by_id("wnd[0]/tbar[0]/btn[15]".to_string()) {
-                if let Some(button) = btn.downcast::<GuiButton>() {
-                    button.press()?;
+            // F3 back
+            if let Ok(window) = session.find_by_id("wnd[0]".to_string()) {
+                if let Some(wnd) = window.downcast::<GuiMainWindow>() {
+                    wnd.send_v_key(3)?;
                     println!("Pressed back button to skip non-changeable delivery");
                 }
             }
@@ -473,52 +473,44 @@ pub fn run_date_update(session: &GuiSession, params: &VL06ODateUpdateParams) -> 
                 }
             }
             
-            // Retry loop for handling popups
-            let mut retry_needed = true;
-            while retry_needed {
-                retry_needed = false;
                 
-                // Handle confirmation popup - "Continue with next delivery?" - Always click Yes
-                let popup_ctrl = exist_ctrl(session, 1, "/usr/btnSPOP-OPTION1", true)?;
-                if popup_ctrl.cband {
-                    if let Ok(btn) = session.find_by_id("wnd[1]/usr/btnSPOP-OPTION1".to_string()) {
-                        if let Some(button) = btn.downcast::<GuiButton>() {
-                            button.press()?;
-                            println!("Clicked 'Yes' on popup to continue with next delivery");
-                        }
+            // Handle confirmation popup - "Continue with next delivery?" - Always click Yes
+            let popup_ctrl = exist_ctrl(session, 1, "/usr/btnSPOP-OPTION1", true)?;
+            if popup_ctrl.cband {
+                if let Ok(btn) = session.find_by_id("wnd[1]/usr/btnSPOP-OPTION1".to_string()) {
+                    if let Some(button) = btn.downcast::<GuiButton>() {
+                        button.press()?;
+                        println!("Clicked 'Yes' on popup to continue with next delivery");
                     }
                 }
+            }
                 
-                // Handle any other popups (like loading messages)
-                let err_popup = exist_ctrl(session, 1, "", true)?;
-                if err_popup.cband {
-                    let msg = get_sap_text_errors(session, 1, "/usr/txtMESSTXT1", 10, None)?;
-                    println!("Popup message: {}", msg);
-                    if msg.contains("loading") {
-                        if let Ok(wnd) = session.find_by_id("wnd[0]".to_string()) {
-                            if let Some(main_window) = wnd.downcast::<GuiMainWindow>() {
-                                main_window.send_v_key(0)?; // Enter key to close
-                                println!("Closed loading message popup");
-                            }
-                        }
-                    }
-                }
-                
-                // Check for "currently being" message in status bar
-                let bar_msg = hit_ctrl(session, 0, "/sbar", "Text", "Get", "")?;
-                if bar_msg.contains("currently being") {
-                    println!("Error: ({})", bar_msg);
-                    
-                    // F3 to exit
+            // Handle any other popups (like loading messages)
+            let err_popup = exist_ctrl(session, 1, "", true)?;
+            if err_popup.cband {
+                let msg = get_sap_text_errors(session, 1, "/usr/txtMESSTXT1", 10, None)?;
+                println!("Popup message: {}", msg);
+                if msg.contains("loading") {
                     if let Ok(wnd) = session.find_by_id("wnd[0]".to_string()) {
                         if let Some(main_window) = wnd.downcast::<GuiMainWindow>() {
-                            main_window.send_v_key(3)?; // F3 key to exit
-                            println!("Pressed F3 to exit due to error");
+                            main_window.send_v_key(0)?; // Enter key to close
+                            println!("Closed loading message popup");
                         }
                     }
+                }
+            }
+                
+            // Check for "currently being" message in status bar
+            let bar_msg = hit_ctrl(session, 0, "/sbar", "Text", "Get", "")?;
+            if bar_msg.contains("currently being") {
+                println!("Error: ({})", bar_msg);
                     
-                    // Set retry flag to true to check for popups again
-                    retry_needed = true;
+                // F3 to exit
+                if let Ok(wnd) = session.find_by_id("wnd[0]".to_string()) {
+                    if let Some(main_window) = wnd.downcast::<GuiMainWindow>() {
+                        main_window.send_v_key(3)?; // F3 key to exit
+                        println!("Pressed F3 to exit due to error");
+                    }
                 }
             }
         }
@@ -527,7 +519,7 @@ pub fn run_date_update(session: &GuiSession, params: &VL06ODateUpdateParams) -> 
         counter += 1;
         
         // Check for popup message for next deliv
-        if let Ok(button) = session.find_by_id("/usr/btnSPOP-OPTION1".to_string()) {
+        if let Ok(button) = session.find_by_id("wnd[1]/usr/btnSPOP-OPTION1".to_string()) {
             if let Some(btn) = button.downcast::<GuiButton>() {
                 eprintln!("pressing 'yes' button on popup");
                 btn.press()?

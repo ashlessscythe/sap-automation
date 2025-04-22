@@ -337,38 +337,224 @@ fn get_vl06o_parameters() -> Result<VL06OParams> {
         Some(column_name)
     };
 
-    // If column name is provided, ask for Excel file path
+    // If column name is provided, ask how to input shipment numbers
     if let Some(col_name) = &params.column_name {
         println!("Column name provided: {}", col_name);
 
-        // Ask for Excel file path
-        let excel_path: String = Input::new()
-            .with_prompt("Enter Excel file path (or press Enter to skip)")
-            .allow_empty(true)
-            .interact_text()
+        // Ask how to input shipment numbers
+        let input_options = vec!["Read from Excel file", "Enter manually", "Paste from clipboard"];
+        let input_choice = Select::new()
+            .with_prompt("How would you like to input shipment numbers?")
+            .items(&input_options)
+            .default(0)
+            .interact()
             .unwrap();
 
-        if !excel_path.is_empty() {
-            // Ask for shipment numbers
-            let shipment_numbers_str: String = Input::new()
-                .with_prompt("Enter shipment numbers (comma-separated, or press Enter to skip)")
-                .allow_empty(true)
-                .interact_text()
-                .unwrap();
-
-            if !shipment_numbers_str.is_empty() {
-                let shipment_numbers: Vec<String> = shipment_numbers_str
-                    .split(',')
-                    .map(|s| s.trim().to_string())
-                    .filter(|s| !s.is_empty())
-                    .collect();
-
+        match input_choice {
+            2 => {
+                // Paste from clipboard
+                println!("Please paste shipment numbers from clipboard (one per line):");
+                println!("When finished, press Enter twice.");
+                
+                let mut shipment_numbers = Vec::new();
+                let mut buffer = String::new();
+                
+                loop {
+                    let mut line = String::new();
+                    io::stdin().read_line(&mut line).unwrap();
+                    
+                    if line.trim().is_empty() && buffer.trim().is_empty() {
+                        break;
+                    }
+                    
+                    if line.trim().is_empty() {
+                        // Process buffer
+                        for number in buffer.lines() {
+                            let trimmed = number.trim();
+                            if !trimmed.is_empty() {
+                                shipment_numbers.push(trimmed.to_string());
+                            }
+                        }
+                        buffer.clear();
+                        break;
+                    }
+                    
+                    buffer.push_str(&line);
+                }
+                
                 if shipment_numbers.is_empty() {
                     println!("No shipment numbers entered.");
                 } else {
                     println!("Found {} shipment numbers.", shipment_numbers.len());
                     params.shipment_numbers = shipment_numbers;
                 }
+            },
+            1 => {
+                // Enter manually
+                let shipment_numbers_str: String = Input::new()
+                    .with_prompt("Enter shipment numbers (comma-separated)")
+                    .interact_text()
+                    .unwrap();
+                
+                let shipment_numbers: Vec<String> = shipment_numbers_str
+                    .split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+                
+                if shipment_numbers.is_empty() {
+                    println!("No shipment numbers entered.");
+                } else {
+                    println!("Found {} shipment numbers.", shipment_numbers.len());
+                    params.shipment_numbers = shipment_numbers;
+                }
+            },
+            0 => {
+                // Read from Excel file
+                println!("Select an Excel file containing shipment numbers:");
+                
+                // Get the reports directory as the default starting point
+                let reports_dir = get_reports_dir();
+                println!("Current reports directory: {}", reports_dir);
+                
+                // Ask if user wants to use a subdirectory
+                println!("You can enter a subdirectory name to navigate to a specific folder.");
+                println!("For example, entering 'subpath' will navigate to {}\\subpath", reports_dir);
+                println!("Or press Enter to use the current reports directory.");
+                
+                let subdir: String = Input::new()
+                    .with_prompt("Enter subdirectory (optional)")
+                    .allow_empty(true)
+                    .interact_text()
+                    .unwrap();
+                
+                // Determine the directory to use
+                let dir_to_use = if subdir.is_empty() {
+                    reports_dir.clone()
+                } else {
+                    // Handle the case where the user entered a subdirectory
+                    let mut path = format!("{}\\{}", reports_dir, subdir);
+                    path = resolve_path(&path);
+                    println!("Using directory: {}", path);
+                    path
+                };
+                
+                // Use the get_excel_file_path function to select an Excel file
+                println!("Please select an Excel file from the dialog...");
+                println!("Press Enter to continue to file selection...");
+                let mut input = String::new();
+                io::stdin().read_line(&mut input).unwrap();
+                
+                match get_excel_file_path(&dir_to_use) {
+                    Ok(excel_path) => {
+                        println!("Selected Excel file: {}", excel_path);
+                        
+                        // Loop until we get a valid column name or user chooses to exit
+                        let mut column_valid = false;
+                        
+                        while !column_valid {
+                            // Get the column name
+                            let column_name: String = Input::new()
+                                .with_prompt("Enter column name containing shipment numbers")
+                                .default(col_name.clone())
+                                .interact_text()
+                                .unwrap();
+                            
+                            if column_name.is_empty() {
+                                println!("Column name is empty.");
+                                
+                                // Ask if user wants to try again or return to main menu
+                                let options = vec!["Try again", "Return to main menu"];
+                                let choice = Select::new()
+                                    .with_prompt("What would you like to do?")
+                                    .items(&options)
+                                    .default(0)
+                                    .interact()
+                                    .unwrap();
+                                
+                                if choice == 1 {
+                                    // User wants to return to main menu
+                                    println!("Returning to main menu...");
+                                    break;
+                                }
+                                // Otherwise, loop continues for another attempt
+                            } else {
+                                println!("Reading from column: {}", column_name);
+                                
+                                // Read the shipment numbers from the Excel file
+                                match read_excel_column(&excel_path, "Sheet1", &column_name) {
+                                    Ok(shipment_numbers) => {
+                                        if shipment_numbers.is_empty() {
+                                            println!("No shipment numbers found in column '{}' of the Excel file.", column_name);
+                                            
+                                            // Ask if user wants to try again or return to main menu
+                                            let options = vec!["Try another column", "Return to main menu"];
+                                            let choice = Select::new()
+                                                .with_prompt("What would you like to do?")
+                                                .items(&options)
+                                                .default(0)
+                                                .interact()
+                                                .unwrap();
+                                            
+                                            if choice == 1 {
+                                                // User wants to return to main menu
+                                                println!("Returning to main menu...");
+                                                break;
+                                            }
+                                            // Otherwise, loop continues for another attempt
+                                        } else {
+                                            println!("Found {} shipment numbers in Excel file.", shipment_numbers.len());
+                                            params.shipment_numbers = shipment_numbers;
+                                            column_valid = true; // Exit the loop
+                                        }
+                                    },
+                                    Err(e) => {
+                                        println!("Error reading Excel file: {}", e);
+                                        println!("Column '{}' may not exist in the Excel file.", column_name);
+                                        
+                                        // Ask if user wants to try again or return to main menu
+                                        let options = vec!["Try another column", "Return to main menu"];
+                                        let choice = Select::new()
+                                            .with_prompt("What would you like to do?")
+                                            .items(&options)
+                                            .default(0)
+                                            .interact()
+                                            .unwrap();
+                                        
+                                        if choice == 1 {
+                                            // User wants to return to main menu
+                                            println!("Returning to main menu...");
+                                            break;
+                                        }
+                                        // Otherwise, loop continues for another attempt
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Wait for user to acknowledge before continuing
+                        println!("Press Enter to continue...");
+                        let mut input = String::new();
+                        io::stdin().read_line(&mut input).unwrap();
+                    },
+                    Err(e) => {
+                        println!("Error selecting Excel file: {}", e);
+                        println!("Error details: {}", e);
+                        
+                        // Wait for user to acknowledge before continuing
+                        println!("Press Enter to continue...");
+                        let mut input = String::new();
+                        io::stdin().read_line(&mut input).unwrap();
+                    }
+                }
+            },
+            _ => {
+                println!("Unexpected option selected.");
+                
+                // Wait for user to acknowledge before continuing
+                println!("Press Enter to continue...");
+                let mut input = String::new();
+                io::stdin().read_line(&mut input).unwrap();
             }
         }
     }

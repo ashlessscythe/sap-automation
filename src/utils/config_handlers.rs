@@ -20,6 +20,7 @@ pub fn handle_configure_sap_params() -> Result<()> {
     let options = vec![
         "Configure Instance ID",
         "Configure Default TCode",
+        "Configure Date Format",
         "Configure TCode-specific Parameters",
         "Configure Loop Parameters",
         "Show Current Configuration",
@@ -75,6 +76,7 @@ pub fn handle_configure_sap_params() -> Result<()> {
                             instance_id: config.get_instance_id(),
                             reports_dir: config.get_reports_dir(),
                             default_tcode: Some(tcode.clone()),
+                            date_format: crate::utils::config_types::default_date_format(),
                             additional_params: HashMap::new(),
                         });
                     }
@@ -82,14 +84,45 @@ pub fn handle_configure_sap_params() -> Result<()> {
                 }
             }
             2 => {
+                // Configure Date Format
+                let current = config.global.as_ref()
+                    .map(|g| g.date_format.clone())
+                    .unwrap_or_else(|| crate::utils::config_types::default_date_format());
+                
+                let format_options = vec!["mm/dd/yyyy", "yyyy-mm-dd"];
+                let default_index = if current == "yyyy-mm-dd" { 1 } else { 0 };
+                
+                let format_choice = Select::new()
+                    .with_prompt("Select date format")
+                    .items(&format_options)
+                    .default(default_index)
+                    .interact()
+                    .unwrap();
+
+                let date_format = format_options[format_choice].to_string();
+                
+                if let Some(global) = &mut config.global {
+                    global.date_format = date_format.clone();
+                } else {
+                    config.global = Some(GlobalConfig {
+                        instance_id: config.get_instance_id(),
+                        reports_dir: config.get_reports_dir(),
+                        default_tcode: None,
+                        date_format: date_format.clone(),
+                        additional_params: HashMap::new(),
+                    });
+                }
+                println!("Date format set to: {}", date_format);
+            }
+            3 => {
                 // Configure TCode-specific Parameters
                 handle_configure_tcode_params(&mut config)?;
             }
-            3 => {
+            4 => {
                 // Configure Loop Parameters
                 handle_configure_loop_params(&mut config)?;
             }
-            4 => {
+            5 => {
                 // Show Current Configuration
                 show_current_configuration(&config);
                 
@@ -717,6 +750,7 @@ fn show_current_configuration(config: &SapConfig) {
     if let Some(global) = &config.global {
         println!("Instance ID: {}", global.instance_id);
         println!("Reports Directory: {}", global.reports_dir);
+        println!("Date Format: {}", global.date_format);
         
         if let Some(default_tcode) = &global.default_tcode {
             println!("Default TCode: {}", default_tcode);

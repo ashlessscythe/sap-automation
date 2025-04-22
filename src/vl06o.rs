@@ -232,8 +232,19 @@ pub fn run_export(session: &GuiSession, params: &VL06OParams) -> Result<bool> {
 pub fn run_date_update(session: &GuiSession, params: &VL06ODateUpdateParams) -> Result<(i32, Vec<(String, String)>)> {
     println!("Running VL06O date update...");
     
+    // Get the configured date format
+    let config = crate::utils::config_types::SapConfig::load().ok();
+    let date_format = config
+        .as_ref()
+        .and_then(|c| c.global.as_ref())
+        .map(|g| g.date_format.as_str())
+        .unwrap_or("mm/dd/yyyy");
+    
+    // Format date according to configuration
+    let format_str = if date_format.to_lowercase() == "yyyy-mm-dd" { "%Y-%m-%d" } else { "%m/%d/%Y" };
+    
     // Format target date for SAP
-    let target_date_str = params.target_date.format("%m/%d/%Y").to_string();
+    let target_date_str = params.target_date.format(format_str).to_string();
     
     // Check if tCode is active
     if !assert_tcode(session, "VL06O", Some(0))? {
@@ -328,7 +339,7 @@ pub fn run_date_update(session: &GuiSession, params: &VL06ODateUpdateParams) -> 
         }
     }
     
-    // Press F5 (Refresh)
+    // Press F5 (Select All)
     if let Ok(wnd) = session.find_by_id("wnd[0]".to_string()) {
         if let Some(main_window) = wnd.downcast::<GuiMainWindow>() {
             main_window.send_v_key(5)?; // F5 key to refresh
@@ -352,14 +363,10 @@ pub fn run_date_update(session: &GuiSession, params: &VL06ODateUpdateParams) -> 
     // Check for popup message after starting processing
     let err_ctrl = exist_ctrl(session, 1, "", true)?;
     if err_ctrl.cband {
-        let msg = get_sap_text_errors(session, 1, "/usr/txtMESSTXT1", 10, None)?;
-        println!("Popup message: {}", msg);
-        if msg.contains("loading") {
-            if let Ok(wnd) = session.find_by_id("wnd[0]".to_string()) {
-                if let Some(main_window) = wnd.downcast::<GuiMainWindow>() {
-                    main_window.send_v_key(0)?; // Enter key to close
-                    println!("Closed loading message popup");
-                }
+        if let Ok(wnd) = session.find_by_id("wnd[1]".to_string()) {
+            if let Some(p_window) = wnd.downcast::<GuiModalWindow>() {
+                p_window.send_v_key(0)?; // Enter key to close
+                println!("Closed loading message popup");
             }
         }
     }
@@ -457,6 +464,8 @@ pub fn run_date_update(session: &GuiSession, params: &VL06ODateUpdateParams) -> 
                 let new_status = hit_ctrl(session, 0, "/sbar", "Text", "Get", "")?;
                 if new_status.len() <= 1 {
                     break;
+                } else if new_status.contains("date in the format") {
+                    // try different date format
                 }
             }
             

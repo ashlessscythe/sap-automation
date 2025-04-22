@@ -137,10 +137,21 @@ pub fn run_vl06o_auto(session: &GuiSession) -> Result<()> {
     println!("-------------------------------------------");
     println!("Variant: {:?}", params.sap_variant_name);
     println!("Layout: {:?}", params.layout_row);
+    // Get the configured date format
+    let config = SapConfig::load().ok();
+    let date_format = config
+        .as_ref()
+        .and_then(|c| c.global.as_ref())
+        .map(|g| g.date_format.as_str())
+        .unwrap_or("mm/dd/yyyy");
+    
+    // Format dates according to configuration
+    let format_str = if date_format.to_lowercase() == "yyyy-mm-dd" { "%Y-%m-%d" } else { "%m/%d/%Y" };
+    
     println!(
         "Date Range: {} to {}",
-        params.start_date.format("%m/%d/%Y"),
-        params.end_date.format("%m/%d/%Y")
+        params.start_date.format(format_str),
+        params.end_date.format(format_str)
     );
     println!("Filter by Date: {}", params.by_date);
     println!("Column Name: {:?}", params.column_name);
@@ -171,9 +182,20 @@ pub fn run_vl06o_date_update_module(session: &GuiSession) -> Result<()> {
     // Get parameters from user
     let params = get_vl06o_date_update_parameters()?;
 
+    // Get the configured date format
+    let config = SapConfig::load().ok();
+    let date_format = config
+        .as_ref()
+        .and_then(|c| c.global.as_ref())
+        .map(|g| g.date_format.as_str())
+        .unwrap_or("mm/dd/yyyy");
+    
+    // Format date according to configuration
+    let format_str = if date_format.to_lowercase() == "yyyy-mm-dd" { "%Y-%m-%d" } else { "%m/%d/%Y" };
+    
     // Confirm with user
     println!("Starting date update for {} deliveries", params.delivery_numbers.len());
-    println!("Target date: {}", params.target_date.format("%m/%d/%Y"));
+    println!("Target date: {}", params.target_date.format(format_str));
     
     let options = vec!["Yes, proceed", "No, cancel"];
     let choice = Select::new()
@@ -204,7 +226,7 @@ pub fn run_vl06o_date_update_module(session: &GuiSession) -> Result<()> {
                 println!("----------------------");
                 for (delivery, original_date) in changes {
                     println!("Delivery: {}, Original Date: {} -> New Date: {}", 
-                             delivery, original_date, params.target_date.format("%m/%d/%Y"));
+                             delivery, original_date, params.target_date.format(format_str));
                 }
             }
         }
@@ -267,10 +289,22 @@ fn clear_screen() {
 fn get_vl06o_parameters() -> Result<VL06OParams> {
     let mut params = VL06OParams::default();
 
+    // Get the configured date format
+    let config = SapConfig::load().ok();
+    let date_format = config
+        .as_ref()
+        .and_then(|c| c.global.as_ref())
+        .map(|g| g.date_format.as_str())
+        .unwrap_or("mm/dd/yyyy");
+    
+    // Format date according to configuration
+    let format_str = if date_format.to_lowercase() == "yyyy-mm-dd" { "%Y-%m-%d" } else { "%m/%d/%Y" };
+    let prompt_format = if date_format.to_lowercase() == "yyyy-mm-dd" { "YYYY-MM-DD" } else { "MM/DD/YYYY" };
+    
     // Get start date
     let start_date_str: String = Input::new()
-        .with_prompt("Start date (MM/DD/YYYY)")
-        .default(chrono::Local::now().format("%m/%d/%Y").to_string())
+        .with_prompt(format!("Start date ({})", prompt_format))
+        .default(chrono::Local::now().format(format_str).to_string())
         .interact_text()
         .unwrap();
 
@@ -279,8 +313,8 @@ fn get_vl06o_parameters() -> Result<VL06OParams> {
 
     // Get end date
     let end_date_str: String = Input::new()
-        .with_prompt("End date (MM/DD/YYYY)")
-        .default(chrono::Local::now().format("%m/%d/%Y").to_string())
+        .with_prompt(format!("End date ({})", prompt_format))
+        .default(chrono::Local::now().format(format_str).to_string())
         .interact_text()
         .unwrap();
 
@@ -571,10 +605,22 @@ fn get_vl06o_parameters() -> Result<VL06OParams> {
 fn get_vl06o_date_update_parameters() -> Result<VL06ODateUpdateParams> {
     let mut params = VL06ODateUpdateParams::default();
 
+    // Get the configured date format
+    let config = SapConfig::load().ok();
+    let date_format = config
+        .as_ref()
+        .and_then(|c| c.global.as_ref())
+        .map(|g| g.date_format.as_str())
+        .unwrap_or("mm/dd/yyyy");
+    
+    // Format date according to configuration
+    let format_str = if date_format.to_lowercase() == "yyyy-mm-dd" { "%Y-%m-%d" } else { "%m/%d/%Y" };
+    let prompt_format = if date_format.to_lowercase() == "yyyy-mm-dd" { "YYYY-MM-DD" } else { "MM/DD/YYYY" };
+    
     // Get target date
     let target_date_str: String = Input::new()
-        .with_prompt("Target date (MM/DD/YYYY)")
-        .default(chrono::Local::now().date_naive().succ().format("%m/%d/%Y").to_string())
+        .with_prompt(format!("Target date ({})", prompt_format))
+        .default(chrono::Local::now().date_naive().succ().format(format_str).to_string())
         .interact_text()
         .unwrap();
 
@@ -821,19 +867,46 @@ fn get_vl06o_date_update_parameters() -> Result<VL06ODateUpdateParams> {
 }
 
 fn parse_date(date_str: &str) -> Result<NaiveDate> {
-    // Try to parse the date in MM/DD/YYYY format
-    if let Ok(date) = NaiveDate::parse_from_str(date_str, "%m/%d/%Y") {
-        return Ok(date);
-    }
+    // Try to load the configuration to get the date format
+    let config = SapConfig::load().ok();
+    let date_format = config
+        .as_ref()
+        .and_then(|c| c.global.as_ref())
+        .map(|g| g.date_format.as_str())
+        .unwrap_or("mm/dd/yyyy");
 
-    // Try to parse the date in MM-DD-YYYY format
-    if let Ok(date) = NaiveDate::parse_from_str(date_str, "%m-%d-%Y") {
-        return Ok(date);
-    }
-
-    // Try to parse the date in YYYY-MM-DD format
-    if let Ok(date) = NaiveDate::parse_from_str(date_str, "%Y-%m-%d") {
-        return Ok(date);
+    // Try to parse the date based on the configured format
+    match date_format.to_lowercase().as_str() {
+        "yyyy-mm-dd" => {
+            // Try YYYY-MM-DD format first
+            if let Ok(date) = NaiveDate::parse_from_str(date_str, "%Y-%m-%d") {
+                return Ok(date);
+            }
+            
+            // Fallback to other formats
+            if let Ok(date) = NaiveDate::parse_from_str(date_str, "%m/%d/%Y") {
+                return Ok(date);
+            }
+            
+            if let Ok(date) = NaiveDate::parse_from_str(date_str, "%m-%d-%Y") {
+                return Ok(date);
+            }
+        },
+        _ => { // Default to mm/dd/yyyy
+            // Try MM/DD/YYYY format first
+            if let Ok(date) = NaiveDate::parse_from_str(date_str, "%m/%d/%Y") {
+                return Ok(date);
+            }
+            
+            // Fallback to other formats
+            if let Ok(date) = NaiveDate::parse_from_str(date_str, "%m-%d-%Y") {
+                return Ok(date);
+            }
+            
+            if let Ok(date) = NaiveDate::parse_from_str(date_str, "%Y-%m-%d") {
+                return Ok(date);
+            }
+        }
     }
 
     // If all parsing attempts fail, return an error

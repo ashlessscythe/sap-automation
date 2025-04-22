@@ -164,7 +164,9 @@ fn create_test_config(content: &str) -> String {
 // Helper function to create a SapConfig with a specific reports_dir
 fn create_test_sap_config(reports_dir: &str) -> SapConfig {
     let mut config = SapConfig::default();
-    config.global.reports_dir = reports_dir.to_string();
+    if let Some(global) = &mut config.global {
+        global.reports_dir = reports_dir.to_string();
+    }
     config
 }
 

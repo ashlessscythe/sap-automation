@@ -18,6 +18,7 @@ impl Default for SapConfig {
                 instance_id: default_instance_id(),
                 reports_dir: get_default_reports_dir(),
                 default_tcode: None,
+                date_format: default_date_format(),
                 additional_params: HashMap::new(),
             }),
             build: None,
@@ -86,17 +87,21 @@ impl SapConfig {
                                     .to_string(),
                                 reports_dir: global.get("reports_dir")
                                     .and_then(|v| v.as_str())
-                                    .unwrap_or(&get_default_reports_dir())
-                                    .to_string(),
+                                    .map(|s| s.replace("\\", "\\\\"))
+                                    .unwrap_or_else(|| get_default_reports_dir()),
                                 default_tcode: global.get("default_tcode")
                                     .and_then(|v| v.as_str())
                                     .map(|s| s.to_string()),
+                                date_format: global.get("date_format")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or(&default_date_format())
+                                    .to_string(),
                                 additional_params: HashMap::new(),
                             };
                             
                             // Extract additional global parameters
                             for (key, value) in global {
-                                if !["instance_id", "reports_dir", "default_tcode"].contains(&key.as_str()) {
+                                if !["instance_id", "reports_dir", "default_tcode", "date_format"].contains(&key.as_str()) {
                                     if let Some(val_str) = value.as_str() {
                                         global_config.additional_params.insert(key.clone(), val_str.to_string());
                                     }
@@ -220,11 +225,15 @@ impl SapConfig {
                     .to_string(),
                 reports_dir: sap_config.get("reports_dir")
                     .and_then(|v| v.as_str())
-                    .unwrap_or(&get_default_reports_dir())
-                    .to_string(),
+                    .map(|s| s.replace("\\", "\\\\"))
+                    .unwrap_or_else(|| get_default_reports_dir()),
                 default_tcode: sap_config.get("tcode")
                     .and_then(|v| v.as_str())
                     .map(|s| s.to_string()),
+                date_format: sap_config.get("date_format")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or(&default_date_format())
+                    .to_string(),
                 additional_params: HashMap::new(),
             };
             
@@ -276,7 +285,7 @@ impl SapConfig {
             for (key, value) in sap_config {
                 if !["instance_id", "reports_dir", "tcode", "variant", "layout", "column_name", 
                      "date_range_start", "date_range_end", "loop_tcode", "loop_iterations", 
-                     "loop_delay_seconds"].contains(&key.as_str()) {
+                     "loop_delay_seconds", "date_format"].contains(&key.as_str()) {
                     if let Some(val_str) = value.as_str() {
                         // Check if it's a loop parameter
                         if key.starts_with("loop_param_") {
@@ -368,6 +377,7 @@ impl SapConfig {
             content.push_str("[global]\n");
             content.push_str(&format!("instance_id = \"{}\"\n", global.instance_id));
             content.push_str(&format!("reports_dir = \"{}\"\n", global.reports_dir));
+            content.push_str(&format!("date_format = \"{}\"\n", global.date_format));
             
             if let Some(default_tcode) = &global.default_tcode {
                 content.push_str(&format!("default_tcode = \"{}\"\n", default_tcode));
@@ -559,6 +569,7 @@ impl SapConfig {
                 instance_id: instance_id.to_string(),
                 reports_dir: get_default_reports_dir(),
                 default_tcode: None,
+                date_format: default_date_format(),
                 additional_params: HashMap::new(),
             });
         }
@@ -573,6 +584,7 @@ impl SapConfig {
                 instance_id: default_instance_id(),
                 reports_dir: reports_dir.to_string(),
                 default_tcode: None,
+                date_format: default_date_format(),
                 additional_params: HashMap::new(),
             });
         }

@@ -37,6 +37,9 @@ pub struct GlobalConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_tcode: Option<String>,
     
+    #[serde(default = "default_date_format")]
+    pub date_format: String,
+    
     #[serde(flatten)]
     pub additional_params: HashMap<String, String>,
 }
@@ -118,4 +121,9 @@ pub fn default_iterations() -> String {
 /// Default delay seconds
 pub fn default_delay_seconds() -> String {
     "60".to_string()
+}
+
+/// Default date format (mm/dd/yyyy)
+pub fn default_date_format() -> String {
+    "mm/dd/yyyy".to_string()
 }

@@ -361,12 +361,13 @@ fn get_vl06o_parameters() -> Result<VL06OParams> {
     // Get column name
     let column_name: String = Input::new()
         .with_prompt("Column name (leave empty for default)")
-        .allow_empty(true)
+        .with_initial_text("Shipment Number")
+        .allow_empty(false)
         .interact_text()
         .unwrap();
 
     params.column_name = if column_name.is_empty() {
-        None
+        Some("Shipment Number".to_string()) // default
     } else {
         Some(column_name)
     };
@@ -711,6 +712,7 @@ fn get_vl06o_date_update_parameters() -> Result<VL06ODateUpdateParams> {
         },
         0 => {
             // Read from Excel file
+            // TODO
             println!("Select an Excel file containing delivery numbers:");
             
             // Get the reports directory as the default starting point
@@ -723,7 +725,7 @@ fn get_vl06o_date_update_parameters() -> Result<VL06ODateUpdateParams> {
             println!("Or press Enter to use the current reports directory.");
             
             let subdir: String = Input::new()
-                .with_prompt("Enter subdirectory (optional)")
+                .with_prompt("Enter subdirectoryuuuuuuu (optional)")
                 .allow_empty(true)
                 .interact_text()
                 .unwrap();

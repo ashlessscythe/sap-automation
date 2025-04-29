@@ -223,8 +223,20 @@ pub fn resolve_path(path_str: &str) -> String {
     let path = Path::new(path_str);
 
     // If the path exists as-is, return it
-    if path.exists() {
-        return path_str.to_string();
+    match path.try_exists() {
+        Ok(true) => {
+            return path_str.to_string();
+        }
+        _ => {}
+    }
+
+    // Check if it's an absolute Windows path (contains drive letter followed by colon)
+    // Handle both normal and escaped backslash formats (c:\temp and c:\\temp)
+    if path_str.len() >= 2 && path_str.chars().nth(1) == Some(':') {
+        // It's an absolute path with a drive letter, return it as-is
+        // Normalize backslashes if needed
+        let normalized_path = path_str.replace("\\\\", "\\");
+        return normalized_path;
     }
 
     // Handle "../" at the beginning of the path (up one directory from reports dir)
@@ -250,7 +262,7 @@ pub fn resolve_path(path_str: &str) -> String {
 
     // Check if it's a slug (no path separators)
     let needles = ["\\", "/", "\\\\"];
-    if !needles.iter().any(|n| path_str.contains(n)) {
+    if !needles.iter().any(|&n| path_str.contains(n)) {
         // It's a slug, try to resolve it relative to the reports directory
         let reports_dir = get_reports_dir();
         let resolved_path = format!("{}\\{}", reports_dir, path_str);

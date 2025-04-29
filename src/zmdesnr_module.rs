@@ -137,6 +137,11 @@ pub fn run_zmdesnr_auto(session: &GuiSession) -> Result<()> {
     println!("Layout: {:?}", params.layout_row);
     println!("Serial Number: {:?}", params.serial_number);
     println!("Delivery Numbers: {} found", params.delivery_numbers.len());
+    if let Some(pre_export_back) = &params.additional_params.pre_export_back {
+        if !pre_export_back.is_empty() {
+            println!("Additional param: pre_export_back: {}", pre_export_back.to_string());
+        }
+    }
     println!("--------------------------------------------");
 
     // Run the export

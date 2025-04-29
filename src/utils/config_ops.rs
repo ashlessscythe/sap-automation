@@ -151,11 +151,11 @@ impl SapConfig {
                                     tcode_config.tab_number = tcode_table.get("tab_number")
                                         .and_then(|v| v.as_str())
                                         .map(|s| s.to_string());
-                                    
+
                                     // Extract additional parameters
                                     for (key, value) in tcode_table {
                                         if !["variant", "layout", "column_name", "date_range_start", 
-                                             "date_range_end", "by_date", "serial_number", "tab_number"]
+                                             "date_range_end", "by_date", "serial_number", "tab_number", "add_layout_columns"]
                                             .contains(&key.as_str()) {
                                             if let Some(val_str) = value.as_str() {
                                                 tcode_config.additional_params.insert(key.clone(), val_str.to_string());

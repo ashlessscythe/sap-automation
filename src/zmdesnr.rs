@@ -1,6 +1,5 @@
 use sap_scripting::*;
 use windows::core::Result;
-
 use crate::utils::sap_file_utils::*;
 use crate::utils::select_layout_utils::check_select_layout;
 // Import specific functions to avoid ambiguity
@@ -12,6 +11,7 @@ use crate::utils::sap_wnd_utils::*;
 #[derive(Debug, Default)]
 pub struct ZMDESNRAdditionalParams {
     pub pre_export_back: Option<String>,
+    pub add_layout_columns: Option<Vec<String>>,
 }
 
 /// Struct to hold ZMDESNR export parameters
@@ -42,6 +42,73 @@ impl Default for ZMDESNRParams {
             additional_params: ZMDESNRAdditionalParams::default(),
         }
     }
+}
+
+/// Add layout columns to the current view
+///
+/// This function is a port of the VBA code in docs/zmdesnr_layout.md
+/// It adds columns to the layout based on the add_layout_columns configuration
+fn add_layout_columns(session: &GuiSession, params: &ZMDESNRParams) -> Result<bool> {
+    println!("Adding layout columns...");
+    
+    // Get columns from params if available, otherwise use default
+    let add_layout_columns = match &params.additional_params.add_layout_columns {
+        Some(columns) => columns,
+        None => {
+            println!("No add_layout_columns found in params, using default columns");
+            // Default columns from the task
+            &vec!["Created By".to_string(), "Shipment Number".to_string()]
+        }
+    };
+    
+    if add_layout_columns.is_empty() {
+        println!("No columns to add.");
+        return Ok(true);
+    }
+    
+    println!("Adding columns: {:?}", add_layout_columns);
+    
+    // Implement the VBA code from docs/zmdesnr_layout.md
+    
+    // Select row 5 and column "STATUS"
+    if let Ok(shell) = session.find_by_id("wnd[0]/usr/cntlGRID1/shellcont/shell".to_string()) {
+        if let Some(grid) = shell.downcast::<GuiGridView>() {
+            grid.set_current_cell(5, "STATUS".to_string())?;
+            grid.set_selected_rows("5".to_string())?;
+        }
+    }
+    
+    // Select menu option 4/0/0 (Change Layout)
+    if let Ok(menu) = session.find_by_id("wnd[0]/mbar/menu[4]/menu[0]/menu[0]".to_string()) {
+        if let Some(menu_item) = menu.downcast::<GuiMenu>() {
+            menu_item.select()?;
+        }
+    }
+
+    for col in add_layout_columns {
+        println!("layout cols: {}", col);
+    }
+    
+    for r in  &["3", "2"] {
+        // Select row in the layout container
+        if let Ok(shell) = session.find_by_id("wnd[1]/usr/tabsG_TS_ALV/tabpALV_M_R1/ssubSUB_DYN0510:SAPLSKBH:0620/cntlCONTAINER1_LAYO/shellcont/shell".to_string()) {
+            if let Some(grid) = shell.downcast::<GuiGridView>() {
+                grid.set_current_cell_row(r.parse::<i32>().unwrap())?;
+                grid.set_selected_rows(r.to_string())?;
+                grid.double_click_current_cell()?;
+            }
+        }
+    }
+        
+    // Send VKey 0 (Enter)
+    if let Ok(window) = session.find_by_id("wnd[1]".to_string()) {
+        if let Some(wnd) = window.downcast::<GuiModalWindow>() {
+            wnd.send_v_key(0)?;
+        }
+    }
+    
+    println!("Layout columns added successfully.");
+    Ok(true)
 }
 
 /// Run ZMDESNR export with the given parameters
@@ -141,6 +208,12 @@ pub fn run_export(session: &GuiSession, params: &ZMDESNRParams) -> Result<bool> 
         _ => {
             println!("Statusbar message: {}", bar_msg);
         }
+    }
+    
+    // Add layout columns if configured
+    if let Err(e) = add_layout_columns(session, params) {
+        println!("Error adding layout columns: {}", e);
+        // Continue with export even if adding columns failed
     }
 
     // Export as Excel (common for all tabs)

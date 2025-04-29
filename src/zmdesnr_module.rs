@@ -142,6 +142,11 @@ pub fn run_zmdesnr_auto(session: &GuiSession) -> Result<()> {
             println!("Additional param: pre_export_back: {}", pre_export_back.to_string());
         }
     }
+    if let Some(add_layout_columns) = &params.additional_params.add_layout_columns {
+        if !add_layout_columns.is_empty() {
+            println!("Additional param: add_layout_columns: {:?}", add_layout_columns);
+        }
+    }
     println!("--------------------------------------------");
 
     // Run the export
@@ -191,6 +196,24 @@ fn create_zmdesnr_params_from_config(config: &HashMap<String, String>) -> ZMDESN
 
     if let Some(pre_export_back) = config.get("pre_export_back") {
         params.additional_params.pre_export_back = Some(pre_export_back.to_string());
+    }
+
+    // Set add_layout_columns if available
+    if let Some(add_layout_columns) = config.get("add_layout_columns") {
+        // Parse the string value as a TOML array
+        match toml::from_str::<Vec<String>>(add_layout_columns) {
+            Ok(columns) => {
+                params.additional_params.add_layout_columns = Some(columns);
+            }
+            Err(e) => {
+                println!("Error parsing add_layout_columns: {}", e);
+                // Use default values from the task
+                params.additional_params.add_layout_columns = Some(vec![
+                    "Created By".to_string(),
+                    "Shipment Number".to_string(),
+                ]);
+            }
+        }
     }
 
     params

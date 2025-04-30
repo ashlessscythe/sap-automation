@@ -89,7 +89,7 @@ fn add_layout_columns(session: &GuiSession, params: &ZMDESNRParams) -> Result<bo
         println!("layout cols: {}", col);
     }
     
-    for r in  &["3", "2"] {
+    for r in  &["3", "2", "2"] {
         // Select row in the layout container
         if let Ok(shell) = session.find_by_id("wnd[1]/usr/tabsG_TS_ALV/tabpALV_M_R1/ssubSUB_DYN0510:SAPLSKBH:0620/cntlCONTAINER1_LAYO/shellcont/shell".to_string()) {
             if let Some(grid) = shell.downcast::<GuiGridView>() {

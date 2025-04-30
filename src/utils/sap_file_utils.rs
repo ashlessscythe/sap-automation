@@ -29,7 +29,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 /// * `(String, String)` - A tuple containing (file_path, file_name)
 pub fn get_tcode_file_path(tcode: &str, ext: &str) -> (String, String) {
     let reports_dir = get_reports_dir();
-    let tcode_dir = format!("{}\\{}", reports_dir, tcode);
+    let tcode_dir = format!("{}\\\\{}", reports_dir, tcode);
 
     // Create the directory if it doesn't exist
     if !Path::new(&tcode_dir).exists() {

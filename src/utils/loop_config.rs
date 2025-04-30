@@ -178,7 +178,7 @@ pub fn handle_configure_loop() -> Result<()> {
                 // Configure Iterations
                 let current = config.iterations.to_string();
                 let iterations_str: String = Input::new()
-                    .with_prompt("Enter number of iterations")
+                    .with_prompt("Enter number of iterations (0 for infinite until Ctrl+C)")
                     .allow_empty(false)
                     .default(current)
                     .interact()
@@ -186,7 +186,11 @@ pub fn handle_configure_loop() -> Result<()> {
                     
                 if let Ok(iterations) = iterations_str.parse::<usize>() {
                     config.iterations = iterations;
-                    println!("Iterations set to: {}", iterations);
+                    if iterations == 0 {
+                        println!("Iterations set to: infinite (until Ctrl+C)");
+                    } else {
+                        println!("Iterations set to: {}", iterations);
+                    }
                 } else {
                     println!("Invalid number. Keeping current value: {}", config.iterations);
                 }
@@ -270,7 +274,11 @@ pub fn handle_configure_loop() -> Result<()> {
                 println!("\nCurrent Loop Configuration:");
                 println!("---------------------------");
                 println!("TCode: {}", config.tcode);
-                println!("Iterations: {}", config.iterations);
+                if config.iterations == 0 {
+                    println!("Iterations: infinite (until Ctrl+C)");
+                } else {
+                    println!("Iterations: {}", config.iterations);
+                }
                 println!("Delay: {} seconds", config.delay_seconds);
                 
                 if !config.params.is_empty() {
@@ -332,7 +340,11 @@ pub fn run_loop(session: &GuiSession) -> Result<()> {
     }
     
     println!("Running TCode '{}' in a loop with the following configuration:", config.tcode);
-    println!("Iterations: {}", config.iterations);
+    if config.iterations == 0 {
+        println!("Iterations: infinite (until Ctrl+C)");
+    } else {
+        println!("Iterations: {}", config.iterations);
+    }
     println!("Delay: {} seconds", config.delay_seconds);
     
     if !config.params.is_empty() {
@@ -347,8 +359,14 @@ pub fn run_loop(session: &GuiSession) -> Result<()> {
     io::stdin().read_line(&mut input).unwrap();
     
     // Run the TCode in a loop
-    for i in 1..=config.iterations {
-        println!("\nIteration {}/{}", i, config.iterations);
+    let mut iteration = 1;
+    loop {
+        // Display iteration information
+        if config.iterations == 0 {
+            println!("\nIteration {} (infinite loop, press Ctrl+C to stop)", iteration);
+        } else {
+            println!("\nIteration {}/{}", iteration, config.iterations);
+        }
         
         // Check if the TCode is active
         if !check_tcode(session, &config.tcode, Some(true), Some(true))? {
@@ -390,11 +408,17 @@ pub fn run_loop(session: &GuiSession) -> Result<()> {
             }
         }
         
-        // Wait for the specified delay before the next iteration
-        if i < config.iterations {
-            println!("Waiting {} seconds before next iteration...", config.delay_seconds);
-            thread::sleep(Duration::from_secs(config.delay_seconds));
+        // Check if we should continue the loop
+        if config.iterations > 0 && iteration >= config.iterations {
+            break;
         }
+        
+        // Increment iteration counter
+        iteration += 1;
+        
+        // Wait for the specified delay before the next iteration
+        println!("Waiting {} seconds before next iteration...", config.delay_seconds);
+        thread::sleep(Duration::from_secs(config.delay_seconds));
     }
     
     println!("\nLoop execution completed.");

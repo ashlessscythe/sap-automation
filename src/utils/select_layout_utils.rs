@@ -367,7 +367,7 @@ pub fn check_select_layout(
                     }
                 }
             }
-            "mb52" => {
+            "mb52" | "vl06o" => {
                 // Check if button exists
                 if let Ok(button) = session.find_by_id("wnd[0]/tbar[1]/btn[33]".to_string()) {
                     if let Some(btn) = button.downcast::<GuiButton>() {

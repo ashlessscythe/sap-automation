@@ -79,6 +79,9 @@ pub struct TcodeConfig {
     
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tab_number: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subdir: Option<String>,
     
     #[serde(flatten)]
     pub additional_params: HashMap<String, String>,

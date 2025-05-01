@@ -16,6 +16,7 @@ use crate::utils::config_types::SapConfig;
 use crate::utils::excel_file_ops::read_excel_column;
 use crate::utils::excel_path_utils::{get_excel_file_path, get_newest_file};
 use crate::vl06o::{run_date_update, run_export, VL06ODateUpdateParams, VL06OParams};
+use crate::vl06o_delivery_module::run_vl06o_delivery_packages_module;
 
 pub fn run_vl06o_module(session: &GuiSession) -> Result<()> {
     clear_screen();
@@ -246,6 +247,12 @@ pub fn run_vl06o_date_update_module(session: &GuiSession) -> Result<()> {
 fn create_vl06o_params_from_config(config: &HashMap<String, String>) -> VL06OParams {
     let mut params = VL06OParams::default();
 
+    // Display the default values loaded from config
+    println!("Default values from config:");
+    println!("  Variant: {:?}", params.sap_variant_name);
+    println!("  Layout: {:?}", params.layout_row);
+    println!("  Column Name: {:?}", params.column_name);
+
     // Set variant if available
     if let Some(variant) = config.get("variant") {
         params.sap_variant_name = Some(variant.clone());
@@ -289,6 +296,12 @@ fn clear_screen() {
 fn get_vl06o_parameters() -> Result<VL06OParams> {
     let mut params = VL06OParams::default();
 
+    // Display the default values loaded from config
+    println!("Default values from config:");
+    println!("  Variant: {:?}", params.sap_variant_name);
+    println!("  Layout: {:?}", params.layout_row);
+    println!("  Column Name: {:?}", params.column_name);
+
     // Get the configured date format
     let config = SapConfig::load().ok();
     let date_format = config
@@ -322,8 +335,16 @@ fn get_vl06o_parameters() -> Result<VL06OParams> {
         parse_date(&end_date_str).unwrap_or_else(|_| chrono::Local::now().date_naive());
 
     // Get variant name
+    let variant_prompt = match &params.sap_variant_name {
+        Some(variant) => format!("SAP variant name (default: {})", variant),
+        None => "SAP variant name (leave empty for none)".to_string(),
+    };
+    
+    let variant_initial = params.sap_variant_name.clone().unwrap_or_default();
+    
     let variant_name: String = Input::new()
-        .with_prompt("SAP variant name (leave empty for none)")
+        .with_prompt(&variant_prompt)
+        .with_initial_text(variant_initial)
         .allow_empty(true)
         .interact_text()
         .unwrap();
@@ -335,8 +356,16 @@ fn get_vl06o_parameters() -> Result<VL06OParams> {
     };
 
     // Get layout row
+    let layout_prompt = match &params.layout_row {
+        Some(layout) => format!("Layout row (default: {})", layout),
+        None => "Layout row (leave empty for default)".to_string(),
+    };
+    
+    let layout_initial = params.layout_row.clone().unwrap_or_default();
+    
     let layout_row: String = Input::new()
-        .with_prompt("Layout row (leave empty for default)")
+        .with_prompt(&layout_prompt)
+        .with_initial_text(layout_initial)
         .allow_empty(true)
         .interact_text()
         .unwrap();
@@ -606,6 +635,11 @@ fn get_vl06o_parameters() -> Result<VL06OParams> {
 fn get_vl06o_date_update_parameters() -> Result<VL06ODateUpdateParams> {
     let mut params = VL06ODateUpdateParams::default();
 
+    // Display the default values loaded from config
+    println!("Default values from config:");
+    println!("  Variant: {:?}", params.sap_variant_name);
+    println!("  Target Date: {}", params.target_date);
+
     // Get the configured date format
     let config = SapConfig::load().ok();
     let date_format = config
@@ -629,9 +663,12 @@ fn get_vl06o_date_update_parameters() -> Result<VL06ODateUpdateParams> {
         parse_date(&target_date_str).unwrap_or_else(|_| chrono::Local::now().date_naive().succ());
 
     // Get variant name
+    let variant_value = params.sap_variant_name.clone().unwrap_or_else(|| "blank_".to_string());
+    let variant_prompt = format!("SAP variant name (default: {})", variant_value);
+    
     let variant_name: String = Input::new()
-        .with_prompt("SAP variant name (leave empty for default 'blank_')")
-        .default("blank_".to_string())
+        .with_prompt(&variant_prompt)
+        .with_initial_text(variant_value)
         .allow_empty(true)
         .interact_text()
         .unwrap();
@@ -725,7 +762,7 @@ fn get_vl06o_date_update_parameters() -> Result<VL06ODateUpdateParams> {
             println!("Or press Enter to use the current reports directory.");
             
             let subdir: String = Input::new()
-                .with_prompt("Enter subdirectoryuuuuuuu (optional)")
+                .with_prompt("Enter subdirectory (optional)")
                 .allow_empty(true)
                 .interact_text()
                 .unwrap();

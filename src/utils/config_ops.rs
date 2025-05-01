@@ -513,6 +513,10 @@ impl SapConfig {
                 if let Some(tab_number) = &tcode_config.tab_number {
                     config.insert("tab_number".to_string(), tab_number.clone());
                 }
+
+                if let Some(subdir) = &tcode_config.subdir {
+                    config.insert("subdir".to_string(), subdir.clone());
+                }
                 
                 // Add additional parameters
                 for (key, value) in &tcode_config.additional_params {

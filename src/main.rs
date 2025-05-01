@@ -7,6 +7,7 @@ mod app;
 mod utils;
 mod vl06o;
 mod vl06o_module;
+mod vl06o_delivery_module;
 mod vt11;
 mod vt11_module;
 mod zmdesnr;
@@ -17,6 +18,7 @@ use utils::config_ops::handle_configure_reports_dir;
 use utils::excel_file_ops::handle_read_excel_file;
 use utils::loop_config::{handle_configure_loop, run_loop};
 use vl06o_module::{run_vl06o_auto, run_vl06o_date_update_module, run_vl06o_module};
+use vl06o_delivery_module::run_vl06o_delivery_packages_module;
 use vt11_module::{run_vt11_auto, run_vt11_module};
 use zmdesnr_module::{run_zmdesnr_auto, run_zmdesnr_module};
 
@@ -124,6 +126,7 @@ fn main() -> anyhow::Result<()> {
                     "VL06O - List of Outbound Deliveries",
                     "VL06O - Auto Run (from config)",
                     "VL06O - Change Delivery Date",
+                    "VL06O - List of Delivery Packages",
                     "ZMDESNR - Serial Number History",
                     "ZMDESNR - Auto Run (from config)",
                     "Run Loop (using config)",
@@ -269,6 +272,21 @@ fn main() -> anyhow::Result<()> {
                 }
             }
             6 => {
+                // Run VL06O Delivery Packages module (only if logged in and SAP connected)
+                if sap_connected && is_logged_in {
+                    if let Err(e) = run_vl06o_delivery_packages_module(session.as_ref().unwrap()) {
+                        eprintln!("Error running VL06O delivery packages module: {}", e);
+                        thread::sleep(Duration::from_secs(2));
+                    }
+                } else if sap_connected {
+                    println!("You need to log in first.");
+                    thread::sleep(Duration::from_secs(2));
+                } else {
+                    println!("SAP connection not available. Cannot run VL06O delivery packages module.");
+                    thread::sleep(Duration::from_secs(2));
+                }
+            }
+            7 => {
                 // Run ZMDESNR module (only if logged in and SAP connected)
                 if sap_connected && is_logged_in {
                     if let Err(e) = run_zmdesnr_module(session.as_ref().unwrap()) {
@@ -283,7 +301,7 @@ fn main() -> anyhow::Result<()> {
                     thread::sleep(Duration::from_secs(2));
                 }
             }
-            7 => {
+            8 => {
                 // Run ZMDESNR Auto module (only if logged in and SAP connected)
                 if sap_connected && is_logged_in {
                     if let Err(e) = run_zmdesnr_auto(session.as_ref().unwrap()) {
@@ -298,7 +316,7 @@ fn main() -> anyhow::Result<()> {
                     thread::sleep(Duration::from_secs(2));
                 }
             }
-            8 => {
+            9 => {
                 // Run Loop (using config) (only if logged in and SAP connected)
                 if sap_connected && is_logged_in {
                     if let Err(e) = run_loop(session.as_ref().unwrap()) {
@@ -313,35 +331,35 @@ fn main() -> anyhow::Result<()> {
                     thread::sleep(Duration::from_secs(2));
                 }
             }
-            9 => {
+            10 => {
                 // Configure Reports Directory (available regardless of SAP connection)
                 if let Err(e) = handle_configure_reports_dir() {
                     eprintln!("Error configuring reports directory: {}", e);
                     thread::sleep(Duration::from_secs(2));
                 }
             }
-            10 => {
+            11 => {
                 // Configure SAP Parameters (available regardless of SAP connection)
                 if let Err(e) = utils::config_handlers::handle_configure_sap_params() {
                     eprintln!("Error configuring SAP parameters: {}", e);
                     thread::sleep(Duration::from_secs(2));
                 }
             }
-            11 => {
+            12 => {
                 // Configure Loop (available regardless of SAP connection)
                 if let Err(e) = handle_configure_loop() {
                     eprintln!("Error configuring loop: {}", e);
                     thread::sleep(Duration::from_secs(2));
                 }
             }
-            12 => {
+            13 => {
                 // Read Excel File (available regardless of SAP connection)
                 if let Err(e) = handle_read_excel_file() {
                     eprintln!("Error reading Excel file: {}", e);
                     thread::sleep(Duration::from_secs(2));
                 }
             }
-            13 => {
+            14 => {
                 // Log out of SAP (only if logged in and SAP connected)
                 if sap_connected && is_logged_in {
                     if let Err(e) = handle_logout(session.as_ref().unwrap()) {
@@ -356,7 +374,7 @@ fn main() -> anyhow::Result<()> {
                     thread::sleep(Duration::from_secs(2));
                 }
             }
-            14 => {
+            15 => {
                 // Exit application
                 clear_screen();
                 println!("Exiting application...");

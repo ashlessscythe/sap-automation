@@ -1,6 +1,7 @@
 use sap_scripting::*;
 use windows::core::Result;
 
+use crate::utils::select_layout_utils::check_select_layout;
 use crate::utils::{choose_layout, sap_file_utils::*};
 // Import specific functions to avoid ambiguity
 use crate::utils::sap_ctrl_utils::*;
@@ -24,15 +25,149 @@ pub struct VL06OParams {
 
 impl Default for VL06OParams {
     fn default() -> Self {
+        // Load config to get variant and layout
+        println!("Loading config for VL06OParams...");
+        let config = crate::utils::config_types::SapConfig::load();
+        
+        // Debug the config loading result
+        match &config {
+            Ok(cfg) => println!("Config loaded successfully"),
+            Err(e) => println!("Failed to load config: {}", e),
+        }
+        
+        let config = config.ok();
+        
+        // Debug the tcode section
+        if let Some(ref cfg) = config {
+            if let Some(ref tcode_map) = cfg.tcode {
+                println!("Found tcode section with {} entries", tcode_map.len());
+                if tcode_map.contains_key("VL06O") {
+                    println!("Found VL06O entry in tcode section");
+                } else {
+                    println!("VL06O entry not found in tcode section");
+                }
+            } else {
+                println!("No tcode section found in config");
+            }
+        }
+        
+        let tcode_config = config
+            .as_ref()
+            .and_then(|c| c.tcode.as_ref())
+            .and_then(|t| t.get("VL06O"));
+            
+        // Debug the variant and layout values
+        if let Some(tc) = tcode_config {
+            println!("VL06O config: variant={:?}, layout={:?}", tc.variant, tc.layout);
+        }
+        
+        let variant = tcode_config.and_then(|c| c.variant.clone());
+        let layout = tcode_config.and_then(|c| c.layout.clone());
+        let column = tcode_config.and_then(|c| c.column_name.clone());
+        
+        println!("Using variant={:?}, layout={:?}, column={:?}", variant, layout, column);
+
         Self {
-            sap_variant_name: None,
-            layout_row: None,
+            sap_variant_name: variant,
+            layout_row: layout,
             shipment_numbers: Vec::new(),
             start_date: chrono::Local::now().date_naive(),
             end_date: chrono::Local::now().date_naive(),
             by_date: false,
-            column_name: None,
+            column_name: column,
             t_code: "VL06O".to_string(),
+        }
+    }
+}
+
+/// Struct to hold VL06O delivery packages export parameters
+#[derive(Debug)]
+pub struct VL06ODeliveryParams {
+    pub sap_variant_name: Option<String>,
+    pub layout_row: Option<String>,
+    pub delivery_numbers: Vec<String>,
+    pub start_date: NaiveDate,
+    pub end_date: NaiveDate,
+    pub by_date: bool,
+    pub column_name: Option<String>,
+    pub t_code: String,
+    pub subdir: Option<String>,
+}
+
+impl Default for VL06ODeliveryParams {
+    fn default() -> Self {
+        // Load config to get variant and layout
+        println!("Loading config for VL06ODeliveryParams...");
+        let config = crate::utils::config_types::SapConfig::load();
+        
+        // Debug the config loading result
+        match &config {
+            Ok(cfg) => println!("Config loaded successfully"),
+            Err(e) => println!("Failed to load config: {}", e),
+        }
+        
+        let config = config.ok();
+        
+        // Debug the tcode section
+        if let Some(ref cfg) = config {
+            if let Some(ref tcode_map) = cfg.tcode {
+                println!("Found tcode section with {} entries", tcode_map.len());
+                if tcode_map.contains_key("VL06O") {
+                    println!("Found VL06O entry in tcode section");
+                } else {
+                    println!("VL06O entry not found in tcode section");
+                }
+            } else {
+                println!("No tcode section found in config");
+            }
+        }
+        
+        let tcode_config = config
+            .as_ref()
+            .and_then(|c| c.tcode.as_ref())
+            .and_then(|t| t.get("VL06O"));
+            
+        // Debug the variant and layout values
+        if let Some(tc) = tcode_config {
+            println!("VL06O config: variant={:?}, layout={:?}", tc.variant, tc.layout);
+        }
+        
+        let variant = tcode_config.and_then(|c| c.variant.clone());
+        let layout = tcode_config.and_then(|c| c.layout.clone());
+        let column = tcode_config
+            .and_then(|c| c.column_name.clone())
+            .or_else(|| Some("Delivery".to_string()));
+        // Get subdir directly from the raw config or from tcode_config
+        // This handles the case where subdir might be in additional_params
+        let subdir = config
+            .as_ref()
+            .and_then(|c| c.raw_config.as_ref())
+            .and_then(|raw| raw.get("tcode"))
+            .and_then(|tcode| tcode.get("VL06O"))
+            .and_then(|vl06o| vl06o.get("subdir"))
+            .and_then(|subdir| subdir.as_str())
+            .map(|s| s.to_string())
+            .or_else(|| tcode_config.and_then(|c| c.subdir.clone()))
+            .or_else(|| {
+                // Check if subdir is in additional_params
+                tcode_config
+                    .and_then(|c| c.additional_params.get("subdir"))
+                    .map(|s| s.clone())
+            })
+            .or_else(|| Some("bruh".to_string()));
+        
+        println!("Using variant={:?}, layout={:?}, column={:?}", variant, layout, column);
+
+        Self {
+            sap_variant_name: variant,
+            layout_row: layout,
+            delivery_numbers: Vec::new(),
+            start_date: chrono::Local::now().date_naive(),
+            end_date: chrono::Local::now().date_naive(),
+            by_date: false,
+            column_name: column,
+            t_code: "VL06O".to_string(),
+            subdir,
         }
     }
 }
@@ -48,10 +183,52 @@ pub struct VL06ODateUpdateParams {
 
 impl Default for VL06ODateUpdateParams {
     fn default() -> Self {
+        // Load config to get variant
+        println!("Loading config for VL06ODateUpdateParams...");
+        let config = crate::utils::config_types::SapConfig::load();
+        
+        // Debug the config loading result
+        match &config {
+            Ok(cfg) => println!("Config loaded successfully"),
+            Err(e) => println!("Failed to load config: {}", e),
+        }
+        
+        let config = config.ok();
+        
+        // Debug the tcode section
+        if let Some(ref cfg) = config {
+            if let Some(ref tcode_map) = cfg.tcode {
+                println!("Found tcode section with {} entries", tcode_map.len());
+                if tcode_map.contains_key("VL06O") {
+                    println!("Found VL06O entry in tcode section");
+                } else {
+                    println!("VL06O entry not found in tcode section");
+                }
+            } else {
+                println!("No tcode section found in config");
+            }
+        }
+        
+        let tcode_config = config
+            .as_ref()
+            .and_then(|c| c.tcode.as_ref())
+            .and_then(|t| t.get("VL06O"));
+            
+        // Debug the variant value
+        if let Some(tc) = tcode_config {
+            println!("VL06O config: variant={:?}", tc.variant);
+        }
+        
+        let variant = tcode_config
+            .and_then(|c| c.variant.clone())
+            .or_else(|| Some("blank_".to_string()));
+        
+        println!("Using variant={:?}", variant);
+
         Self {
             delivery_numbers: Vec::new(),
             target_date: chrono::Local::now().date_naive().succ(), // Default to tomorrow
-            sap_variant_name: Some("blank_".to_string()),
+            sap_variant_name: variant,
             t_code: "VL06O".to_string(),
         }
     }
@@ -173,29 +350,11 @@ pub fn run_export(session: &GuiSession, params: &VL06OParams) -> Result<bool> {
         }
     }
 
-    // Check if layout provided
+    // Check if layout provided and select it using the abstracted function
     if let Some(layout_row) = &params.layout_row {
         if !layout_row.is_empty() {
-            // Choose Layout
-            if let Ok(menu) = session.find_by_id("wnd[0]/mbar/menu[3]/menu[2]/menu[1]".to_string())
-            {
-                if let Some(menu_item) = menu.downcast::<GuiMenu>() {
-                    menu_item.select()?;
-                }
-            }
-            // Use the existing layout selection utility
-            let layout_result = choose_layout(session, "vl06o", layout_row);
-            match layout_result {
-                Ok(_) => {
-                    println!("Layout selected: {}", layout_row);
-                }
-                Err(e) => {
-                    eprintln!("Error selecting layout ({}): {}", layout_row, e);
-                    // If no layout specified, close any open layout selection windows
-                    close_popups(session, None, None)?;
-                    println!("No layout specified. Exporting as-is.");
-                }
-            }
+            // Use the select_layout_utils function to handle layout selection
+            check_select_layout(session, &params.t_code, layout_row.as_str(), None)?;
         }
     }
 
@@ -215,6 +374,112 @@ pub fn run_export(session: &GuiSession, params: &VL06OParams) -> Result<bool> {
     if !run_check {
         println!("Error checking export window");
         return Ok(false);
+    }
+
+    // Get file path using the utility function
+    let (file_path, file_name) = get_tcode_file_path("VL06O", "xlsx");
+
+    // Save SAP file with prevent_excel_open set to true (don't open Excel)
+    let run_check = save_sap_file(session, &file_path, &file_name, Some(true))?;
+
+    Ok(run_check)
+}
+
+/// Run VL06O export with delivery numbers to get package counts
+///
+/// This function is a port of the VBA code in deliv_packages.md
+pub fn run_export_delivery_packages(session: &GuiSession, params: &VL06ODeliveryParams) -> Result<bool> {
+    println!("Running VL06O export for delivery packages...");
+
+    // Check if tCode is active
+    if !assert_tcode(session, "VL06O", Some(0))? {
+        println!("Failed to activate VL06O transaction");
+        return Ok(false);
+    }
+
+    // Press "List Outbound Deliveries" button
+    if let Ok(btn) = session.find_by_id("wnd[0]/usr/btnBUTTON6".to_string()) {
+        if let Some(button) = btn.downcast::<GuiButton>() {
+            button.press()?;
+        }
+    }
+
+    // Apply variant if provided
+    if let Some(variant_name) = &params.sap_variant_name {
+        if !variant_name.is_empty() && !variant_select(session, &params.t_code, variant_name)? {
+            println!(
+                "Failed to select variant '{}' for tCode '{}'",
+                variant_name, params.t_code
+            );
+            // Continue with export even if variant selection failed
+        }
+    }
+
+    // Press Multi Delivery button
+    if let Ok(btn) = session.find_by_id("wnd[0]/usr/btn%_IT_VBELN_%_APP_%-VALU_PUSH".to_string()) {
+        if let Some(button) = btn.downcast::<GuiButton>() {
+            button.press()?;
+        }
+    }
+
+    // Clear previous entries
+    if let Ok(window) = session.find_by_id("wnd[1]".to_string()) {
+        if let Some(modal_window) = window.downcast::<GuiModalWindow>() {
+            modal_window.send_v_key(24)?; // Shift+F8 to clear entries
+        }
+    }
+
+    // Enter delivery numbers
+    let mut j = 0;
+    for delivery_number in &params.delivery_numbers {
+        let input_field_id = format!("wnd[1]/usr/tabsTAB_STRIP/tabpSIVA/ssubSCREEN_HEADER:SAPLALDB:3010/tblSAPLALDBSINGLE/ctxtRSCSEL_255-SLOW_I[1,{}]", j);
+        if let Ok(txt) = session.find_by_id(input_field_id) {
+            if let Some(text_field) = txt.downcast::<GuiCTextField>() {
+                text_field.set_text(delivery_number.clone())?;
+                j += 1;
+            }
+        }
+    }
+
+    // Close Multi-Window
+    if let Ok(window) = session.find_by_id("wnd[1]".to_string()) {
+        if let Some(modal_window) = window.downcast::<GuiModalWindow>() {
+            modal_window.send_v_key(8)?; // F8 key to close
+        }
+    }
+
+    // Execute
+    if let Ok(wnd) = session.find_by_id("wnd[0]".to_string()) {
+        if let Some(main_window) = wnd.downcast::<GuiMainWindow>() {
+            main_window.send_v_key(8)?; // F8 key to execute
+        }
+    }
+
+    // select layout
+    if let Some(layout_row) = &params.layout_row {
+        check_select_layout(session, &params.t_code, layout_row.as_str(), None)?;
+    }
+
+
+    // Export as Excel
+    if let Ok(menu) = session.find_by_id("wnd[0]/mbar/menu[0]/menu[5]/menu[1]".to_string()) {
+        if let Some(menu_item) = menu.downcast::<GuiMenu>() {
+            menu_item.select()?;
+        }
+    }
+
+    // Press OK in export dialog
+    if let Ok(btn) = session.find_by_id("wnd[1]/tbar[0]/btn[0]".to_string()) {
+        if let Some(button) = btn.downcast::<GuiButton>() {
+            button.press()?;
+        }
+    }
+
+    // Close any remaining dialogs
+    if let Ok(window) = session.find_by_id("wnd[1]".to_string()) {
+        if let Some(modal_window) = window.downcast::<GuiModalWindow>() {
+            modal_window.close()?;
+        }
     }
 
     // Get file path using the utility function

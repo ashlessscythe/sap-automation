@@ -5,6 +5,7 @@ use crossterm::{
 };
 use dialoguer::{Input, Select};
 use sap_scripting::*;
+use std::fs;
 use std::io::{self};
 use std::path::Path;
 use windows::core::Result;
@@ -12,7 +13,7 @@ use windows::core::Result;
 use crate::utils::{config_ops::get_reports_dir, excel_path_utils::resolve_path};
 use crate::utils::config_types::SapConfig;
 use crate::utils::excel_file_ops::read_excel_column;
-use crate::utils::excel_path_utils::get_excel_file_path;
+use crate::utils::excel_path_utils::{get_excel_file_path, get_newest_file};
 use crate::vl06o::{run_export_delivery_packages, VL06ODeliveryParams};
 
 /// Run VL06O export with delivery numbers to get package counts
@@ -23,6 +24,138 @@ pub fn run_vl06o_delivery_packages_module(session: &GuiSession) -> Result<()> {
 
     // Get parameters from user
     let params = get_vl06o_delivery_parameters()?;
+
+    // Run the export
+    match run_export_delivery_packages(session, &params) {
+        Ok(true) => {
+            println!("VL06O delivery packages export completed successfully!");
+        }
+        Ok(false) => {
+            println!("VL06O delivery packages export failed or was cancelled.");
+        }
+        Err(e) => {
+            println!("Error running VL06O delivery packages export: {}", e);
+        }
+    }
+
+    // Wait for user to press enter before returning to main menu
+    println!("\nPress Enter to return to main menu...");
+    let mut input = String::new();
+    io::stdin().read_line(&mut input).unwrap();
+
+    Ok(())
+}
+
+/// Run VL06O delivery packages auto using default configs
+/// This function automatically gets deliveries from the "Delivery" column
+/// in the latest Excel file in the zmdesnr subdirectory
+pub fn run_vl06o_delivery_packages_auto(session: &GuiSession) -> Result<()> {
+    clear_screen();
+    println!("VL06O - Auto Run Delivery Packages");
+    println!("=================================");
+
+    // Load configuration
+    let config = match SapConfig::load() {
+        Ok(cfg) => cfg,
+        Err(e) => {
+            println!("Error loading configuration: {}", e);
+            println!("\nPress Enter to return to main menu...");
+            let mut input = String::new();
+            io::stdin().read_line(&mut input).unwrap();
+            return Ok(());
+        }
+    };
+
+    // Create default parameters
+    let mut params = VL06ODeliveryParams::default();
+
+    // Get VL06O specific configuration
+    if let Some(tcode_config) = config.get_tcode_config("VL06O", Some(true)) {
+        // Override with config if available
+        if let Some(variant) = tcode_config.get("variant") {
+            params.sap_variant_name = Some(variant.clone());
+        }
+        if let Some(layout) = tcode_config.get("layout") {
+            params.layout_row = Some(layout.clone());
+        }
+        if let Some(subdir) = tcode_config.get("subdir") {
+            params.subdir = Some(subdir.clone());
+        }
+    } else {
+        println!("No configuration found for VL06O.");
+        println!("Using default parameters.");
+    }
+
+    // Set column name to "Delivery" as specified
+    params.column_name = Some("Delivery".to_string());
+
+    // Get the reports directory
+    let reports_dir = get_reports_dir();
+
+    // Create the ZMDESNR subdirectory path
+    let zmdesnr_dir = format!("{}\\zmdesnr", reports_dir);
+
+    // Check if the ZMDESNR directory exists
+    let zmdesnr_path = Path::new(&zmdesnr_dir);
+    if !zmdesnr_path.exists() {
+        println!("ZMDESNR directory not found: {}", zmdesnr_dir);
+        println!("Creating directory...");
+        if let Err(e) = fs::create_dir_all(&zmdesnr_dir) {
+            println!("Error creating directory: {}", e);
+            println!("\nPress Enter to return to main menu...");
+            let mut input = String::new();
+            io::stdin().read_line(&mut input).unwrap();
+            return Ok(());
+        }
+    }
+
+    // Get the newest Excel file in the ZMDESNR directory
+    let excel_path = get_newest_file(&zmdesnr_dir, "xlsx")?;
+
+    if excel_path.is_empty() {
+        println!("No Excel files found in ZMDESNR directory.");
+        println!("Please run ZMDESNR export first to generate an Excel file.");
+        println!("\nPress Enter to return to main menu...");
+        let mut input = String::new();
+        io::stdin().read_line(&mut input).unwrap();
+        return Ok(());
+    }
+
+    println!("Using newest Excel file: {}", excel_path);
+
+    // Read the delivery numbers from the Excel file
+    match read_excel_column(&excel_path, "Sheet1", "Delivery") {
+        Ok(delivery_numbers) => {
+            if delivery_numbers.is_empty() {
+                println!("No delivery numbers found in Excel file.");
+                println!("\nPress Enter to return to main menu...");
+                let mut input = String::new();
+                io::stdin().read_line(&mut input).unwrap();
+                return Ok(());
+            } else {
+                println!(
+                    "Found {} delivery numbers in Excel file.",
+                    delivery_numbers.len()
+                );
+                params.delivery_numbers = delivery_numbers;
+            }
+        }
+        Err(e) => {
+            println!("Error reading Excel file: {}", e);
+            println!("\nPress Enter to return to main menu...");
+            let mut input = String::new();
+            io::stdin().read_line(&mut input).unwrap();
+            return Ok(());
+        }
+    }
+
+    println!("Running VL06O delivery packages with the following parameters:");
+    println!("--------------------------------------------");
+    println!("Variant: {:?}", params.sap_variant_name);
+    println!("Layout: {:?}", params.layout_row);
+    println!("Column Name: {:?}", params.column_name);
+    println!("Delivery Numbers: {} found", params.delivery_numbers.len());
+    println!("--------------------------------------------");
 
     // Run the export
     match run_export_delivery_packages(session, &params) {

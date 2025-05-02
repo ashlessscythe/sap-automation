@@ -296,14 +296,12 @@ pub fn run_export(session: &GuiSession, params: &VL06OParams) -> Result<bool> {
     // Paste shipment numbers using the scrollable paste function
     println!("Pasting {} shipment numbers...", params.shipment_numbers.len());
     let table_id = "tabsTAB_STRIP/tabpSIVA/ssubSCREEN_HEADER:SAPLALDB:3010";
-    let field_pattern = "ctxtRSCSEL_255-SLOW_I[1,{}]";
     let batch_size = 7; // Number of visible rows in the table
     
     let paste_result = paste_values_with_scroll(
         session,
         1, // Window index
         table_id,
-        field_pattern,
         &params.shipment_numbers,
         batch_size
     )?;
@@ -441,14 +439,12 @@ pub fn run_export_delivery_packages(session: &GuiSession, params: &VL06ODelivery
       // Enter delivery numbers using the scrollable paste function
       println!("Pasting {} delivery numbers...", delivery_numbers.len());
       let table_id = "tabsTAB_STRIP/tabpSIVA/ssubSCREEN_HEADER:SAPLALDB:3010/tblSAPLALDBSINGLE";
-      let field_pattern = "ctxtRSCSEL_255-SLOW_I[1,{}]";
       let batch_size = 7; // Number of visible rows in the table
       
       let paste_result = paste_values_with_scroll(
           session,
           1, // Window index
           table_id,
-          field_pattern,
           &delivery_numbers,
           batch_size
       )?;
@@ -590,14 +586,12 @@ pub fn run_date_update(session: &GuiSession, params: &VL06ODateUpdateParams) -> 
     // Enter delivery numbers using the scrollable paste function
     println!("Pasting {} delivery numbers for date update...", params.delivery_numbers.len());
     let table_id = "tabsTAB_STRIP/tabpSIVA/ssubSCREEN_HEADER:SAPLALDB:3010";
-    let field_pattern = "ctxtRSCSEL_255-SLOW_I[1,{}]";
     let batch_size = 7; // Number of visible rows in the table
     
     let paste_result = paste_values_with_scroll(
         session,
         1, // Window index
         table_id,
-        field_pattern,
         &params.delivery_numbers,
         batch_size
     )?;

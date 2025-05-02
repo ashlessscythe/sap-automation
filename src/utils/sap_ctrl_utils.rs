@@ -157,7 +157,6 @@ pub fn paste_values_with_scroll(
     session: &GuiSession,
     wnd_idx: i32,
     table_id: &str,
-    field_pattern: &str,
     values: &[String],
     batch_size: usize,
 ) -> Result<bool> {
@@ -225,7 +224,7 @@ pub fn paste_values_with_scroll(
             break;
         }
 
-        println!("Pasted {} values so far", values_pasted);
+        println!("Pasted {} values out of {} so far", values_pasted, values.len());
     }
 
     println!("Total values pasted: {}/{}", values_pasted, values.len());

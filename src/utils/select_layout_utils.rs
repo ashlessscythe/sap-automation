@@ -187,10 +187,10 @@ pub fn layout_popup(session: &GuiSession, tcode: &str) -> windows::core::Result<
         }
         "vl06o" => {
             // Choose Layout Button for VL06O
-            if let Ok(menu) = session.find_by_id("wnd[0]/mbar/menu[3]/menu[2]/menu[1]".to_string())
+            if let Ok(button) = session.find_by_id("wnd[0]/tbar[1]/btn[33]".to_string())
             {
-                if let Some(menu_item) = menu.downcast::<GuiMenu>() {
-                    menu_item.select()?;
+                if let Some(btn) = button.downcast::<GuiButton>() {
+                    btn.press()?;
                 }
             }
         }

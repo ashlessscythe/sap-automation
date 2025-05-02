@@ -1,243 +1,233 @@
-use crate::utils::sap_constants::CtrlCheck;
-use crate::utils::sap_interfaces::{SapComponent, SapSession};
 use sap_scripting::*;
 use windows::core::Result;
 
-// Legacy function that uses the new interface internally
+use super::sap_wnd_utils::*;
+
+/// Check if a control exists in the SAP GUI
+///
+/// This function checks if a control exists in the SAP GUI at the specified window index
+/// and with the specified ID suffix.
 pub fn exist_ctrl(
     session: &GuiSession,
-    n_wnd: i32,
-    control_id: &str,
-    ret_msg: bool,
-) -> Result<CtrlCheck> {
-    // For now, we'll implement this directly to avoid circular dependencies
-    // In a real implementation, we would convert the GuiSession to a SapSession
-    let mut err_chk = CtrlCheck {
-        cband: false,
-        ctext: String::new(),
-        ctype: String::new(),
-    };
+    wnd_idx: i32,
+    id_suffix: &str,
+    silent: bool,
+) -> Result<CtrlBand> {
+    let wnd_id = format!("wnd[{}]", wnd_idx);
+    let full_id = format!("{}{}", wnd_id, id_suffix);
+    let full_id_for_log = full_id.clone();
 
-    // Try to find the control
-    let control_path = format!("wnd[{}]{}", n_wnd, control_id);
-    let ret_id = session.find_by_id(control_path);
-
-    if let Ok(component) = ret_id {
-        err_chk.cband = true;
-
-        if ret_msg {
-            // Get type information
-            err_chk.ctype = component.r_type().unwrap_or_default();
-
-            // Get text based on component type
-            if let Some(text_field) = component.downcast::<GuiTextField>() {
-                err_chk.ctext = text_field.text()?;
-            } else if let Some(button) = component.downcast::<GuiButton>() {
-                err_chk.ctext = button.text()?;
+    let ctrl_result = session.find_by_id(full_id);
+    let cband = ctrl_result.is_ok();
+    
+    // Initialize default values for ctext and ctype
+    let mut ctext = String::new();
+    let mut ctype = String::new();
+    
+    // If control exists, try to get its text and type
+    if cband {
+        if let Ok(component) = ctrl_result {
+            // Try to get component type using the component's name
+            if let Ok(name) = component.name() {
+                ctype = name;
+            }
+            
+            // Try to get text based on component type
+            if let Some(window) = component.downcast::<GuiFrameWindow>() {
+                ctext = window.text().unwrap_or_default();
+            } else if let Some(window) = component.downcast::<GuiMainWindow>() {
+                ctext = window.text().unwrap_or_default();
+            } else if let Some(window) = component.downcast::<GuiModalWindow>() {
+                ctext = window.text().unwrap_or_default();
             } else if let Some(label) = component.downcast::<GuiLabel>() {
-                err_chk.ctext = label.text()?;
+                ctext = label.text().unwrap_or_default();
+            } else if let Some(text_field) = component.downcast::<GuiTextField>() {
+                ctext = text_field.text().unwrap_or_default();
+            } else if let Some(text_field) = component.downcast::<GuiCTextField>() {
+                ctext = text_field.text().unwrap_or_default();
             } else if let Some(statusbar) = component.downcast::<GuiStatusbar>() {
-                err_chk.ctext = statusbar.text()?;
-            } else if let Some(window) = component.downcast::<GuiFrameWindow>() {
-                err_chk.ctext = window.text()?;
-            } else if let Some(modal_window) = component.downcast::<GuiModalWindow>() {
-                err_chk.ctext = modal_window.text()?;
-            } else {
-                // For other component types, use the name as a fallback
-                err_chk.ctext = component.name().unwrap_or_default();
+                ctext = statusbar.text().unwrap_or_default();
             }
         }
     }
 
-    Ok(err_chk)
+    if !cband && !silent {
+        println!("Control not found: {}", full_id_for_log);
+    }
+
+    Ok(CtrlBand { cband, ctext, ctype })
 }
 
-// Legacy function that uses the new interface internally
+/// Struct to hold the result of exist_ctrl
+#[derive(Debug)]
+pub struct CtrlBand {
+    pub cband: bool,
+    pub ctext: String,
+    pub ctype: String,
+}
+
+/// Get text from SAP GUI controls
+///
+/// This function gets text from SAP GUI controls at the specified window index
+/// and with the specified ID suffix.
 pub fn hit_ctrl(
     session: &GuiSession,
-    n_wnd: i32,
-    control_id: &str,
-    event_id: &str,
-    event_id_opt: &str,
-    event_id_value: &str,
+    wnd_idx: i32,
+    id_suffix: &str,
+    prop: &str,
+    action: &str,
+    value: &str,
 ) -> Result<String> {
-    // For now, we'll implement this directly to avoid circular dependencies
-    // In a real implementation, we would convert the GuiSession to a SapSession
-    let mut aux_str = String::new();
-    let control_path = format!("wnd[{}]{}", n_wnd, control_id);
+    let wnd_id = format!("wnd[{}]", wnd_idx);
+    let full_id = format!("{}{}", wnd_id, id_suffix);
+    let full_id_for_log = full_id.clone();
 
-    match event_id {
-        "Maximize" => {
-            if let Ok(component) = session.find_by_id(control_path) {
-                if let Some(window) = component.downcast::<GuiFrameWindow>() {
-                    window.maximize()?;
-                }
-            }
-        }
-        "Minimize" => {
-            // Note: minimize is not available in GuiFrameWindow
-            // Using maximize as a fallback
-            if let Ok(component) = session.find_by_id(control_path) {
-                if let Some(window) = component.downcast::<GuiFrameWindow>() {
-                    window.maximize()?;
-                }
-            }
-        }
-        "Press" => {
-            if let Ok(component) = session.find_by_id(control_path) {
-                if let Some(button) = component.downcast::<GuiButton>() {
-                    button.press()?;
-                }
-            }
-        }
-        "Select" => {
-            if let Ok(component) = session.find_by_id(control_path) {
-                if let Some(radio_button) = component.downcast::<GuiRadioButton>() {
-                    radio_button.select()?;
-                }
-            }
-        }
-        "Selected" => {
-            if let Ok(component) = session.find_by_id(control_path) {
-                match event_id_opt {
-                    "Get" => {
-                        if let Some(checkbox) = component.downcast::<GuiCheckBox>() {
-                            aux_str = checkbox.selected()?.to_string();
-                        }
+    let ctrl_result = session.find_by_id(full_id);
+    match ctrl_result {
+        Ok(ctrl) => {
+            if action == "Get" {
+                if prop == "Text" {
+                    if let Some(text_field) = ctrl.downcast::<GuiTextField>() {
+                        return text_field.text();
+                    } else if let Some(text_field) = ctrl.downcast::<GuiCTextField>() {
+                        return text_field.text();
+                    } else if let Some(label) = ctrl.downcast::<GuiLabel>() {
+                        return label.text();
+                    } else if let Some(statusbar) = ctrl.downcast::<GuiStatusbar>() {
+                        return statusbar.text();
+                    } else {
+                        return Ok("".to_string());
                     }
-                    "Set" => {
-                        if let Some(checkbox) = component.downcast::<GuiCheckBox>() {
-                            match event_id_value {
-                                "True" => checkbox.set_selected(true)?,
-                                "False" => checkbox.set_selected(false)?,
-                                _ => {}
-                            }
-                        }
-                    }
-                    _ => {}
+                } else {
+                    return Ok("".to_string());
                 }
+            } else if action == "Set" {
+                if prop == "Text" {
+                    if let Some(text_field) = ctrl.downcast::<GuiTextField>() {
+                        text_field.set_text(value.to_string())?;
+                    } else if let Some(text_field) = ctrl.downcast::<GuiCTextField>() {
+                        text_field.set_text(value.to_string())?;
+                    }
+                }
+                return Ok("".to_string());
+            } else {
+                return Ok("".to_string());
             }
         }
-        "Focus" => {
-            if let Ok(component) = session.find_by_id(control_path) {
-                // Need to downcast to a specific type that has set_focus
-                if let Some(field) = component.downcast::<GuiTextField>() {
-                    field.set_focus()?;
-                } else if let Some(button) = component.downcast::<GuiButton>() {
-                    button.set_focus()?;
-                } else if let Some(radio) = component.downcast::<GuiRadioButton>() {
-                    radio.set_focus()?;
-                }
-            }
+        Err(_) => {
+            println!("Control not found: {}", full_id_for_log);
+            return Ok("".to_string());
         }
-        "Text" => {
-            if let Ok(component) = session.find_by_id(control_path) {
-                match event_id_opt {
-                    "Get" => {
-                        // Need to get text from the component based on its type
-                        if let Some(text_field) = component.downcast::<GuiTextField>() {
-                            aux_str = text_field.text()?;
-                        } else if let Some(button) = component.downcast::<GuiButton>() {
-                            aux_str = button.text()?;
-                        } else if let Some(label) = component.downcast::<GuiLabel>() {
-                            aux_str = label.text()?;
-                        } else if let Some(statusbar) = component.downcast::<GuiStatusbar>() {
-                            aux_str = statusbar.text()?;
-                        } else if let Some(window) = component.downcast::<GuiFrameWindow>() {
-                            aux_str = window.text()?;
-                        } else if let Some(modal_window) = component.downcast::<GuiModalWindow>() {
-                            aux_str = modal_window.text()?;
-                        } else {
-                            // For other component types, use the name as a fallback
-                            aux_str = component.name().unwrap_or_default();
-                        }
-                    }
-                    "Set" => {
-                        if let Some(text_field) = component.downcast::<GuiTextField>() {
-                            text_field.set_text(event_id_value.to_string())?;
-                        } else if let Some(password_field) =
-                            component.downcast::<GuiPasswordField>()
-                        {
-                            password_field.set_text(event_id_value.to_string())?;
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        }
-        _ => {}
     }
-
-    Ok(aux_str)
 }
 
-/// Gets error text messages from SAP controls
+/// Get text from SAP GUI error messages
 ///
-/// This function retrieves error messages from SAP controls by iterating through
-/// a range of indices and checking if controls exist at those indices.
-///
-/// # Arguments
-///
-/// * `session` - The SAP GUI session
-/// * `n_wnd` - The window number
-/// * `ctrl_id` - The control ID base
-/// * `count` - The number of controls to check
-/// * `start_index` - Optional starting index (defaults to 1)
-///
-/// # Returns
-///
-/// A Result containing the concatenated error messages as a String
+/// This function gets text from SAP GUI error messages at the specified window index
+/// and with the specified ID suffix.
 pub fn get_sap_text_errors(
     session: &GuiSession,
-    n_wnd: i32,
-    ctrl_id: &str,
-    count: i32,
-    start_index: Option<i32>,
+    wnd_idx: i32,
+    id_suffix: &str,
+    max_lines: i32,
+    prefix: Option<&str>,
 ) -> Result<String> {
-    let start = start_index.unwrap_or(1);
     let mut result = String::new();
+    let prefix_str = prefix.unwrap_or("");
 
-    println!("Getting SAP errors...");
-
-    for i in start..=count {
-        let mut current_ctrl_id = ctrl_id.to_string();
-
-        if ctrl_id.contains('[') {
-            // Handle controls with array indices
-            let err_ctl = exist_ctrl(session, n_wnd, &format!("{}{},0]", ctrl_id, i), true)?;
-            if err_ctl.cband {
-                let err_msg = hit_ctrl(session, n_wnd, &format!("{}{},0]", ctrl_id, i), "Text", "Get", "")?;
-                println!("{}", err_msg);
-                result.push_str(&format!("\n {}", err_msg));
+    for i in 1..=max_lines {
+        let id = format!("{}{}", id_suffix, i);
+        let text = hit_ctrl(session, wnd_idx, &id, "Text", "Get", "")?;
+        if !text.is_empty() {
+            if !result.is_empty() {
+                result.push_str("\n");
             }
-        } else if ctrl_id.contains("txtMESSTXT") {
-            // Handle message text controls
-            let mut modified_ctrl_id = ctrl_id.to_string();
-            
-            // Replace right numeric if exists
-            if let Some(last_char) = modified_ctrl_id.chars().last() {
-                if last_char.is_numeric() {
-                    modified_ctrl_id = modified_ctrl_id[0..modified_ctrl_id.len()-1].to_string();
-                }
-            }
-            
-            let err_ctl = exist_ctrl(session, n_wnd, &format!("{}{}", modified_ctrl_id, i), true)?;
-            if err_ctl.cband {
-                let err_msg = hit_ctrl(session, n_wnd, &format!("{}{}", modified_ctrl_id, i), "Text", "Get", "")?;
-                println!("{}", err_msg);
-                result.push_str(&format!("\n {}", err_msg));
-            }
-        } else {
-            // Handle other controls
-            let err_ctl = exist_ctrl(session, n_wnd, &format!("{}{}", ctrl_id, i), true)?;
-            if err_ctl.cband {
-                let err_msg = hit_ctrl(session, n_wnd, &format!("{}{}", ctrl_id, i), "Text", "Get", "")?;
-                println!("{}", err_msg);
-                result.push_str(&format!("\n {}", err_msg));
-            }
+            result.push_str(&format!("{}{}", prefix_str, text));
         }
     }
 
-    println!("str contents are: ({})", result);
     Ok(result)
+}
+
+/// Paste values into a scrollable table in SAP GUI
+///
+/// This function pastes values into a scrollable table in SAP GUI at the specified window index.
+/// It handles scrolling through the table to paste all values, even when there are thousands.
+pub fn paste_values_with_scroll(
+    session: &GuiSession,
+    wnd_idx: i32,
+    table_id: &str,
+    field_pattern: &str,
+    values: &[String],
+    batch_size: usize,
+) -> Result<bool> {
+    if values.is_empty() {
+        return Ok(true);
+    }
+
+    let full_table_id = format!("wnd[{}]/usr/{}", wnd_idx, table_id);
+    
+    // Check if table exists
+    let table_exists = exist_ctrl(session, wnd_idx, &format!("/usr/{}", table_id), true)?;
+    if !table_exists.cband {
+        println!("Table not found: {}", full_table_id);
+        return Ok(false);
+    }
+
+    let mut values_pasted = 0;
+    let mut current_position = 0;
+    let mut page_idx = 0;
+
+    while values_pasted < values.len() {
+        // Set scrollbar position if needed (not for the first batch)
+        if values_pasted > 0 {
+            // Try to set scrollbar position by sending key presses
+            // This is a workaround since we can't directly set the scrollbar position
+            // Send Page Down key to scroll down
+            if let Ok(window) = session.find_by_id(format!("wnd[{}]", wnd_idx)) {
+                if let Some(wnd) = window.downcast::<GuiModalWindow>() {
+                    wnd.send_v_key(82)?; // Page Down key
+                    page_idx += 1;
+                }
+            }
+            println!("Scrolled down {} pages", page_idx);
+        }
+
+        // Paste a batch of values
+        let end_idx = std::cmp::min(values_pasted + batch_size, values.len());
+        let mut local_index = 0;
+
+        for i in values_pasted..end_idx {
+            let field_id = format!("{}/ctxtRSCSEL_255-SLOW_I[1,{}]", table_id, local_index);
+            let full_field_id = format!("wnd[{}]/usr/{}", wnd_idx, field_id);
+            
+            if let Ok(field) = session.find_by_id(full_field_id) {
+                if let Some(text_field) = field.downcast::<GuiCTextField>() {
+                    text_field.set_text(values[i].clone())?;
+                    local_index += 1;
+                } else {
+                    // Field not found or not the right type, might be at the end of visible area
+                    break;
+                }
+            } else {
+                // Field not found, might be at the end of visible area
+                break;
+            }
+        }
+
+        // Update counters
+        values_pasted += local_index;
+        current_position += batch_size as i32;
+
+        // If we couldn't paste any values in this batch, we might be at the end of the table
+        if local_index == 0 {
+            println!("Could not paste any more values at position {}", current_position);
+            break;
+        }
+
+        println!("Pasted {} values so far", values_pasted);
+    }
+
+    println!("Total values pasted: {}/{}", values_pasted, values.len());
+    Ok(values_pasted > 0)
 }

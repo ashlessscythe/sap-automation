@@ -1,7 +1,8 @@
 use sap_scripting::*;
 use windows::core::Result;
 
-use crate::utils::select_layout_utils::check_select_layout;
+use crate::utils::config_types::TcodeConfig;
+use crate::utils::select_layout_utils::{check_select_layout, select_layout};
 use crate::utils::{choose_layout, sap_file_utils::*};
 // Import specific functions to avoid ambiguity
 use crate::utils::sap_ctrl_utils::*;
@@ -292,19 +293,24 @@ pub fn run_export(session: &GuiSession, params: &VL06OParams) -> Result<bool> {
         }
     }
 
-    // Paste shipment numbers
-    // In a real implementation, we would use the clipboard to paste the shipment numbers
-    // For now, we'll manually enter each shipment number
-    let mut j = 0;
-    println!("DEBUG:Pasting");
-    for shipment_number in &params.shipment_numbers {
-        let input_field_id = format!("wnd[1]/usr/tabsTAB_STRIP/tabpSIVA/ssubSCREEN_HEADER:SAPLALDB:3010/tblSAPLALDBSINGLE/ctxtRSCSEL_255-SLOW_I[1,{}]", j);
-        if let Ok(txt) = session.find_by_id(input_field_id) {
-            if let Some(text_field) = txt.downcast::<GuiCTextField>() {
-                text_field.set_text(shipment_number.clone())?;
-                j += 1;
-            }
-        }
+    // Paste shipment numbers using the scrollable paste function
+    println!("Pasting {} shipment numbers...", params.shipment_numbers.len());
+    let table_id = "tabsTAB_STRIP/tabpSIVA/ssubSCREEN_HEADER:SAPLALDB:3010";
+    let field_pattern = "ctxtRSCSEL_255-SLOW_I[1,{}]";
+    let batch_size = 7; // Number of visible rows in the table
+    
+    let paste_result = paste_values_with_scroll(
+        session,
+        1, // Window index
+        table_id,
+        field_pattern,
+        &params.shipment_numbers,
+        batch_size
+    )?;
+    
+    if !paste_result {
+        println!("Failed to paste shipment numbers");
+        return Ok(false);
     }
 
     // Check if items were pasted successfully
@@ -429,17 +435,25 @@ pub fn run_export_delivery_packages(session: &GuiSession, params: &VL06ODelivery
         }
     }
 
-    // Enter delivery numbers
-    let mut j = 0;
-    for delivery_number in &params.delivery_numbers {
-        let input_field_id = format!("wnd[1]/usr/tabsTAB_STRIP/tabpSIVA/ssubSCREEN_HEADER:SAPLALDB:3010/tblSAPLALDBSINGLE/ctxtRSCSEL_255-SLOW_I[1,{}]", j);
-        if let Ok(txt) = session.find_by_id(input_field_id) {
-            if let Some(text_field) = txt.downcast::<GuiCTextField>() {
-                text_field.set_text(delivery_number.clone())?;
-                j += 1;
-            }
-        }
-    }
+      // Enter delivery numbers using the scrollable paste function
+      println!("Pasting {} delivery numbers...", params.delivery_numbers.len());
+      let table_id = "tabsTAB_STRIP/tabpSIVA/ssubSCREEN_HEADER:SAPLALDB:3010/tblSAPLALDBSINGLE";
+      let field_pattern = "ctxtRSCSEL_255-SLOW_I[1,{}]";
+      let batch_size = 7; // Number of visible rows in the table
+      
+      let paste_result = paste_values_with_scroll(
+          session,
+          1, // Window index
+          table_id,
+          field_pattern,
+          &params.delivery_numbers,
+          batch_size
+      )?;
+      
+      if !paste_result {
+          println!("Failed to paste delivery numbers");
+          return Ok(false);
+      }
 
     // Close Multi-Window
     if let Ok(window) = session.find_by_id("wnd[1]".to_string()) {
@@ -457,9 +471,8 @@ pub fn run_export_delivery_packages(session: &GuiSession, params: &VL06ODelivery
 
     // select layout
     if let Some(layout_row) = &params.layout_row {
-        check_select_layout(session, &params.t_code, layout_row.as_str(), None)?;
+        choose_layout(session, &params.t_code, layout_row.as_str())?;
     }
-
 
     // Export as Excel
     if let Ok(menu) = session.find_by_id("wnd[0]/mbar/menu[0]/menu[5]/menu[1]".to_string()) {
@@ -468,18 +481,11 @@ pub fn run_export_delivery_packages(session: &GuiSession, params: &VL06ODelivery
         }
     }
 
-    // Press OK in export dialog
-    if let Ok(btn) = session.find_by_id("wnd[1]/tbar[0]/btn[0]".to_string()) {
-        if let Some(button) = btn.downcast::<GuiButton>() {
-            button.press()?;
-        }
-    }
-
-    // Close any remaining dialogs
-    if let Ok(window) = session.find_by_id("wnd[1]".to_string()) {
-        if let Some(modal_window) = window.downcast::<GuiModalWindow>() {
-            modal_window.close()?;
-        }
+    // Check export window
+    let run_check = check_export_window(session, "VL06O", "LIST OF OUTBOUND DELIVERIES")?;
+    if !run_check {
+        println!("Error checking export window");
+        return Ok(false);
     }
 
     // Get file path using the utility function
@@ -578,16 +584,24 @@ pub fn run_date_update(session: &GuiSession, params: &VL06ODateUpdateParams) -> 
         }
     }
     
-    // Enter delivery numbers
-    let mut j = 0;
-    for delivery_number in &params.delivery_numbers {
-        let input_field_id = format!("wnd[1]/usr/tabsTAB_STRIP/tabpSIVA/ssubSCREEN_HEADER:SAPLALDB:3010/tblSAPLALDBSINGLE/ctxtRSCSEL_255-SLOW_I[1,{}]", j);
-        if let Ok(txt) = session.find_by_id(input_field_id) {
-            if let Some(text_field) = txt.downcast::<GuiCTextField>() {
-                text_field.set_text(delivery_number.clone())?;
-                j += 1;
-            }
-        }
+    // Enter delivery numbers using the scrollable paste function
+    println!("Pasting {} delivery numbers for date update...", params.delivery_numbers.len());
+    let table_id = "tabsTAB_STRIP/tabpSIVA/ssubSCREEN_HEADER:SAPLALDB:3010";
+    let field_pattern = "ctxtRSCSEL_255-SLOW_I[1,{}]";
+    let batch_size = 7; // Number of visible rows in the table
+    
+    let paste_result = paste_values_with_scroll(
+        session,
+        1, // Window index
+        table_id,
+        field_pattern,
+        &params.delivery_numbers,
+        batch_size
+    )?;
+    
+    if !paste_result {
+        println!("Failed to paste delivery numbers for date update");
+        return Ok((0, Vec::new()));
     }
     
     // Close Multi-Window

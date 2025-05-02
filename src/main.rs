@@ -17,6 +17,7 @@ use app::*;
 use utils::config_ops::handle_configure_reports_dir;
 use utils::excel_file_ops::handle_read_excel_file;
 use utils::loop_config::{handle_configure_loop, run_loop};
+use utils::sequence_config::{handle_configure_sequence, run_sequence};
 use vl06o_module::{run_vl06o_auto, run_vl06o_date_update_module, run_vl06o_module};
 use vl06o_delivery_module::{run_vl06o_delivery_packages_module, run_vl06o_delivery_packages_auto};
 use vt11_module::{run_vt11_auto, run_vt11_module};
@@ -131,9 +132,11 @@ fn main() -> anyhow::Result<()> {
                     "ZMDESNR - Serial Number History",
                     "ZMDESNR - Auto Run (from config)",
                     "Run Loop (using config)",
+                    "Run Sequence (using config)",
                     "Configure Reports Directory",
                     "Configure SAP Parameters",
                     "Configure Loop",
+                    "Configure Sequence",
                     "Read Excel File",
                     "Log out of SAP",
                     "Exit",
@@ -151,9 +154,11 @@ fn main() -> anyhow::Result<()> {
                     "ZMDESNR - Serial Number History (Not available - Login required)",
                     "ZMDESNR - Auto Run (Not available - Login required)",
                     "Run Loop (Not available - Login required)",
+                    "Run Sequence (Not available - Login required)",
                     "Configure Reports Directory",
                     "Configure SAP Parameters",
                     "Configure Loop",
+                    "Configure Sequence",
                     "Read Excel File",
                     "Log out of SAP (Not available - Login required)",
                     "Exit",
@@ -172,9 +177,11 @@ fn main() -> anyhow::Result<()> {
                     "ZMDESNR - Serial Number History (Not available - SAP connection required)",
                     "ZMDESNR - Auto Run (Not available - SAP connection required)",
                     "Run Loop (Not available - SAP connection required)",
+                    "Run Sequence (Not available - SAP connection required)",
                     "Configure Reports Directory",
                     "Configure SAP Parameters",
                     "Configure Loop",
+                    "Configure Sequence",
                     "Read Excel File",
                     "Log out of SAP (Not available - SAP connection required)",
                     "Exit",
@@ -352,34 +359,56 @@ fn main() -> anyhow::Result<()> {
                 }
             }
             11 => {
+                // Run Sequence (using config) (only if logged in and SAP connected)
+                if sap_connected && is_logged_in {
+                    if let Err(e) = run_sequence(session.as_ref().unwrap()) {
+                        eprintln!("Error running sequence: {}", e);
+                        thread::sleep(Duration::from_secs(2));
+                    }
+                } else if sap_connected {
+                    println!("You need to log in first.");
+                    thread::sleep(Duration::from_secs(2));
+                } else {
+                    println!("SAP connection not available. Cannot run sequence.");
+                    thread::sleep(Duration::from_secs(2));
+                }
+            }
+            12 => {
                 // Configure Reports Directory (available regardless of SAP connection)
                 if let Err(e) = handle_configure_reports_dir() {
                     eprintln!("Error configuring reports directory: {}", e);
                     thread::sleep(Duration::from_secs(2));
                 }
             }
-            12 => {
+            13 => {
                 // Configure SAP Parameters (available regardless of SAP connection)
                 if let Err(e) = utils::config_handlers::handle_configure_sap_params() {
                     eprintln!("Error configuring SAP parameters: {}", e);
                     thread::sleep(Duration::from_secs(2));
                 }
             }
-            13 => {
+            14 => {
                 // Configure Loop (available regardless of SAP connection)
                 if let Err(e) = handle_configure_loop() {
                     eprintln!("Error configuring loop: {}", e);
                     thread::sleep(Duration::from_secs(2));
                 }
             }
-            14 => {
+            15 => {
+                // Configure Sequence (available regardless of SAP connection)
+                if let Err(e) = handle_configure_sequence() {
+                    eprintln!("Error configuring sequence: {}", e);
+                    thread::sleep(Duration::from_secs(2));
+                }
+            }
+            16 => {
                 // Read Excel File (available regardless of SAP connection)
                 if let Err(e) = handle_read_excel_file() {
                     eprintln!("Error reading Excel file: {}", e);
                     thread::sleep(Duration::from_secs(2));
                 }
             }
-            15 => {
+            17 => {
                 // Log out of SAP (only if logged in and SAP connected)
                 if sap_connected && is_logged_in {
                     if let Err(e) = handle_logout(session.as_ref().unwrap()) {
@@ -394,7 +423,7 @@ fn main() -> anyhow::Result<()> {
                     thread::sleep(Duration::from_secs(2));
                 }
             }
-            16 => {
+            18 => {
                 // Exit application
                 clear_screen();
                 println!("Exiting application...");

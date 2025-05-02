@@ -8,6 +8,8 @@ pub use self::config_types::SapConfig;
 pub use self::config_ops::get_reports_dir;
 pub use self::config_ops::handle_configure_reports_dir;
 pub use self::config_handlers::handle_configure_sap_params;
+pub use self::sequence_config::handle_configure_sequence;
+pub use self::sequence_config::run_sequence;
 
 // Declare and re-export submodules
 pub mod choose_layout_utils;
@@ -31,3 +33,4 @@ pub mod setup_layout_li_utils;
 pub mod setup_layout_utils;
 pub mod utils;
 pub mod loop_config;
+pub mod sequence_config;

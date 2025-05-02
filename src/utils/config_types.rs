@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::env;
 use toml::Value;
+use std::vec::Vec;
 
 /// Configuration structure for SAP automation
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -20,6 +21,9 @@ pub struct SapConfig {
     
     #[serde(skip_serializing_if = "Option::is_none")]
     pub loop_config: Option<LoopConfig>,
+    
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sequence: Option<SequenceConfig>,
     
     #[serde(skip)]
     pub raw_config: Option<toml::Value>,
@@ -102,6 +106,25 @@ pub struct LoopConfig {
     pub params: HashMap<String, String>,
 }
 
+/// Sequence configuration settings
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SequenceConfig {
+    #[serde(default = "default_sequence_options")]
+    pub options: Vec<String>,
+    
+    #[serde(default = "default_iterations")]
+    pub iterations: String,
+    
+    #[serde(default = "default_delay_seconds")]
+    pub delay_seconds: String,
+    
+    #[serde(default = "default_interval_seconds")]
+    pub interval_seconds: String,
+    
+    #[serde(flatten)]
+    pub params: HashMap<String, String>,
+}
+
 /// Gets the default reports directory path with \\\\
 // return double backslash based on userprofile
 pub fn get_default_reports_dir() -> String {
@@ -124,6 +147,16 @@ pub fn default_iterations() -> String {
 /// Default delay seconds
 pub fn default_delay_seconds() -> String {
     "60".to_string()
+}
+
+/// Default interval seconds between sequence steps
+pub fn default_interval_seconds() -> String {
+    "10".to_string()
+}
+
+/// Default sequence options
+pub fn default_sequence_options() -> Vec<String> {
+    vec![]
 }
 
 /// Default date format (mm/dd/yyyy)

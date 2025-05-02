@@ -24,6 +24,7 @@ impl Default for SapConfig {
             build: None,
             tcode: Some(HashMap::new()),
             loop_config: None,
+            sequence: None,
             raw_config: None,
         }
     }
@@ -198,6 +199,46 @@ impl SapConfig {
                             }
                             
                             config.loop_config = Some(loop_config);
+                        }
+                        
+                        // Extract sequence section
+                        if let Some(sequence_table) = parsed.get("sequence").and_then(|v| v.as_table()) {
+                            let mut sequence_config = SequenceConfig {
+                                options: Vec::new(),
+                                iterations: sequence_table.get("iterations")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or(&default_iterations())
+                                    .to_string(),
+                                delay_seconds: sequence_table.get("delay_seconds")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or(&default_delay_seconds())
+                                    .to_string(),
+                                interval_seconds: sequence_table.get("interval_seconds")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or(&default_interval_seconds())
+                                    .to_string(),
+                                params: HashMap::new(),
+                            };
+                            
+                            // Extract options array
+                            if let Some(options_array) = sequence_table.get("options").and_then(|v| v.as_array()) {
+                                for option in options_array {
+                                    if let Some(option_str) = option.as_str() {
+                                        sequence_config.options.push(option_str.to_string());
+                                    }
+                                }
+                            }
+                            
+                            // Extract additional sequence parameters
+                            for (key, value) in sequence_table {
+                                if !["options", "iterations", "delay_seconds", "interval_seconds"].contains(&key.as_str()) {
+                                    if let Some(val_str) = value.as_str() {
+                                        sequence_config.params.insert(key.clone(), val_str.to_string());
+                                    }
+                                }
+                            }
+                            
+                            config.sequence = Some(sequence_config);
                         }
                     } else {
                         // Handle legacy format (with sap_config section)
@@ -446,6 +487,34 @@ impl SapConfig {
             
             // Add additional loop parameters
             for (key, value) in &loop_config.params {
+                content.push_str(&format!("param_{} = \"{}\"\n", key, value));
+            }
+            
+            content.push('\n');
+        }
+        
+        // Add sequence section
+        if let Some(sequence_config) = &self.sequence {
+            content.push_str("[sequence]\n");
+            
+            // Add options as an array
+            if !sequence_config.options.is_empty() {
+                content.push_str("options = [");
+                for (i, option) in sequence_config.options.iter().enumerate() {
+                    if i > 0 {
+                        content.push_str(", ");
+                    }
+                    content.push_str(&format!("\"{}\"", option));
+                }
+                content.push_str("]\n");
+            }
+            
+            content.push_str(&format!("iterations = \"{}\"\n", sequence_config.iterations));
+            content.push_str(&format!("delay_seconds = \"{}\"\n", sequence_config.delay_seconds));
+            content.push_str(&format!("interval_seconds = \"{}\"\n", sequence_config.interval_seconds));
+            
+            // Add additional sequence parameters
+            for (key, value) in &sequence_config.params {
                 content.push_str(&format!("param_{} = \"{}\"\n", key, value));
             }
             

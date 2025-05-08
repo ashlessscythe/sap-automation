@@ -680,53 +680,15 @@ fn get_vl06o_date_update_parameters() -> Result<VL06ODateUpdateParams> {
     };
 
     // Ask how to input delivery numbers
-    let input_options = vec!["Read from Excel file", "Enter manually", "Paste from clipboard"];
+    let input_options = vec!["Read from Excel file", "Enter manually"];
     let input_choice = Select::new()
         .with_prompt("How would you like to input delivery numbers?")
         .items(&input_options)
-        .default(0)
+        .default(1)
         .interact()
         .unwrap();
 
     match input_choice {
-        2 => {
-            // Paste from clipboard
-            println!("Please paste delivery numbers from clipboard (one per line):");
-            println!("When finished, press Enter twice.");
-            
-            let mut delivery_numbers = Vec::new();
-            let mut buffer = String::new();
-            
-            loop {
-                let mut line = String::new();
-                io::stdin().read_line(&mut line).unwrap();
-                
-                if line.trim().is_empty() && buffer.trim().is_empty() {
-                    break;
-                }
-                
-                if line.trim().is_empty() {
-                    // Process buffer
-                    for number in buffer.lines() {
-                        let trimmed = number.trim();
-                        if !trimmed.is_empty() {
-                            delivery_numbers.push(trimmed.to_string());
-                        }
-                    }
-                    buffer.clear();
-                    break;
-                }
-                
-                buffer.push_str(&line);
-            }
-            
-            if delivery_numbers.is_empty() {
-                println!("No delivery numbers entered.");
-            } else {
-                println!("Found {} delivery numbers.", delivery_numbers.len());
-                params.delivery_numbers = delivery_numbers;
-            }
-        },
         1 => {
             // Enter manually
             let delivery_numbers_str: String = Input::new()

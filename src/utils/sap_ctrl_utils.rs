@@ -177,7 +177,12 @@ pub fn paste_values_with_scroll(
     let mut current_position = 0;
     let mut page_idx = 0;
 
-    while values_pasted < values.len() {
+    // Clean the values to ensure no trailing commas
+    let clean_values: Vec<String> = values.iter()
+        .map(|v| v.trim().trim_end_matches(',').to_string())
+        .collect();
+
+    while values_pasted < clean_values.len() {
         // Set scrollbar position if needed (not for the first batch)
         if values_pasted > 0 {
             // Try to set scrollbar position by sending key presses
@@ -193,23 +198,36 @@ pub fn paste_values_with_scroll(
         }
 
         // Paste a batch of values
-        let end_idx = std::cmp::min(values_pasted + batch_size, values.len());
+        let end_idx = std::cmp::min(values_pasted + batch_size, clean_values.len());
         let mut local_index = 0;
 
         for i in values_pasted..end_idx {
-            let field_id = format!("{}/ctxtRSCSEL_255-SLOW_I[1,{}]", table_id, local_index);
-            let full_field_id = format!("wnd[{}]/usr/{}", wnd_idx, field_id);
+            // Try both possible field ID patterns
+            let field_ids = [
+                format!("{}/ctxtRSCSEL_255-SLOW_I[1,{}]", table_id, local_index),
+                format!("{}/tblSAPLALDBSINGLE/ctxtRSCSEL_255-SLOW_I[1,{}]", table_id, local_index)
+            ];
             
-            if let Ok(field) = session.find_by_id(full_field_id) {
-                if let Some(text_field) = field.downcast::<GuiCTextField>() {
-                    text_field.set_text(values[i].clone())?;
-                    local_index += 1;
-                } else {
-                    // Field not found or not the right type, might be at the end of visible area
-                    break;
+            let mut field_found = false;
+            
+            for field_id in &field_ids {
+                let full_field_id = format!("wnd[{}]/usr/{}", wnd_idx, field_id);
+                
+                if let Ok(field) = session.find_by_id(full_field_id.clone()) {
+                    if let Some(text_field) = field.downcast::<GuiCTextField>() {
+                        // Make sure we're not adding any trailing commas
+                        let clean_value = clean_values[i].clone();
+                        text_field.set_text(clean_value)?;
+                        field_found = true;
+                        break;
+                    }
                 }
+            }
+            
+            if field_found {
+                local_index += 1;
             } else {
-                // Field not found, might be at the end of visible area
+                // Field not found with any pattern, might be at the end of visible area
                 break;
             }
         }
@@ -224,9 +242,9 @@ pub fn paste_values_with_scroll(
             break;
         }
 
-        println!("Pasted {} values out of {} so far", values_pasted, values.len());
+        println!("Pasted {} values out of {} so far", values_pasted, clean_values.len());
     }
 
-    println!("Total values pasted: {}/{}", values_pasted, values.len());
+    println!("Total values pasted: {}/{}", values_pasted, clean_values.len());
     Ok(values_pasted > 0)
 }

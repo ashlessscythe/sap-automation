@@ -723,16 +723,26 @@ pub fn run_date_update(session: &GuiSession, params: &VL06ODateUpdateParams) -> 
             
             // Enter loop to handle any messages
             loop {
+
+                // Send enter key (vkey0)
+                if let Ok(window) = session.find_by_id("wnd[0]".to_string()) {
+                    if let Some(wnd) = window.downcast::<GuiMainWindow>() {
+                        wnd.send_v_key(0)?;
+                        println!("Sent (Enter) key");
+                    }
+                }
+
                 // Get status bar message
                 let status_msg = hit_ctrl(session, 0, "/sbar", "Text", "Get", "")?;
                 if !status_msg.is_empty() {
                     println!("Status bar: {}", status_msg);
                 }
-                
-                // Press Enter
-                if let Ok(wnd) = session.find_by_id("wnd[0]".to_string()) {
-                    if let Some(main_window) = wnd.downcast::<GuiMainWindow>() {
-                        main_window.send_v_key(0)?; // Enter key
+
+                // Send enter key (vkey0)
+                if let Ok(window) = session.find_by_id("wnd[0]".to_string()) {
+                    if let Some(wnd) = window.downcast::<GuiMainWindow>() {
+                        wnd.send_v_key(0)?;
+                        println!("Sent (Enter) key");
                     }
                 }
                 
@@ -742,6 +752,8 @@ pub fn run_date_update(session: &GuiSession, params: &VL06ODateUpdateParams) -> 
                     break;
                 } else if new_status.contains("date in the format") {
                     // try different date format
+                } else if new_status.contains("Goods issue") {
+                    break;
                 }
             }
             
@@ -809,10 +821,6 @@ pub fn run_date_update(session: &GuiSession, params: &VL06ODateUpdateParams) -> 
                 eprintln!("pressing 'yes' button on popup");
                 btn.press()?
             }
-        } else  {
-            // no popup
-            println!("No popup, guess we're done");
-            break;
         }
     }
     

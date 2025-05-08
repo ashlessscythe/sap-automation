@@ -730,15 +730,25 @@ fn get_vl06o_date_update_parameters() -> Result<VL06ODateUpdateParams> {
         1 => {
             // Enter manually
             let delivery_numbers_str: String = Input::new()
-                .with_prompt("Enter delivery numbers (comma-separated)")
+                .with_prompt("Enter delivery numbers (space or comma-separated)")
                 .interact_text()
                 .unwrap();
             
-            let delivery_numbers: Vec<String> = delivery_numbers_str
-                .split(',')
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .collect();
+            // Check if input contains commas
+            let delivery_numbers: Vec<String> = if delivery_numbers_str.contains(',') {
+                // Split by commas if present
+                delivery_numbers_str
+                    .split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect()
+            } else {
+                // Otherwise split by spaces
+                delivery_numbers_str
+                    .split_whitespace()
+                    .map(|s| s.to_string())
+                    .collect()
+            };
             
             if delivery_numbers.is_empty() {
                 println!("No delivery numbers entered.");

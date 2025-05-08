@@ -376,10 +376,19 @@ impl SapConfig {
         
         // Preserve any sections from the original config that we don't explicitly handle
         if let Some(raw_config) = &self.raw_config {
-            // Get all top-level keys that aren't "build", "global", "tcode", or "loop"
-            let preserved_keys: Vec<&String> = raw_config.as_table()
-                .map(|t| t.keys().filter(|k| !["build", "global", "tcode", "loop", "sap_config"].contains(&k.as_str())).collect())
-                .unwrap_or_default();
+            // Get all top-level keys that aren't "build", "global", "tcode", "loop", "sequence", or "sap_config"
+           let preserved_keys: Vec<&String> = raw_config
+                .as_table()
+                .map(|table| {
+                    table
+                        .keys()
+                        .filter(|key| {
+                            !["build", "global", "tcode", "loop", "sequence", "sap_config"]
+                                .contains(&key.as_str())
+                        })
+                        .collect()
+                })
+                .unwrap_or_default(); 
             
             // Add preserved sections to the content
             for key in preserved_keys {

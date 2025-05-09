@@ -44,6 +44,9 @@ pub struct GlobalConfig {
     #[serde(default = "default_date_format")]
     pub date_format: String,
     
+    #[serde(default = "default_timezone")]
+    pub timezone: String,
+    
     #[serde(flatten)]
     pub additional_params: HashMap<String, String>,
 }
@@ -157,6 +160,11 @@ pub fn default_interval_seconds() -> String {
 /// Default sequence options
 pub fn default_sequence_options() -> Vec<String> {
     vec![]
+}
+
+/// Default timezone (e.g., "UTC", "MST", "MDT", "EST", "America/Denver")
+pub fn default_timezone() -> String {
+    "UTC".to_string()
 }
 
 /// Default date format (mm/dd/yyyy)

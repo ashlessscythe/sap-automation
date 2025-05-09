@@ -172,11 +172,14 @@ fn create_test_sap_config(reports_dir: &str) -> SapConfig {
 
 #[test]
 fn test_load_config() {
-    // Create a test config file
+    // Create a test config file with the new format
     let config_content = r#"
-[sap_config]
+[global]
 reports_dir = "C:\\Test\\Reports"
-tcode = "VL06O"
+default_tcode = "VL06O"
+timezone = "MST"
+
+[tcode.VL06O]
 variant = "TEST_VARIANT"
 layout = "TEST_LAYOUT"
 column_name = "Test Column"
@@ -199,13 +202,26 @@ date_range_end = "04/15/2025"
     // Load the config
     let config = SapConfig::load().expect("Failed to load config");
     
-    // Verify the config was loaded correctly
-    assert_eq!(config.reports_dir, "C:\\Test\\Reports");
-    assert_eq!(config.tcode, Some("VL06O".to_string()));
-    assert_eq!(config.variant, Some("TEST_VARIANT".to_string()));
-    assert_eq!(config.layout, Some("TEST_LAYOUT".to_string()));
-    assert_eq!(config.column_name, Some("Test Column".to_string()));
-    assert_eq!(config.date_range, Some(("04/01/2025".to_string(), "04/15/2025".to_string())));
+    // Verify the global config was loaded correctly
+    assert!(config.global.is_some());
+    if let Some(global) = &config.global {
+        assert_eq!(global.reports_dir, "C:\\Test\\Reports");
+        assert_eq!(global.default_tcode, Some("VL06O".to_string()));
+        assert_eq!(global.timezone, "MST");
+    }
+    
+    // Verify the tcode config was loaded correctly
+    assert!(config.tcode.is_some());
+    if let Some(tcode_configs) = &config.tcode {
+        assert!(tcode_configs.contains_key("VL06O"));
+        if let Some(vl06o_config) = tcode_configs.get("VL06O") {
+            assert_eq!(vl06o_config.variant, Some("TEST_VARIANT".to_string()));
+            assert_eq!(vl06o_config.layout, Some("TEST_LAYOUT".to_string()));
+            assert_eq!(vl06o_config.column_name, Some("Test Column".to_string()));
+            assert_eq!(vl06o_config.date_range_start, Some("04/01/2025".to_string()));
+            assert_eq!(vl06o_config.date_range_end, Some("04/15/2025".to_string()));
+        }
+    }
     
     // Restore the original config.toml if it existed
     if config_exists {
@@ -218,19 +234,36 @@ date_range_end = "04/15/2025"
 
 #[test]
 fn test_get_tcode_config() {
-    // Create a test SapConfig
+    // Create a test SapConfig with the new structure
     let mut config = SapConfig::new();
-    config.tcode = Some("VL06O".to_string());
-    config.variant = Some("TEST_VARIANT".to_string());
-    config.layout = Some("TEST_LAYOUT".to_string());
-    config.column_name = Some("Test Column".to_string());
-    config.date_range = Some(("04/01/2025".to_string(), "04/15/2025".to_string()));
     
-    // Add some additional parameters
-    let mut additional_params = HashMap::new();
-    additional_params.insert("VL06O_by_date".to_string(), "true".to_string());
-    additional_params.insert("VT11_custom_param".to_string(), "custom_value".to_string());
-    config.additional_params = additional_params;
+    // Set up global config
+    if let Some(global) = &mut config.global {
+        global.default_tcode = Some("VL06O".to_string());
+    }
+    
+    // Set up VL06O tcode config
+    if config.tcode.is_none() {
+        config.tcode = Some(HashMap::new());
+    }
+    
+    if let Some(tcode_configs) = &mut config.tcode {
+        let mut vl06o_config = crate::utils::config_types::TcodeConfig::default();
+        vl06o_config.variant = Some("TEST_VARIANT".to_string());
+        vl06o_config.layout = Some("TEST_LAYOUT".to_string());
+        vl06o_config.column_name = Some("Test Column".to_string());
+        vl06o_config.date_range_start = Some("04/01/2025".to_string());
+        vl06o_config.date_range_end = Some("04/15/2025".to_string());
+        vl06o_config.by_date = Some("true".to_string());
+        
+        tcode_configs.insert("VL06O".to_string(), vl06o_config);
+        
+        // Add VT11 config with custom parameter
+        let mut vt11_config = crate::utils::config_types::TcodeConfig::default();
+        vt11_config.additional_params.insert("custom_param".to_string(), "custom_value".to_string());
+        
+        tcode_configs.insert("VT11".to_string(), vt11_config);
+    }
     
     // Get the VL06O config
     let vl06o_config = config.get_tcode_config("VL06O", None).expect("Failed to get VL06O config");
@@ -358,16 +391,31 @@ fn test_config_with_different_date_formats() {
 
 #[test]
 fn test_tcode_specific_params() {
-    // Create a test SapConfig
+    // Create a test SapConfig with the new structure
     let mut config = SapConfig::new();
     
-    // Add tcode-specific parameters
-    let mut additional_params = HashMap::new();
-    additional_params.insert("VL06O_by_date".to_string(), "true".to_string());
-    additional_params.insert("VL06O_custom_param".to_string(), "vl06o_value".to_string());
-    additional_params.insert("VT11_custom_param".to_string(), "vt11_value".to_string());
-    additional_params.insert("ZMDESNR_serial_number".to_string(), "123456789".to_string());
-    config.additional_params = additional_params;
+    // Set up tcode configs
+    if config.tcode.is_none() {
+        config.tcode = Some(HashMap::new());
+    }
+    
+    if let Some(tcode_configs) = &mut config.tcode {
+        // VL06O config
+        let mut vl06o_config = crate::utils::config_types::TcodeConfig::default();
+        vl06o_config.by_date = Some("true".to_string());
+        vl06o_config.additional_params.insert("custom_param".to_string(), "vl06o_value".to_string());
+        tcode_configs.insert("VL06O".to_string(), vl06o_config);
+        
+        // VT11 config
+        let mut vt11_config = crate::utils::config_types::TcodeConfig::default();
+        vt11_config.additional_params.insert("custom_param".to_string(), "vt11_value".to_string());
+        tcode_configs.insert("VT11".to_string(), vt11_config);
+        
+        // ZMDESNR config
+        let mut zmdesnr_config = crate::utils::config_types::TcodeConfig::default();
+        zmdesnr_config.serial_number = Some("123456789".to_string());
+        tcode_configs.insert("ZMDESNR".to_string(), zmdesnr_config);
+    }
     
     // Get the VL06O config
     let vl06o_config = config.get_tcode_config("VL06O", None).expect("Failed to get VL06O config");

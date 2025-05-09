@@ -5,6 +5,7 @@ target = "i686-pc-windows-msvc"
 instance_id = "ES1"
 reports_dir = "C:\\temp\\reports"
 default_tcode = "VT11"
+timezone = "-7"
 
 [tcode.VT11]
 variant = "testing_7"

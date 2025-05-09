@@ -21,6 +21,7 @@ pub fn handle_configure_sap_params() -> Result<()> {
         "Configure Instance ID",
         "Configure Default TCode",
         "Configure Date Format",
+        "Configure Timezone",
         "Configure TCode-specific Parameters",
         "Configure Loop Parameters",
         "Show Current Configuration",
@@ -77,6 +78,7 @@ pub fn handle_configure_sap_params() -> Result<()> {
                             reports_dir: config.get_reports_dir(),
                             default_tcode: Some(tcode.clone()),
                             date_format: crate::utils::config_types::default_date_format(),
+                            timezone: crate::utils::config_types::default_timezone(),
                             additional_params: HashMap::new(),
                         });
                     }
@@ -109,20 +111,53 @@ pub fn handle_configure_sap_params() -> Result<()> {
                         reports_dir: config.get_reports_dir(),
                         default_tcode: None,
                         date_format: date_format.clone(),
+                        timezone: crate::utils::config_types::default_timezone(),
                         additional_params: HashMap::new(),
                     });
                 }
                 println!("Date format set to: {}", date_format);
             }
             3 => {
+                // Configure Timezone
+                let current = config.global.as_ref()
+                    .map(|g| g.timezone.clone())
+                    .unwrap_or_else(|| crate::utils::config_types::default_timezone());
+                
+                println!("\nTimezone Options:");
+                println!("1. Standard timezone names: UTC, MST, MDT, EST, EDT, CST, CDT, PST, PDT");
+                println!("2. IANA timezone database names: America/Denver, Europe/London, Asia/Tokyo");
+                println!("3. Legacy numeric offsets: -7 (for MST), -6 (for MDT), 0 (for UTC)");
+                
+                let timezone: String = Input::new()
+                    .with_prompt("Enter timezone (e.g., 'MDT', 'America/Denver', '-7')")
+                    .allow_empty(false)
+                    .default(current)
+                    .interact()
+                    .unwrap();
+
+                if let Some(global) = &mut config.global {
+                    global.timezone = timezone.clone();
+                } else {
+                    config.global = Some(GlobalConfig {
+                        instance_id: config.get_instance_id(),
+                        reports_dir: config.get_reports_dir(),
+                        default_tcode: None,
+                        date_format: crate::utils::config_types::default_date_format(),
+                        timezone: timezone.clone(),
+                        additional_params: HashMap::new(),
+                    });
+                }
+                println!("Timezone set to: {}", timezone);
+            }
+            4 => {
                 // Configure TCode-specific Parameters
                 handle_configure_tcode_params(&mut config)?;
             }
-            4 => {
+            5 => {
                 // Configure Loop Parameters
                 handle_configure_loop_params(&mut config)?;
             }
-            5 => {
+            6 => {
                 // Show Current Configuration
                 show_current_configuration(&config);
                 
@@ -751,6 +786,7 @@ fn show_current_configuration(config: &SapConfig) {
         println!("Instance ID: {}", global.instance_id);
         println!("Reports Directory: {}", global.reports_dir);
         println!("Date Format: {}", global.date_format);
+        println!("Timezone: {}", global.timezone);
         
         if let Some(default_tcode) = &global.default_tcode {
             println!("Default TCode: {}", default_tcode);

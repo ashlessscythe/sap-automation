@@ -19,6 +19,7 @@ impl Default for SapConfig {
                 reports_dir: get_default_reports_dir(),
                 default_tcode: None,
                 date_format: default_date_format(),
+                timezone: default_timezone(),
                 additional_params: HashMap::new(),
             }),
             build: None,
@@ -97,12 +98,16 @@ impl SapConfig {
                                     .and_then(|v| v.as_str())
                                     .unwrap_or(&default_date_format())
                                     .to_string(),
+                                timezone: global.get("timezone")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or(&default_timezone())
+                                    .to_string(),
                                 additional_params: HashMap::new(),
                             };
                             
                             // Extract additional global parameters
                             for (key, value) in global {
-                                if !["instance_id", "reports_dir", "default_tcode", "date_format"].contains(&key.as_str()) {
+                                if !["instance_id", "reports_dir", "default_tcode", "date_format", "timezone"].contains(&key.as_str()) {
                                     if let Some(val_str) = value.as_str() {
                                         global_config.additional_params.insert(key.clone(), val_str.to_string());
                                     }
@@ -275,6 +280,10 @@ impl SapConfig {
                     .and_then(|v| v.as_str())
                     .unwrap_or(&default_date_format())
                     .to_string(),
+                timezone: sap_config.get("timezone")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or(&default_timezone())
+                    .to_string(),
                 additional_params: HashMap::new(),
             };
             
@@ -428,6 +437,7 @@ impl SapConfig {
             content.push_str(&format!("instance_id = \"{}\"\n", global.instance_id));
             content.push_str(&format!("reports_dir = \"{}\"\n", global.reports_dir));
             content.push_str(&format!("date_format = \"{}\"\n", global.date_format));
+            content.push_str(&format!("timezone = \"{}\"\n", global.timezone));
             
             if let Some(default_tcode) = &global.default_tcode {
                 content.push_str(&format!("default_tcode = \"{}\"\n", default_tcode));
@@ -652,6 +662,7 @@ impl SapConfig {
                 reports_dir: get_default_reports_dir(),
                 default_tcode: None,
                 date_format: default_date_format(),
+                timezone: default_timezone(),
                 additional_params: HashMap::new(),
             });
         }
@@ -667,6 +678,7 @@ impl SapConfig {
                 reports_dir: reports_dir.to_string(),
                 default_tcode: None,
                 date_format: default_date_format(),
+                timezone: default_timezone(),
                 additional_params: HashMap::new(),
             });
         }

@@ -636,19 +636,19 @@ pub fn run_date_update(session: &GuiSession, params: &VL06ODateUpdateParams) -> 
         }
     }
     
-    // Check for popup message after starting processing
-    let err_ctrl = exist_ctrl(session, 1, "", true)?;
-    if err_ctrl.cband {
-        if let Ok(wnd) = session.find_by_id("wnd[1]".to_string()) {
-            if let Some(p_window) = wnd.downcast::<GuiModalWindow>() {
-                p_window.send_v_key(0)?; // Enter key to close
-                println!("Closed loading message popup");
-            }
-        }
-    }
-    
     // Loop through deliveries
     loop {
+
+        // Check for popup message after starting processing
+        let err_ctrl = exist_ctrl(session, 1, "", true)?;
+        if err_ctrl.cband {
+            if let Ok(wnd) = session.find_by_id("wnd[1]".to_string()) {
+                if let Some(p_window) = wnd.downcast::<GuiModalWindow>() {
+                    p_window.send_v_key(0)?; // Enter key to close
+                    println!("Closed loading message popup");
+                }
+            }
+        }
 
         // Check if date field exists
         let date_field = exist_ctrl(session, 0, r"/usr/tabsTAXI_TABSTRIP_OVERVIEW/tabpT\01/ssubSUBSCREEN_BODY:SAPMV50A:1102/ctxtLIKP-WADAT", true)?;
@@ -813,14 +813,10 @@ pub fn run_date_update(session: &GuiSession, params: &VL06ODateUpdateParams) -> 
         }
         
         // Increment counter
-        counter += 1;
-        
-        // Check for popup message for next deliv
-        if let Ok(button) = session.find_by_id("wnd[1]/usr/btnSPOP-OPTION1".to_string()) {
-            if let Some(btn) = button.downcast::<GuiButton>() {
-                eprintln!("pressing 'yes' button on popup");
-                btn.press()?
-            }
+        if counter > params.delivery_numbers.len() as i32 {
+            break;
+        } else {
+            counter += 1;
         }
     }
     

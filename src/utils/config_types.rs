@@ -39,6 +39,9 @@ pub struct GlobalConfig {
     
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_tcode: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_menu_option: Option<usize>,
     
     #[serde(default = "default_date_format")]
     pub date_format: String,
@@ -134,6 +137,11 @@ pub fn get_default_reports_dir() -> String {
     let formatted_path = format!("{}\\Documents\\Reports", user_profile); // Ensure double backslashes
 
     formatted_path.replace("\\", "\\\\") // Replace single backslashes with double backslashes
+}
+
+pub fn get_default_menu_option() -> usize {
+    // from config.toml or 0
+    0
 }
 
 /// Default instance ID

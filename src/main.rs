@@ -1,4 +1,5 @@
 use dialoguer::Select;
+use sap_automation::utils::config_types::SapConfig;
 use sap_scripting::*;
 use std::thread;
 use std::time::Duration;
@@ -15,6 +16,7 @@ mod zmdesnr_module;
 
 use app::*;
 use utils::config_ops::handle_configure_reports_dir;
+use utils::config_types::get_default_menu_option;
 use utils::excel_file_ops::handle_read_excel_file;
 use utils::loop_config::{handle_configure_loop, run_loop};
 use utils::sequence_config::{handle_configure_sequence, run_sequence};
@@ -117,6 +119,11 @@ fn main() -> anyhow::Result<()> {
             false
         };
 
+        // Default option for the menu from config else 0
+        let default_option = SapConfig::load()
+            .map(|config| config.global?.default_menu_option)
+            .unwrap_or_else(|_| Some(get_default_menu_option()));
+
         // Create menu options based on SAP connection and login status
         let options = if sap_connected {
             if is_logged_in {
@@ -134,7 +141,7 @@ fn main() -> anyhow::Result<()> {
                     "Run Loop (using config)",
                     "Run Sequence (using config)",
                     "Configure Reports Directory",
-                    "Configure SAP Parameters",
+                    "Configure Global and SAP Parameters",
                     "Configure Loop",
                     "Configure Sequence",
                     "Read Excel File",
@@ -156,7 +163,7 @@ fn main() -> anyhow::Result<()> {
                     "Run Loop (Not available - Login required)",
                     "Run Sequence (Not available - Login required)",
                     "Configure Reports Directory",
-                    "Configure SAP Parameters",
+                    "Configure Global and SAP Parameters",
                     "Configure Loop",
                     "Configure Sequence",
                     "Read Excel File",
@@ -179,7 +186,7 @@ fn main() -> anyhow::Result<()> {
                     "Run Loop (Not available - SAP connection required)",
                     "Run Sequence (Not available - SAP connection required)",
                     "Configure Reports Directory",
-                    "Configure SAP Parameters",
+                    "Configure Global and SAP Parameters",
                     "Configure Loop",
                     "Configure Sequence",
                     "Read Excel File",
@@ -191,7 +198,7 @@ fn main() -> anyhow::Result<()> {
         let choice = Select::new()
             .with_prompt("Choose an option")
             .items(&options)
-            .default(0)
+            .default( default_option.unwrap_or(0))
             .interact()
             .unwrap();
 

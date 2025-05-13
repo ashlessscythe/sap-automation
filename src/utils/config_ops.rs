@@ -17,6 +17,7 @@ impl Default for SapConfig {
                 instance_id: default_instance_id(),
                 reports_dir: get_default_reports_dir(),
                 default_tcode: None,
+                default_menu_option: Some(get_default_menu_option()),
                 date_format: default_date_format(),
                 timezone: default_timezone(),
                 additional_params: HashMap::new(),
@@ -93,6 +94,11 @@ impl SapConfig {
                                 default_tcode: global.get("default_tcode")
                                     .and_then(|v| v.as_str())
                                     .map(|s| s.to_string()),
+                                default_menu_option: global.get("default_menu_option")
+                                    .and_then(|v| match v {
+                                        toml::Value::Integer(i) => Some(*i as usize),
+                                        _ => None,
+                                    }),
                                 date_format: global.get("date_format")
                                     .and_then(|v| v.as_str())
                                     .unwrap_or(&default_date_format())
@@ -275,6 +281,12 @@ impl SapConfig {
                 default_tcode: sap_config.get("tcode")
                     .and_then(|v| v.as_str())
                     .map(|s| s.to_string()),
+                default_menu_option: sap_config.get("menu_option")
+                    .and_then(|v| match v {
+                        toml::Value::Integer(i) => Some(*i as usize),
+                        toml::Value::String(s) => s.parse::<usize>().ok(),
+                        _ => None,
+                    }),
                 date_format: sap_config.get("date_format")
                     .and_then(|v| v.as_str())
                     .unwrap_or(&default_date_format())
@@ -440,6 +452,10 @@ impl SapConfig {
             
             if let Some(default_tcode) = &global.default_tcode {
                 content.push_str(&format!("default_tcode = \"{}\"\n", default_tcode));
+            }
+            
+            if let Some(default_menu_option) = &global.default_menu_option {
+                content.push_str(&format!("default_menu_option = {}\n", default_menu_option));
             }
             
             // Add additional global parameters
@@ -660,6 +676,7 @@ impl SapConfig {
                 instance_id: instance_id.to_string(),
                 reports_dir: get_default_reports_dir(),
                 default_tcode: None,
+                default_menu_option: Some(get_default_menu_option()),
                 date_format: default_date_format(),
                 timezone: default_timezone(),
                 additional_params: HashMap::new(),
@@ -676,6 +693,7 @@ impl SapConfig {
                 instance_id: default_instance_id(),
                 reports_dir: reports_dir.to_string(),
                 default_tcode: None,
+                default_menu_option: Some(get_default_menu_option()),
                 date_format: default_date_format(),
                 timezone: default_timezone(),
                 additional_params: HashMap::new(),

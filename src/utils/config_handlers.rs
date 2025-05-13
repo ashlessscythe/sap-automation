@@ -7,6 +7,7 @@ use std::time::Duration;
 
 use crate::utils::config_types::SapConfig;
 use crate::utils::config_types::*;
+use crate::utils::config_types::get_default_menu_option;
 
 /// Handle configuring SAP automation parameters
 pub fn handle_configure_sap_params() -> Result<()> {
@@ -20,6 +21,7 @@ pub fn handle_configure_sap_params() -> Result<()> {
     let options = vec![
         "Configure Instance ID",
         "Configure Default TCode",
+        "Configure Default Menu Option",
         "Configure Date Format",
         "Configure Timezone",
         "Configure TCode-specific Parameters",
@@ -77,6 +79,7 @@ pub fn handle_configure_sap_params() -> Result<()> {
                             instance_id: config.get_instance_id(),
                             reports_dir: config.get_reports_dir(),
                             default_tcode: Some(tcode.clone()),
+                            default_menu_option: Some(get_default_menu_option()),
                             date_format: crate::utils::config_types::default_date_format(),
                             timezone: crate::utils::config_types::default_timezone(),
                             additional_params: HashMap::new(),
@@ -86,6 +89,46 @@ pub fn handle_configure_sap_params() -> Result<()> {
                 }
             }
             2 => {
+                // Configure Default Menu Option
+                let current = config.global.as_ref()
+                    .and_then(|g| g.default_menu_option)
+                    .unwrap_or_else(get_default_menu_option);
+                
+                let menu_option_str = current.to_string();
+                let menu_option: String = Input::new()
+                    .with_prompt("Enter Default Menu Option (0-based index)")
+                    .allow_empty(false)
+                    .default(menu_option_str)
+                    .interact()
+                    .unwrap();
+
+                // Parse the input as usize
+                match menu_option.parse::<usize>() {
+                    Ok(option) => {
+                        if let Some(global) = &mut config.global {
+                            global.default_menu_option = Some(option);
+                        } else {
+                            config.global = Some(GlobalConfig {
+                                instance_id: config.get_instance_id(),
+                                reports_dir: config.get_reports_dir(),
+                                default_tcode: None,
+                                default_menu_option: Some(option),
+                                date_format: crate::utils::config_types::default_date_format(),
+                                timezone: crate::utils::config_types::default_timezone(),
+                                additional_params: HashMap::new(),
+                            });
+                        }
+                        println!("Default Menu Option set to: {}", option);
+                    },
+                    Err(_) => {
+                        println!("Invalid input. Using default value: {}", current);
+                        if let Some(global) = &mut config.global {
+                            global.default_menu_option = Some(current);
+                        }
+                    }
+                }
+            }
+            3 => {
                 // Configure Date Format
                 let current = config.global.as_ref()
                     .map(|g| g.date_format.clone())
@@ -110,6 +153,7 @@ pub fn handle_configure_sap_params() -> Result<()> {
                         instance_id: config.get_instance_id(),
                         reports_dir: config.get_reports_dir(),
                         default_tcode: None,
+                        default_menu_option: Some(get_default_menu_option()),
                         date_format: date_format.clone(),
                         timezone: crate::utils::config_types::default_timezone(),
                         additional_params: HashMap::new(),
@@ -117,7 +161,7 @@ pub fn handle_configure_sap_params() -> Result<()> {
                 }
                 println!("Date format set to: {}", date_format);
             }
-            3 => {
+            4 => {
                 // Configure Timezone
                 let current = config.global.as_ref()
                     .map(|g| g.timezone.clone())
@@ -142,6 +186,7 @@ pub fn handle_configure_sap_params() -> Result<()> {
                         instance_id: config.get_instance_id(),
                         reports_dir: config.get_reports_dir(),
                         default_tcode: None,
+                        default_menu_option: Some(get_default_menu_option()),
                         date_format: crate::utils::config_types::default_date_format(),
                         timezone: timezone.clone(),
                         additional_params: HashMap::new(),
@@ -149,15 +194,15 @@ pub fn handle_configure_sap_params() -> Result<()> {
                 }
                 println!("Timezone set to: {}", timezone);
             }
-            4 => {
+            5 => {
                 // Configure TCode-specific Parameters
                 handle_configure_tcode_params(&mut config)?;
             }
-            5 => {
+            6 => {
                 // Configure Loop Parameters
                 handle_configure_loop_params(&mut config)?;
             }
-            6 => {
+            7 => {
                 // Show Current Configuration
                 show_current_configuration(&config);
                 
@@ -790,6 +835,10 @@ fn show_current_configuration(config: &SapConfig) {
         
         if let Some(default_tcode) = &global.default_tcode {
             println!("Default TCode: {}", default_tcode);
+        }
+        
+        if let Some(default_menu_option) = &global.default_menu_option {
+            println!("Default Menu Option: {}", default_menu_option);
         }
         
         if !global.additional_params.is_empty() {

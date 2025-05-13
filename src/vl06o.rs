@@ -1,8 +1,7 @@
 use sap_scripting::*;
 use windows::core::Result;
 
-use crate::utils::config_types::TcodeConfig;
-use crate::utils::select_layout_utils::{check_select_layout, select_layout};
+use crate::utils::select_layout_utils::check_select_layout;
 use crate::utils::{choose_layout, sap_file_utils::*};
 // Import specific functions to avoid ambiguity
 use crate::utils::sap_ctrl_utils::*;
@@ -152,8 +151,7 @@ impl Default for VL06ODeliveryParams {
             .or_else(|| {
                 // Check if subdir is in additional_params
                 tcode_config
-                    .and_then(|c| c.additional_params.get("subdir"))
-                    .map(|s| s.clone())
+                    .and_then(|c| c.additional_params.get("subdir")).cloned()
             })
             .or_else(|| Some("bruh".to_string()));
         

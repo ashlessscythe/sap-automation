@@ -139,7 +139,7 @@ pub fn run_zmdesnr_auto(session: &GuiSession) -> Result<()> {
     println!("Delivery Numbers: {} found", params.delivery_numbers.len());
     if let Some(pre_export_back) = &params.additional_params.pre_export_back {
         if !pre_export_back.is_empty() {
-            println!("Additional param: pre_export_back: {}", pre_export_back.to_string());
+            println!("Additional param: pre_export_back: {}", pre_export_back);
         }
     }
     if let Some(add_layout_columns) = &params.additional_params.add_layout_columns {

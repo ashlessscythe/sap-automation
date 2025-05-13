@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use dialoguer::{Input, Select};
 use sap_scripting::*;
 use std::collections::HashMap;
@@ -7,7 +7,7 @@ use std::thread;
 use std::time::Duration;
 
 use crate::utils::config_types::SapConfig;
-use crate::utils::config_types::{SequenceConfig as ConfigSequenceConfig, default_iterations, default_delay_seconds, default_interval_seconds};
+use crate::utils::config_types::SequenceConfig as ConfigSequenceConfig;
 use crate::vl06o_delivery_module::run_vl06o_delivery_packages_auto;
 use crate::zmdesnr_module::run_zmdesnr_auto;
 

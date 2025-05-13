@@ -16,7 +16,6 @@ use crate::utils::config_types::SapConfig;
 use crate::utils::excel_file_ops::read_excel_column;
 use crate::utils::excel_path_utils::{get_excel_file_path, get_newest_file};
 use crate::vl06o::{run_date_update, run_export, VL06ODateUpdateParams, VL06OParams};
-use crate::vl06o_delivery_module::run_vl06o_delivery_packages_module;
 
 pub fn run_vl06o_module(session: &GuiSession) -> Result<()> {
     clear_screen();

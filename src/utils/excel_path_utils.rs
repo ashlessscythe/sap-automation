@@ -223,11 +223,8 @@ pub fn resolve_path(path_str: &str) -> String {
     let path = Path::new(path_str);
 
     // If the path exists as-is, return it
-    match path.try_exists() {
-        Ok(true) => {
-            return path_str.to_string();
-        }
-        _ => {}
+    if let Ok(true) = path.try_exists() {
+        return path_str.to_string();
     }
 
     // Check if it's an absolute Windows path (contains drive letter followed by colon)

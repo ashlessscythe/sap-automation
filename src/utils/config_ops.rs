@@ -1,7 +1,6 @@
 use anyhow::{anyhow, Result};
 use dialoguer::{Input, Select};
 use std::collections::HashMap;
-use std::env;
 use std::fs;
 use std::io::{self};
 use std::path::Path;
@@ -90,7 +89,7 @@ impl SapConfig {
                                 reports_dir: global.get("reports_dir")
                                     .and_then(|v| v.as_str())
                                     .map(|s| s.replace("\\", "\\\\"))
-                                    .unwrap_or_else(|| get_default_reports_dir()),
+                                    .unwrap_or_else(get_default_reports_dir),
                                 default_tcode: global.get("default_tcode")
                                     .and_then(|v| v.as_str())
                                     .map(|s| s.to_string()),
@@ -272,7 +271,7 @@ impl SapConfig {
                 reports_dir: sap_config.get("reports_dir")
                     .and_then(|v| v.as_str())
                     .map(|s| s.replace("\\", "\\\\"))
-                    .unwrap_or_else(|| get_default_reports_dir()),
+                    .unwrap_or_else(get_default_reports_dir),
                 default_tcode: sap_config.get("tcode")
                     .and_then(|v| v.as_str())
                     .map(|s| s.to_string()),
@@ -288,7 +287,7 @@ impl SapConfig {
             };
             
             // Get the default tcode from the config
-            let default_tcode = global_config.default_tcode.clone().unwrap_or_else(|| "".to_string());
+            let default_tcode = global_config.default_tcode.clone().unwrap_or_default();
             
             // Create tcode config for the default tcode
             let mut tcode_config = TcodeConfig::default();

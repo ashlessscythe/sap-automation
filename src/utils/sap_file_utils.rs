@@ -69,10 +69,10 @@ pub fn close_excel_windows(file_name: Option<&str>) -> Result<bool> {
     
     // Only close the file if it was found
     if file_exists {
-        return close_specific_excel_window(file_name.unwrap());
+        close_specific_excel_window(file_name.unwrap())
     } else {
         println!("Excel file '{}' not found, not closing any windows", file_name.unwrap());
-        return Ok(false);
+        Ok(false)
     }
 }
 

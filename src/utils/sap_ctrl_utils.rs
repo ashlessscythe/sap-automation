@@ -1,7 +1,6 @@
 use sap_scripting::*;
 use windows::core::Result;
 
-use super::sap_wnd_utils::*;
 
 /// Check if a control exists in the SAP GUI
 ///
@@ -88,7 +87,7 @@ pub fn hit_ctrl(
             if action == "Get" {
                 if prop == "Text" {
                     if let Some(text_field) = ctrl.downcast::<GuiTextField>() {
-                        return text_field.text();
+                        text_field.text()
                     } else if let Some(text_field) = ctrl.downcast::<GuiCTextField>() {
                         return text_field.text();
                     } else if let Some(label) = ctrl.downcast::<GuiLabel>() {
@@ -99,7 +98,7 @@ pub fn hit_ctrl(
                         return Ok("".to_string());
                     }
                 } else {
-                    return Ok("".to_string());
+                    Ok("".to_string())
                 }
             } else if action == "Set" {
                 if prop == "Text" {
@@ -116,7 +115,7 @@ pub fn hit_ctrl(
         }
         Err(_) => {
             println!("Control not found: {}", full_id_for_log);
-            return Ok("".to_string());
+            Ok("".to_string())
         }
     }
 }
@@ -140,7 +139,7 @@ pub fn get_sap_text_errors(
         let text = hit_ctrl(session, wnd_idx, &id, "Text", "Get", "")?;
         if !text.is_empty() {
             if !result.is_empty() {
-                result.push_str("\n");
+                result.push('\n');
             }
             result.push_str(&format!("{}{}", prefix_str, text));
         }

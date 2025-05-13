@@ -3,13 +3,6 @@ pub use self::choose_layout_utils::choose_layout;
 pub use self::sap_constants::*;
 pub use self::sap_interfaces::*;
 pub use self::sap_wnd_utils::*;
-pub use self::sap_ctrl_utils::get_sap_text_errors;
-pub use self::config_types::SapConfig;
-pub use self::config_ops::get_reports_dir;
-pub use self::config_ops::handle_configure_reports_dir;
-pub use self::config_handlers::handle_configure_sap_params;
-pub use self::sequence_config::handle_configure_sequence;
-pub use self::sequence_config::run_sequence;
 
 // Declare and re-export submodules
 pub mod choose_layout_utils;

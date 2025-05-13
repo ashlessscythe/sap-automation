@@ -94,7 +94,7 @@ pub fn mult_contains(haystack: &str, needles: &[&str]) -> bool {
 }
 
 use crate::utils::config_types::SapConfig;
-use chrono::{DateTime, Utc, TimeZone};
+use chrono::{DateTime, Utc};
 use chrono_tz::Tz;
 use std::str::FromStr;
 

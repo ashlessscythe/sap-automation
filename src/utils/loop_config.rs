@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use dialoguer::{Input, Select};
 use sap_scripting::*;
 use std::collections::HashMap;
@@ -7,7 +7,7 @@ use std::thread;
 use std::time::Duration;
 
 use crate::utils::config_types::SapConfig;
-use crate::utils::config_types::{LoopConfig as ConfigLoopConfig, default_iterations, default_delay_seconds};
+use crate::utils::config_types::LoopConfig as ConfigLoopConfig;
 use crate::utils::sap_tcode_utils::{assert_tcode, check_tcode, variant_select};
 use crate::vl06o_module::run_vl06o_auto;
 use crate::vt11_module::run_vt11_auto;

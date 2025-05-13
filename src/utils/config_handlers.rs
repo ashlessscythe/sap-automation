@@ -89,7 +89,7 @@ pub fn handle_configure_sap_params() -> Result<()> {
                 // Configure Date Format
                 let current = config.global.as_ref()
                     .map(|g| g.date_format.clone())
-                    .unwrap_or_else(|| crate::utils::config_types::default_date_format());
+                    .unwrap_or_else(crate::utils::config_types::default_date_format);
                 
                 let format_options = vec!["mm/dd/yyyy", "yyyy-mm-dd"];
                 let default_index = if current == "yyyy-mm-dd" { 1 } else { 0 };
@@ -121,7 +121,7 @@ pub fn handle_configure_sap_params() -> Result<()> {
                 // Configure Timezone
                 let current = config.global.as_ref()
                     .map(|g| g.timezone.clone())
-                    .unwrap_or_else(|| crate::utils::config_types::default_timezone());
+                    .unwrap_or_else(crate::utils::config_types::default_timezone);
                 
                 println!("\nTimezone Options:");
                 println!("1. Standard timezone names: UTC, MST, MDT, EST, EDT, CST, CDT, PST, PDT");

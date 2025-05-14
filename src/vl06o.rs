@@ -1,3 +1,6 @@
+use std::thread;
+use std::time::Duration;
+
 use sap_scripting::*;
 use windows::core::Result;
 
@@ -229,6 +232,18 @@ impl Default for VL06ODateUpdateParams {
             target_date: chrono::Local::now().date_naive().succ(), // Default to tomorrow
             sap_variant_name: variant,
             t_code: "VL06O".to_string(),
+        }
+    }
+}
+
+// pause
+fn pause(time: Option<u64>) {
+    match time {
+        Some(n) => {
+            thread::sleep(Duration::from_secs(n))
+        }
+        None => {
+            thread::sleep(Duration::from_millis(500))
         }
     }
 }
@@ -639,7 +654,7 @@ pub fn run_date_update(session: &GuiSession, params: &VL06ODateUpdateParams) -> 
 
         // Check for popup message after starting processing
         let err_ctrl = exist_ctrl(session, 1, "", true)?;
-        if err_ctrl.cband {
+        if err_ctrl.cband && err_ctrl.ctext.contains("Information") {
             if let Ok(wnd) = session.find_by_id("wnd[1]".to_string()) {
                 if let Some(p_window) = wnd.downcast::<GuiModalWindow>() {
                     p_window.send_v_key(0)?; // Enter key to close
@@ -647,6 +662,9 @@ pub fn run_date_update(session: &GuiSession, params: &VL06ODateUpdateParams) -> 
                 }
             }
         }
+
+        /* pause */
+        pause(None);
 
         // Check if date field exists
         let date_field = exist_ctrl(session, 0, r"/usr/tabsTAXI_TABSTRIP_OVERVIEW/tabpT\01/ssubSUBSCREEN_BODY:SAPMV50A:1102/ctxtLIKP-WADAT", true)?;
@@ -668,6 +686,9 @@ pub fn run_date_update(session: &GuiSession, params: &VL06ODateUpdateParams) -> 
         };
         
         println!("Working with delivery ({})", delivery_number);
+
+        /* pause */
+        pause(None);
 
         // Select item overview tab (1st)
         if let Ok(tab) = session.find_by_id(r"wnd[0]/usr/tabsTAXI_TABSTRIP_OVERVIEW/tabpT\01".to_string()) {
@@ -699,6 +720,11 @@ pub fn run_date_update(session: &GuiSession, params: &VL06ODateUpdateParams) -> 
                 }
             }
         } else {
+            println!("Date is changeable");
+
+            /* pause */
+            pause(None);
+
             // Get original date
             let original_date = if let Ok(txt) = session.find_by_id(r"wnd[0]/usr/tabsTAXI_TABSTRIP_OVERVIEW/tabpT\01/ssubSUBSCREEN_BODY:SAPMV50A:1102/ctxtLIKP-WADAT".to_string()) {
                 if let Some(text_field) = txt.downcast::<GuiCTextField>() {
@@ -718,6 +744,9 @@ pub fn run_date_update(session: &GuiSession, params: &VL06ODateUpdateParams) -> 
             }
             
             println!("Changing date from ({}) to ({})", original_date, target_date_str);
+        
+            /* pause */
+            pause(None);
             
             // Enter loop to handle any messages
             loop {
@@ -729,36 +758,29 @@ pub fn run_date_update(session: &GuiSession, params: &VL06ODateUpdateParams) -> 
                         println!("Sent (Enter) key");
                     }
                 }
-
+                
+                
                 // Get status bar message
                 let status_msg = hit_ctrl(session, 0, "/sbar", "Text", "Get", "")?;
                 if !status_msg.is_empty() {
                     println!("Status bar: {}", status_msg);
+                } else if status_msg.contains("date in the format") {
+                    // handle this
+                } else if status_msg.is_empty() {
+                    break;
                 }
 
-                // Send enter key (vkey0)
-                if let Ok(window) = session.find_by_id("wnd[0]".to_string()) {
-                    if let Some(wnd) = window.downcast::<GuiMainWindow>() {
-                        wnd.send_v_key(0)?;
-                        println!("Sent (Enter) key");
-                    }
-                }
-                
-                // Check if status bar is empty or has short message
-                let new_status = hit_ctrl(session, 0, "/sbar", "Text", "Get", "")?;
-                if new_status.len() <= 1 {
-                    break;
-                } else if new_status.contains("date in the format") {
-                    // try different date format
-                } else if new_status.contains("Goods issue") {
-                    break;
-                }
+                /* pause */
+                pause(None);
             }
             
             // Record change if date was actually changed
             if original_date != target_date_str {
                 changes.push((delivery_number.clone(), original_date));
             }
+
+            /* pause */
+            pause(None);
             
             // Save
             if let Ok(wnd) = session.find_by_id("wnd[0]".to_string()) {
@@ -767,7 +789,9 @@ pub fn run_date_update(session: &GuiSession, params: &VL06ODateUpdateParams) -> 
                     println!("Saved changes for delivery {}", delivery_number);
                 }
             }
-            
+
+            /* pause */
+            pause(None);
                 
             // Handle confirmation popup - "Continue with next delivery?" - Always click Yes
             let popup_ctrl = exist_ctrl(session, 1, "/usr/btnSPOP-OPTION1", true)?;
@@ -779,43 +803,21 @@ pub fn run_date_update(session: &GuiSession, params: &VL06ODateUpdateParams) -> 
                     }
                 }
             }
-                
-            // Handle any other popups (like loading messages)
-            let err_popup = exist_ctrl(session, 1, "", true)?;
-            if err_popup.cband {
-                let msg = get_sap_text_errors(session, 1, "/usr/txtMESSTXT1", 10, None)?;
-                println!("Popup message: {}", msg);
-                if msg.contains("loading") {
-                    if let Ok(wnd) = session.find_by_id("wnd[0]".to_string()) {
-                        if let Some(main_window) = wnd.downcast::<GuiMainWindow>() {
-                            main_window.send_v_key(0)?; // Enter key to close
-                            println!("Closed loading message popup");
-                        }
-                    }
-                }
-            }
-                
-            // Check for "currently being" message in status bar
-            let bar_msg = hit_ctrl(session, 0, "/sbar", "Text", "Get", "")?;
-            if bar_msg.contains("currently being") {
-                println!("Error: ({})", bar_msg);
-                    
-                // F3 to exit
-                if let Ok(wnd) = session.find_by_id("wnd[0]".to_string()) {
-                    if let Some(main_window) = wnd.downcast::<GuiMainWindow>() {
-                        main_window.send_v_key(3)?; // F3 key to exit
-                        println!("Pressed F3 to exit due to error");
-                    }
-                }
-            }
+
+            /* pause */
+            pause(None);
         }
         
         // Increment counter
         if counter > params.delivery_numbers.len() as i32 {
+            println!("Done with {} items", counter);
             break;
         } else {
             counter += 1;
+            println!("One more on the counter!! Now: {} out of {}", counter, params.delivery_numbers.len() as i32);
         }
+        /* pause */
+        pause(None);
     }
     
     // Check for any final status bar message

@@ -484,6 +484,17 @@ pub fn run_export_delivery_packages(session: &GuiSession, params: &VL06ODelivery
         }
     }
 
+    
+    /*
+        TODO: add to config boolean vl06o item view
+        press item view button
+     */
+    if let Ok(btn) = session.find_by_id("wnd[0]/tbar[1]/btn[18]".to_string()) {
+        if let Some(button) = btn.downcast::<GuiButton>() {
+            button.press()?;
+        }
+    }
+
     // select layout
     if let Some(layout_row) = &params.layout_row {
         choose_layout(session, &params.t_code, layout_row.as_str())?;

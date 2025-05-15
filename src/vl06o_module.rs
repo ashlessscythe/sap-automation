@@ -194,7 +194,8 @@ pub fn run_vl06o_date_update_module(session: &GuiSession) -> Result<()> {
     let format_str = if date_format.to_lowercase() == "yyyy-mm-dd" { "%Y-%m-%d" } else { "%m/%d/%Y" };
     
     // Confirm with user
-    println!("Starting date update for {} deliveries", params.delivery_numbers.len());
+    let item_type = if params.is_shipment { "shipments" } else { "deliveries" };
+    println!("Starting date update for {} {}", params.entries.len(), item_type);
     println!("Target date: {}", params.target_date.format(format_str));
     
     let options = vec!["Yes, proceed", "No, cancel"];
@@ -678,10 +679,22 @@ fn get_vl06o_date_update_parameters() -> Result<VL06ODateUpdateParams> {
         Some(variant_name)
     };
 
-    // Ask how to input delivery numbers
+    // Ask if user wants to provide shipments or deliveries
+    let item_type_options = vec!["Shipment(s)", "Deliveries"];
+    let item_type_choice = Select::new()
+        .with_prompt("Do you want to provide shipment(s) or deliveries?")
+        .items(&item_type_options)
+        .default(1)
+        .interact()
+        .unwrap();
+
+    let is_shipment = item_type_choice == 0;
+    let item_type_name = if is_shipment { "shipment" } else { "delivery" };
+
+    // Ask how to input numbers
     let input_options = vec!["Read from Excel file", "Enter manually"];
     let input_choice = Select::new()
-        .with_prompt("How would you like to input delivery numbers?")
+        .with_prompt(format!("How would you like to input {} numbers?", item_type_name))
         .items(&input_options)
         .default(1)
         .interact()
@@ -690,38 +703,38 @@ fn get_vl06o_date_update_parameters() -> Result<VL06ODateUpdateParams> {
     match input_choice {
         1 => {
             // Enter manually
-            let delivery_numbers_str: String = Input::new()
-                .with_prompt("Enter delivery numbers (space or comma-separated)")
+            let numbers_str: String = Input::new()
+                .with_prompt(format!("Enter {} numbers (space or comma-separated)", item_type_name))
                 .interact_text()
                 .unwrap();
             
             // Check if input contains commas
-            let delivery_numbers: Vec<String> = if delivery_numbers_str.contains(',') {
+            let numbers: Vec<String> = if numbers_str.contains(',') {
                 // Split by commas if present
-                delivery_numbers_str
+                numbers_str
                     .split(',')
                     .map(|s| s.trim().to_string())
                     .filter(|s| !s.is_empty())
                     .collect()
             } else {
                 // Otherwise split by spaces
-                delivery_numbers_str
+                numbers_str
                     .split_whitespace()
                     .map(|s| s.to_string())
                     .collect()
             };
             
-            if delivery_numbers.is_empty() {
-                println!("No delivery numbers entered.");
+            if numbers.is_empty() {
+                println!("No {} numbers entered.", item_type_name);
             } else {
-                println!("Found {} delivery numbers.", delivery_numbers.len());
-                params.delivery_numbers = delivery_numbers;
+                println!("Found {} {} numbers.", numbers.len(), item_type_name);
+                params.entries = numbers;
+                params.is_shipment = is_shipment;
             }
         },
         0 => {
             // Read from Excel file
-            // TODO
-            println!("Select an Excel file containing delivery numbers:");
+            println!("Select an Excel file containing {} numbers:", item_type_name);
             
             // Get the reports directory as the default starting point
             let reports_dir = get_reports_dir();
@@ -765,7 +778,7 @@ fn get_vl06o_date_update_parameters() -> Result<VL06ODateUpdateParams> {
                     while !column_valid {
                         // Get the column name
                         let column_name: String = Input::new()
-                            .with_prompt("Enter column name containing delivery numbers")
+                            .with_prompt(format!("Enter column name containing {} numbers", item_type_name))
                             .interact_text()
                             .unwrap();
                         
@@ -790,11 +803,11 @@ fn get_vl06o_date_update_parameters() -> Result<VL06ODateUpdateParams> {
                         } else {
                             println!("Reading from column: {}", column_name);
                             
-                            // Read the delivery numbers from the Excel file
+                            // Read the numbers from the Excel file
                             match read_excel_column(&excel_path, "Sheet1", &column_name) {
-                                Ok(delivery_numbers) => {
-                                    if delivery_numbers.is_empty() {
-                                        println!("No delivery numbers found in column '{}' of the Excel file.", column_name);
+                                Ok(numbers) => {
+                                    if numbers.is_empty() {
+                                        println!("No {} numbers found in column '{}' of the Excel file.", item_type_name, column_name);
                                         
                                         // Ask if user wants to try again or return to main menu
                                         let options = vec!["Try another column", "Return to main menu"];
@@ -812,8 +825,9 @@ fn get_vl06o_date_update_parameters() -> Result<VL06ODateUpdateParams> {
                                         }
                                         // Otherwise, loop continues for another attempt
                                     } else {
-                                        println!("Found {} delivery numbers in Excel file.", delivery_numbers.len());
-                                        params.delivery_numbers = delivery_numbers;
+                                        println!("Found {} {} numbers in Excel file.", numbers.len(), item_type_name);
+                                        params.entries = numbers;
+                                        params.is_shipment = is_shipment;
                                         column_valid = true; // Exit the loop
                                     }
                                 },

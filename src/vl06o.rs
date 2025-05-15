@@ -177,10 +177,11 @@ impl Default for VL06ODeliveryParams {
 /// Struct to hold VL06O date update parameters
 #[derive(Debug)]
 pub struct VL06ODateUpdateParams {
-    pub delivery_numbers: Vec<String>,
+    pub entries: Vec<String>,
     pub target_date: NaiveDate,
     pub sap_variant_name: Option<String>,
     pub t_code: String,
+    pub is_shipment: bool,
 }
 
 impl Default for VL06ODateUpdateParams {
@@ -228,10 +229,11 @@ impl Default for VL06ODateUpdateParams {
         println!("Using variant={:?}", variant);
 
         Self {
-            delivery_numbers: Vec::new(),
+            entries: Vec::new(),
             target_date: chrono::Local::now().date_naive().succ(), // Default to tomorrow
             sap_variant_name: variant,
             t_code: "VL06O".to_string(),
+            is_shipment: false,
         }
     }
 }
@@ -439,6 +441,7 @@ pub fn run_export_delivery_packages(session: &GuiSession, params: &VL06ODelivery
     if let Ok(btn) = session.find_by_id("wnd[0]/usr/btn%_IT_VBELN_%_APP_%-VALU_PUSH".to_string()) {
         if let Some(button) = btn.downcast::<GuiButton>() {
             button.press()?;
+            println!("Pressed Multi Delivery button");
         }
     }
 
@@ -582,10 +585,22 @@ pub fn run_date_update(session: &GuiSession, params: &VL06ODateUpdateParams) -> 
         }
     }
     
-    // Press Multi Delivery button
-    if let Ok(btn) = session.find_by_id("wnd[0]/usr/btn%_IT_VBELN_%_APP_%-VALU_PUSH".to_string()) {
-        if let Some(button) = btn.downcast::<GuiButton>() {
-            button.press()?;
+    // Press Multi Shipment or Multi Delivery button based on is_shipment flag
+    if params.is_shipment {
+        // Press Multi Shipment button
+        if let Ok(btn) = session.find_by_id("wnd[0]/usr/btn%_IT_TKNUM_%_APP_%-VALU_PUSH".to_string()) {
+            if let Some(button) = btn.downcast::<GuiButton>() {
+                button.press()?;
+                println!("Pressed Multi Shipment button");
+            }
+        }
+    } else {
+        // Press Multi Delivery button
+        if let Ok(btn) = session.find_by_id("wnd[0]/usr/btn%_IT_VBELN_%_APP_%-VALU_PUSH".to_string()) {
+            if let Some(button) = btn.downcast::<GuiButton>() {
+                button.press()?;
+                println!("Pressed Multi Delivery button");
+            }
         }
     }
     
@@ -596,8 +611,9 @@ pub fn run_date_update(session: &GuiSession, params: &VL06ODateUpdateParams) -> 
         }
     }
     
-    // Enter delivery numbers using the scrollable paste function
-    println!("Pasting {} delivery numbers for date update...", params.delivery_numbers.len());
+    // Enter numbers using the scrollable paste function
+    let item_type = if params.is_shipment { "shipment" } else { "delivery" };
+    println!("Pasting {} {} numbers for date update...", params.entries.len(), item_type);
     let table_id = "tabsTAB_STRIP/tabpSIVA/ssubSCREEN_HEADER:SAPLALDB:3010";
     let batch_size = 7; // Number of visible rows in the table
     
@@ -605,7 +621,7 @@ pub fn run_date_update(session: &GuiSession, params: &VL06ODateUpdateParams) -> 
         session,
         1, // Window index
         table_id,
-        &params.delivery_numbers,
+        &params.entries,
         batch_size
     )?;
     
@@ -635,7 +651,7 @@ pub fn run_date_update(session: &GuiSession, params: &VL06ODateUpdateParams) -> 
         }
     }
     
-    println!("Starting VL06O date update for {} deliveries", params.delivery_numbers.len());
+    println!("Starting VL06O date update for {} deliveries", params.entries.len());
     
     // Initialize counter and changes vector
     let mut counter = 0;
@@ -809,12 +825,12 @@ pub fn run_date_update(session: &GuiSession, params: &VL06ODateUpdateParams) -> 
         }
         
         // Increment counter
-        if counter > params.delivery_numbers.len() as i32 {
+        if counter > params.entries.len() as i32 {
             println!("Done with {} items", counter);
             break;
         } else {
             counter += 1;
-            println!("One more on the counter!! Now: {} out of {}", counter, params.delivery_numbers.len() as i32);
+            println!("One more on the counter!! Now: {} out of {}", counter, params.entries.len() as i32);
         }
         /* pause */
         pause(None);

@@ -17,6 +17,28 @@
       },
       "args": [],
       "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug with SAP Mock",
+      "cargo": {
+        "args": [
+          "build",
+          "--bin=sap_automation",
+          "--package=sap_automation",
+          "--features=mock"
+        ],
+        "filter": {
+          "name": "sap_automation",
+          "kind": "bin"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "SAP_MOCK": "true"
+      }
     }
   ]
 }

@@ -163,6 +163,11 @@ impl SapConfig {
                                         .and_then(|v| v.as_str())
                                         .map(|s| s.to_string());
 
+                                    // Parse layout_columns as Vec<String> if present
+                                    tcode_config.layout_columns = tcode_table.get("layout_columns")
+                                        .and_then(|v| v.as_array())
+                                        .map(|arr| arr.iter().filter_map(|val| val.as_str().map(|s| s.to_string())).collect());
+
                                     // Extract additional parameters
                                     for (key, value) in tcode_table {
                                         if !["variant", "layout", "column_name", "date_range_start", 
@@ -502,6 +507,17 @@ impl SapConfig {
                 if let Some(tab_number) = &tcode_config.tab_number {
                     content.push_str(&format!("tab_number = \"{}\"\n", tab_number));
                 }
+
+                if let Some(layout_columns) = &tcode_config.layout_columns {
+                    content.push_str("layout_columns = [\n");
+                    for (i, col) in layout_columns.iter().enumerate() {
+                        if i > 0 {
+                            content.push_str(",\n");
+                        }
+                        content.push_str(&format!("  \"{}\"", col));
+                    }
+                    content.push_str("]\n");
+                }
                 
                 // Add additional tcode parameters
                 for (key, value) in &tcode_config.additional_params {
@@ -617,8 +633,8 @@ impl SapConfig {
                     config.insert("tab_number".to_string(), tab_number.clone());
                 }
 
-                if let Some(subdir) = &tcode_config.subdir {
-                    config.insert("subdir".to_string(), subdir.clone());
+                if let Some(layout_columns) = &tcode_config.layout_columns {
+                    config.insert("layout_columns".to_string(), serde_json::to_string(layout_columns).ok()?);
                 }
                 
                 // Add additional parameters

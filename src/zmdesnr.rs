@@ -2,6 +2,7 @@ use sap_scripting::*;
 use windows::core::Result;
 use crate::utils::sap_file_utils::*;
 use crate::utils::select_layout_utils::check_select_layout;
+use crate::utils::setup_layout_utils::setup_layout;
 // Import specific functions to avoid ambiguity
 use crate::utils::sap_ctrl_utils::hit_ctrl;
 use crate::utils::sap_tcode_utils::*;
@@ -51,32 +52,16 @@ impl Default for ZMDESNRParams {
 fn add_layout_columns(session: &GuiSession, params: &ZMDESNRParams) -> Result<bool> {
     println!("Adding layout columns...");
     
-    // Get columns from params if available, otherwise use default
+    // Get columns from params if available
     let add_layout_columns = match &params.additional_params.add_layout_columns {
-        Some(columns) => columns,
-        None => {
-            println!("No add_layout_columns found in params, using default columns");
-            // Default columns from the task
-            &vec!["Created By".to_string(), "Shipment Number".to_string()]
+        Some(columns) if !columns.is_empty() => columns,
+        _ => {
+            println!("No add_layout_columns found in params, skipping layout column setup.");
+            return Ok(true);
         }
     };
     
-    if add_layout_columns.is_empty() {
-        println!("No columns to add.");
-        return Ok(true);
-    }
-    
     println!("Adding columns: {:?}", add_layout_columns);
-    
-    // Implement the VBA code from docs/zmdesnr_layout.md
-    
-    // Select row 5 and column "STATUS"
-    if let Ok(shell) = session.find_by_id("wnd[0]/usr/cntlGRID1/shellcont/shell".to_string()) {
-        if let Some(grid) = shell.downcast::<GuiGridView>() {
-            grid.set_current_cell(5, "STATUS".to_string())?;
-            grid.set_selected_rows("5".to_string())?;
-        }
-    }
     
     // Select menu option 4/0/0 (Change Layout)
     if let Ok(menu) = session.find_by_id("wnd[0]/mbar/menu[4]/menu[0]/menu[0]".to_string()) {
@@ -85,21 +70,22 @@ fn add_layout_columns(session: &GuiSession, params: &ZMDESNRParams) -> Result<bo
         }
     }
 
-    for col in add_layout_columns {
-        println!("layout cols: {}", col);
+    // Use the setup_layout function to add columns by name
+    let layout_result = setup_layout(
+        session,
+        1,
+        "/usr/tabsG_TS_ALV/tabpALV_M_R1/ssubSUB_DYN0510:SAPLSKBH:0620",
+        "TEMP_LAYOUT", // You may want to parameterize this
+        add_layout_columns,
+        200,
+        false,
+    );
+    if let Err(e) = layout_result {
+        println!("Error setting up layout columns: {}", e);
+    } else if !layout_result.unwrap() {
+        println!("setup_layout returned false, layout columns may not have been added");
     }
     
-    for r in  &["3", "2", "2"] {
-        // Select row in the layout container
-        if let Ok(shell) = session.find_by_id("wnd[1]/usr/tabsG_TS_ALV/tabpALV_M_R1/ssubSUB_DYN0510:SAPLSKBH:0620/cntlCONTAINER1_LAYO/shellcont/shell".to_string()) {
-            if let Some(grid) = shell.downcast::<GuiGridView>() {
-                grid.set_current_cell_row(r.parse::<i32>().unwrap())?;
-                grid.set_selected_rows(r.to_string())?;
-                grid.double_click_current_cell()?;
-            }
-        }
-    }
-        
     // Send VKey 0 (Enter)
     if let Ok(window) = session.find_by_id("wnd[1]".to_string()) {
         if let Some(wnd) = window.downcast::<GuiModalWindow>() {

@@ -198,15 +198,15 @@ fn create_zmdesnr_params_from_config(config: &HashMap<String, String>) -> ZMDESN
         params.additional_params.pre_export_back = Some(pre_export_back.to_string());
     }
 
-    // Set add_layout_columns if available
-    if let Some(add_layout_columns) = config.get("add_layout_columns") {
-        // Parse the string value as a TOML array
-        match toml::from_str::<Vec<String>>(add_layout_columns) {
+    // Set add_layout_columns from layout_columns if available
+    if let Some(layout_columns) = config.get("layout_columns") {
+        // Parse the string value as a JSON array
+        match serde_json::from_str::<Vec<String>>(layout_columns) {
             Ok(columns) => {
                 params.additional_params.add_layout_columns = Some(columns);
             }
             Err(e) => {
-                println!("Error parsing add_layout_columns: {}", e);
+                println!("Error parsing layout_columns: {}", e);
                 // Use default values from the task
                 params.additional_params.add_layout_columns = Some(vec![
                     "Created By".to_string(),

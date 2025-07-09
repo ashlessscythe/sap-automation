@@ -2,7 +2,7 @@ Attribute VB*Name = "Control_id*"
 Option Explicit
 
 Public Const time_form = "mm-dd-yy hh:mm:ss"
-Public Const str_form = vbCrLf & "********************\*\*\*\*********************\*\*********************\*\*\*\*********************" & vbCrLf
+Public Const str_form = vbCrLf & "********\*\*\*\*********\*\*\*\*********\*\*\*\*********\*\*********\*\*\*\*********\*\*\*\*********\*\*\*\*********" & vbCrLf
 Public Type Wnd_Title_Caption
 Wnd_Type As String
 Wnd_Title As String
@@ -115,7 +115,7 @@ Private Const ERROR_CANCELLED = 1223&
 Public Declare PtrSafe Function WNetAddConnection2 Lib "mpr.dll" Alias "WNetAddConnection2A" (lpNetResource As NETRESOURCE, ByVal lpPassword As String, ByVal lpUserName As String, ByVal dwFlags As Long) As Long
 Public Declare PtrSafe Function WNetCancelConnection2 Lib "mpr.dll" Alias "WNetCancelConnection2A" (ByVal lpName As String, ByVal dwFlags As Long, ByVal fForce As Long) As Long
 Public Declare PtrSafe Function WNetGetUser Lib "Mpr" Alias "WNetGetUserA" (ByVal lpName As String, ByVal lpUserName As String, lpnLength As Long) As Long
-'****************\*\*****************\*\*\*****************\*\*****************
+'******\*\*\*\*******\*\*******\*\*\*\*******\*\*\*******\*\*\*\*******\*\*******\*\*\*\*******
 Public Declare PtrSafe Function FindWindow Lib "User32" Alias "FindWindowA" (ByVal lpClassName As String, ByVal lpWindowName As String) As Long
 Public Declare PtrSafe Function GetWindowText Lib "User32" Alias "GetWindowTextA" (ByVal hWND As Long, ByVal lpString As String, ByVal cch As Long) As Long
 Public Declare PtrSafe Function GetWindowTextLength Lib "User32" Alias "GetWindowTextLengthA" (ByVal hWND As Long) As Long
@@ -128,7 +128,7 @@ Public Const SWP_HIDEWINDOW = &H80
 Public Const SWP_SHOWWINDOW = &H40
 
 Private Declare PtrSafe Function SendMessage Lib "User32" Alias "SendMessageA" (ByVal hWND As Long, ByVal wMsg As Long, ByVal wParam As Long, lParam As Any) As Long
-'****************\*\*****************\*\*\*****************\*\*****************
+'******\*\*\*\*******\*\*******\*\*\*\*******\*\*\*******\*\*\*\*******\*\*******\*\*\*\*******
 Public Declare PtrSafe Function ShellExecute Lib "shell32.dll" Alias "ShellExecuteA" (ByVal hWND As Long, ByVal lpOperation As String, ByVal lpFile As String, ByVal lpParameters As String, ByVal lpDirectory As String, ByVal nShowCmd As Long) As Long
 
 Function assert_tcode(ByVal sess, ByVal tCode, Optional ByVal wnd = 0) As Boolean
@@ -280,7 +280,7 @@ errlv:
 
 End Function
 
-Function check*select_layout(ByVal sess, ByVal tCode, ByVal LayoutRow, Optional ByVal arg As Object, *
+Function check_select_layout(ByVal sess, ByVal tCode, ByVal LayoutRow, Optional ByVal arg As Object, \*
 Optional ByVal bRunPre As Boolean = False) As params
 Dim err_ctl As ctrl_check, err_msg As String, bar_msg As String, ctrl_msg As String
 Dim local_rVal As params
@@ -1583,10 +1583,10 @@ Set GuiAuto = Nothing
 Call Close_Conn
 GoTo Top
 End If
-'******\*\*\*\*******\*\*\*\*******\*\*\*\*******
+'**\*\***\*\*\*\***\*\***\*\*\*\***\*\***\*\*\*\***\*\***
 'Conn.CloseSession(Sess.Name)
 'Sess.Children.Count
-'******\*\*\*\*******\*\*\*\*******\*\*\*\*******
+'**\*\***\*\*\*\***\*\***\*\*\*\***\*\***\*\*\*\***\*\***
 Next
 If IsEmpty(sess) Then
 Else

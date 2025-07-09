@@ -91,6 +91,10 @@ pub struct TcodeConfig {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subdir: Option<String>,
+
+    /// List of columns to use for layout setup (if provided in config)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub layout_columns: Option<Vec<String>>,
     
     #[serde(flatten)]
     pub additional_params: HashMap<String, String>,

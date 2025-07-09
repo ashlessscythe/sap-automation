@@ -4,7 +4,7 @@ use std::path::Path;
 use chrono::NaiveDate;
 
 // Import the necessary modules from the crate
-use sap_automation::utils::config_types::SapConfig;
+use sap_automation::utils::config_types::{SapConfig, TcodeConfig};
 use sap_automation::utils::config_types::{default_iterations, default_delay_seconds, default_timezone, default_date_format, get_default_menu_option};
 use sap_automation::utils::config_ops::handle_configure_reports_dir;
 
@@ -249,7 +249,7 @@ fn test_get_tcode_config() {
     }
     
     if let Some(tcode_configs) = &mut config.tcode {
-        let mut vl06o_config = crate::utils::config_types::TcodeConfig::default();
+        let mut vl06o_config = TcodeConfig::default();
         vl06o_config.variant = Some("TEST_VARIANT".to_string());
         vl06o_config.layout = Some("TEST_LAYOUT".to_string());
         vl06o_config.column_name = Some("Test Column".to_string());
@@ -260,7 +260,7 @@ fn test_get_tcode_config() {
         tcode_configs.insert("VL06O".to_string(), vl06o_config);
         
         // Add VT11 config with custom parameter
-        let mut vt11_config = crate::utils::config_types::TcodeConfig::default();
+        let mut vt11_config = TcodeConfig::default();
         vt11_config.additional_params.insert("custom_param".to_string(), "custom_value".to_string());
         
         tcode_configs.insert("VT11".to_string(), vt11_config);
@@ -402,18 +402,18 @@ fn test_tcode_specific_params() {
     
     if let Some(tcode_configs) = &mut config.tcode {
         // VL06O config
-        let mut vl06o_config = crate::utils::config_types::TcodeConfig::default();
+        let mut vl06o_config = TcodeConfig::default();
         vl06o_config.by_date = Some("true".to_string());
         vl06o_config.additional_params.insert("custom_param".to_string(), "vl06o_value".to_string());
         tcode_configs.insert("VL06O".to_string(), vl06o_config);
         
         // VT11 config
-        let mut vt11_config = crate::utils::config_types::TcodeConfig::default();
+        let mut vt11_config = TcodeConfig::default();
         vt11_config.additional_params.insert("custom_param".to_string(), "vt11_value".to_string());
         tcode_configs.insert("VT11".to_string(), vt11_config);
         
         // ZMDESNR config
-        let mut zmdesnr_config = crate::utils::config_types::TcodeConfig::default();
+        let mut zmdesnr_config = TcodeConfig::default();
         zmdesnr_config.serial_number = Some("123456789".to_string());
         tcode_configs.insert("ZMDESNR".to_string(), zmdesnr_config);
     }

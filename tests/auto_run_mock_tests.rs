@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::Path;
 use chrono::NaiveDate;
+use toml;
 
 // Mock struct for VL06O parameters
 #[derive(Debug, Default)]
@@ -25,20 +26,23 @@ fn mock_vl06o_auto_run(config_path: &str) -> Result<bool, String> {
         Err(e) => return Err(format!("Failed to read config file: {}", e)),
     };
     
-    // Check for required VL06O settings
-    if !content.contains("[sap_config]") {
-        return Err("Missing [sap_config] section".to_string());
-    }
+    // Parse as TOML
+    let parsed: toml::Value = match toml::from_str(&content) {
+        Ok(val) => val,
+        Err(e) => return Err(format!("Failed to parse TOML: {}", e)),
+    };
     
-    if !content.contains("variant") {
+    // Check for required [sap_config] section
+    let sap_config = match parsed.get("sap_config") {
+        Some(val) => val,
+        None => return Err("Missing [sap_config] section".to_string()),
+    };
+    
+    // Check for required 'variant' key
+    if !sap_config.get("variant").is_some() {
         return Err("Missing variant setting".to_string());
     }
-    
-    if !content.contains("layout") {
-        return Err("Missing layout setting".to_string());
-    }
-    
-    // If all checks pass, return success
+    // layout is optional
     Ok(true)
 }
 
@@ -91,8 +95,8 @@ date_range_end = "04/15/2025"
     let result = mock_vl06o_auto_run(&config_path);
     
     // Verify the result
-    assert!(result.is_ok(), "Auto run should pass with missing variant");
-    assert_eq!(result.unwrap(), true);
+    assert!(result.is_err(), "Auto run should fail with missing variant");
+    assert!(result.err().unwrap().contains("Missing variant setting"));
 }
 
 #[test]

@@ -20,8 +20,19 @@ layout = "delivery_view"
 column_name = "Shipment Number"
 
 [tcode.ZMDESNR]
-variant = "serial_variant"
-layout = "serial_layout"
+variant = "ua_all_stat_"
+layout = "MY_LAYOUT"
+# Example: specify the columns to use for the layout
+layout_columns = [
+  "Serial #",
+  "Status",
+  "Customer Name",
+  "Storage Bin",
+  "Material Number",
+  "Qty",
+  "Shipment Number",
+  "Time"
+]
 tab_number = "2"
 serial_number = "SN12345"
 

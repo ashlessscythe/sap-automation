@@ -11,7 +11,11 @@ use crate::utils::sap_ctrl_utils::*;
 use crate::utils::sap_tcode_utils::*;
 use crate::utils::sap_wnd_utils::*;
 
+use chrono::Local;
 use chrono::NaiveDate;
+use std::fs::File;
+use std::io::Write;
+use std::path::PathBuf;
 
 /// Struct to hold VL06O export parameters
 #[derive(Debug)]
@@ -31,15 +35,15 @@ impl Default for VL06OParams {
         // Load config to get variant and layout
         println!("Loading config for VL06OParams...");
         let config = crate::utils::config_types::SapConfig::load();
-        
+
         // Debug the config loading result
         match &config {
             Ok(cfg) => println!("Config loaded successfully"),
             Err(e) => println!("Failed to load config: {}", e),
         }
-        
+
         let config = config.ok();
-        
+
         // Debug the tcode section
         if let Some(ref cfg) = config {
             if let Some(ref tcode_map) = cfg.tcode {
@@ -53,22 +57,28 @@ impl Default for VL06OParams {
                 println!("No tcode section found in config");
             }
         }
-        
+
         let tcode_config = config
             .as_ref()
             .and_then(|c| c.tcode.as_ref())
             .and_then(|t| t.get("VL06O"));
-            
+
         // Debug the variant and layout values
         if let Some(tc) = tcode_config {
-            println!("VL06O config: variant={:?}, layout={:?}", tc.variant, tc.layout);
+            println!(
+                "VL06O config: variant={:?}, layout={:?}",
+                tc.variant, tc.layout
+            );
         }
-        
+
         let variant = tcode_config.and_then(|c| c.variant.clone());
         let layout = tcode_config.and_then(|c| c.layout.clone());
         let column = tcode_config.and_then(|c| c.column_name.clone());
-        
-        println!("Using variant={:?}, layout={:?}, column={:?}", variant, layout, column);
+
+        println!(
+            "Using variant={:?}, layout={:?}, column={:?}",
+            variant, layout, column
+        );
 
         Self {
             sap_variant_name: variant,
@@ -102,15 +112,15 @@ impl Default for VL06ODeliveryParams {
         // Load config to get variant and layout
         println!("Loading config for VL06ODeliveryParams...");
         let config = crate::utils::config_types::SapConfig::load();
-        
+
         // Debug the config loading result
         match &config {
             Ok(cfg) => println!("Config loaded successfully"),
             Err(e) => println!("Failed to load config: {}", e),
         }
-        
+
         let config = config.ok();
-        
+
         // Debug the tcode section
         if let Some(ref cfg) = config {
             if let Some(ref tcode_map) = cfg.tcode {
@@ -124,17 +134,20 @@ impl Default for VL06ODeliveryParams {
                 println!("No tcode section found in config");
             }
         }
-        
+
         let tcode_config = config
             .as_ref()
             .and_then(|c| c.tcode.as_ref())
             .and_then(|t| t.get("VL06O"));
-            
+
         // Debug the variant and layout values
         if let Some(tc) = tcode_config {
-            println!("VL06O config: variant={:?}, layout={:?}", tc.variant, tc.layout);
+            println!(
+                "VL06O config: variant={:?}, layout={:?}",
+                tc.variant, tc.layout
+            );
         }
-        
+
         let variant = tcode_config.and_then(|c| c.variant.clone());
         let layout = tcode_config.and_then(|c| c.layout.clone());
         let column = tcode_config
@@ -154,11 +167,15 @@ impl Default for VL06ODeliveryParams {
             .or_else(|| {
                 // Check if subdir is in additional_params
                 tcode_config
-                    .and_then(|c| c.additional_params.get("subdir")).cloned()
+                    .and_then(|c| c.additional_params.get("subdir"))
+                    .cloned()
             })
             .or_else(|| Some("bruh".to_string()));
-        
-        println!("Using variant={:?}, layout={:?}, column={:?}", variant, layout, column);
+
+        println!(
+            "Using variant={:?}, layout={:?}, column={:?}",
+            variant, layout, column
+        );
 
         Self {
             sap_variant_name: variant,
@@ -189,15 +206,15 @@ impl Default for VL06ODateUpdateParams {
         // Load config to get variant
         println!("Loading config for VL06ODateUpdateParams...");
         let config = crate::utils::config_types::SapConfig::load();
-        
+
         // Debug the config loading result
         match &config {
             Ok(cfg) => println!("Config loaded successfully"),
             Err(e) => println!("Failed to load config: {}", e),
         }
-        
+
         let config = config.ok();
-        
+
         // Debug the tcode section
         if let Some(ref cfg) = config {
             if let Some(ref tcode_map) = cfg.tcode {
@@ -211,21 +228,21 @@ impl Default for VL06ODateUpdateParams {
                 println!("No tcode section found in config");
             }
         }
-        
+
         let tcode_config = config
             .as_ref()
             .and_then(|c| c.tcode.as_ref())
             .and_then(|t| t.get("VL06O"));
-            
+
         // Debug the variant value
         if let Some(tc) = tcode_config {
             println!("VL06O config: variant={:?}", tc.variant);
         }
-        
+
         let variant = tcode_config
             .and_then(|c| c.variant.clone())
             .or_else(|| Some("blank_".to_string()));
-        
+
         println!("Using variant={:?}", variant);
 
         Self {
@@ -241,12 +258,8 @@ impl Default for VL06ODateUpdateParams {
 // pause
 fn pause(time: Option<u64>) {
     match time {
-        Some(n) => {
-            thread::sleep(Duration::from_secs(n))
-        }
-        None => {
-            thread::sleep(Duration::from_millis(500))
-        }
+        Some(n) => thread::sleep(Duration::from_secs(n)),
+        None => thread::sleep(Duration::from_millis(500)),
     }
 }
 
@@ -309,18 +322,21 @@ pub fn run_export(session: &GuiSession, params: &VL06OParams) -> Result<bool> {
     }
 
     // Paste shipment numbers using the scrollable paste function
-    println!("Pasting {} shipment numbers...", params.shipment_numbers.len());
-    let table_id = "tabsTAB_STRIP/tabpSIVA/ssubSCREEN_HEADER:SAPLALDB:3010";
+    println!(
+        "Pasting {} shipment numbers...",
+        params.shipment_numbers.len()
+    );
+    let table_id = "tabsTAB_STRIP/tabpSIVA/ssubSCREEN_HEADER:SAPLALDB:3010/tblSAPLALDBSINGLE";
     let batch_size = 7; // Number of visible rows in the table
-    
+
     let paste_result = paste_values_with_scroll(
         session,
         1, // Window index
         table_id,
         &params.shipment_numbers,
-        batch_size
+        batch_size,
     )?;
-    
+
     if !paste_result {
         println!("Failed to paste shipment numbers");
         return Ok(false);
@@ -407,7 +423,10 @@ pub fn run_export(session: &GuiSession, params: &VL06OParams) -> Result<bool> {
 /// Run VL06O export with delivery numbers to get package counts
 ///
 /// This function is a port of the VBA code in deliv_packages.md
-pub fn run_export_delivery_packages(session: &GuiSession, params: &VL06ODeliveryParams) -> Result<bool> {
+pub fn run_export_delivery_packages(
+    session: &GuiSession,
+    params: &VL06ODeliveryParams,
+) -> Result<bool> {
     println!("Running VL06O export for delivery packages...");
 
     // Check if tCode is active
@@ -434,8 +453,27 @@ pub fn run_export_delivery_packages(session: &GuiSession, params: &VL06ODelivery
         }
     }
 
-    // dedup delivery numbers
-    let delivery_numbers: Vec<String> = params.delivery_numbers.iter().cloned().collect::<std::collections::HashSet<_>>().into_iter().collect();
+    // dedup delivery numbers and remove empties
+    let mut delivery_numbers: Vec<String> = params
+        .delivery_numbers
+        .iter()
+        .filter(|s| !s.trim().is_empty())
+        .cloned()
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect();
+    delivery_numbers.sort(); // Optional: sort for consistency
+    println!("Sanitized delivery numbers: {}", delivery_numbers.len());
+    if !delivery_numbers.is_empty() {
+        println!(
+            "First 10: {:?}",
+            &delivery_numbers[..delivery_numbers.len().min(10)]
+        );
+        println!(
+            "Last 10: {:?}",
+            &delivery_numbers[delivery_numbers.len().saturating_sub(10)..]
+        );
+    }
 
     // Press Multi Delivery button
     if let Ok(btn) = session.find_by_id("wnd[0]/usr/btn%_IT_VBELN_%_APP_%-VALU_PUSH".to_string()) {
@@ -452,23 +490,53 @@ pub fn run_export_delivery_packages(session: &GuiSession, params: &VL06ODelivery
         }
     }
 
-      // Enter delivery numbers using the scrollable paste function
-      println!("Pasting {} delivery numbers...", delivery_numbers.len());
-      let table_id = "tabsTAB_STRIP/tabpSIVA/ssubSCREEN_HEADER:SAPLALDB:3010/tblSAPLALDBSINGLE";
-      let batch_size = 7; // Number of visible rows in the table
-      
-      let paste_result = paste_values_with_scroll(
-          session,
-          1, // Window index
-          table_id,
-          &delivery_numbers,
-          batch_size
-      )?;
-      
-      if !paste_result {
-          println!("Failed to paste delivery numbers");
-          return Ok(false);
-      }
+    // Enter delivery numbers using the scrollable paste function
+    println!("Pasting {} delivery numbers...", delivery_numbers.len());
+    let table_id = "tabsTAB_STRIP/tabpSIVA/ssubSCREEN_HEADER:SAPLALDB:3010/tblSAPLALDBSINGLE";
+    let batch_size = 7; // Number of visible rows in the table
+
+    let paste_result = paste_values_with_scroll(
+        session,
+        1, // Window index
+        table_id,
+        &delivery_numbers,
+        batch_size,
+    )?;
+
+    if !paste_result {
+        println!("Failed to paste delivery numbers");
+        return Ok(false);
+    }
+
+    // Write pasted deliveries to CSV in zmdesnr dir
+    {
+        let timestamp = Local::now().format("%Y%m%d-%H%M%S").to_string();
+        let csv_filename = format!("{}-deliveries.csv", timestamp);
+        let (zmdesnr_dir, _) = get_tcode_file_path("ZMDESNR", "xlsx");
+        let mut csv_path = PathBuf::from(zmdesnr_dir);
+        csv_path.push(csv_filename);
+        let mut file = File::create(&csv_path).map_err(|e| {
+            windows::core::Error::new(
+                windows::core::HRESULT(0),
+                format!("CSV create error: {}", e).into(),
+            )
+        })?;
+        writeln!(file, "delivery_number").map_err(|e| {
+            windows::core::Error::new(
+                windows::core::HRESULT(0),
+                format!("CSV write error: {}", e).into(),
+            )
+        })?;
+        for dn in &delivery_numbers {
+            writeln!(file, "{}", dn).map_err(|e| {
+                windows::core::Error::new(
+                    windows::core::HRESULT(0),
+                    format!("CSV write error: {}", e).into(),
+                )
+            })?;
+        }
+        println!("Wrote pasted deliveries to {}", csv_path.display());
+    }
 
     // Close Multi-Window
     if let Ok(window) = session.find_by_id("wnd[1]".to_string()) {
@@ -484,11 +552,10 @@ pub fn run_export_delivery_packages(session: &GuiSession, params: &VL06ODelivery
         }
     }
 
-    
     /*
-        TODO: add to config boolean vl06o item view
-        press item view button
-     */
+       TODO: add to config boolean vl06o item view
+       press item view button
+    */
     if let Ok(btn) = session.find_by_id("wnd[0]/tbar[1]/btn[18]".to_string()) {
         if let Some(button) = btn.downcast::<GuiButton>() {
             button.press()?;
@@ -526,9 +593,12 @@ pub fn run_export_delivery_packages(session: &GuiSession, params: &VL06ODelivery
 /// Run VL06O date update with the given parameters
 ///
 /// This function is a port of the VBA function vl06o_date_update
-pub fn run_date_update(session: &GuiSession, params: &VL06ODateUpdateParams) -> Result<(i32, Vec<(String, String)>)> {
+pub fn run_date_update(
+    session: &GuiSession,
+    params: &VL06ODateUpdateParams,
+) -> Result<(i32, Vec<(String, String)>)> {
     println!("Running VL06O date update...");
-    
+
     // Get the configured date format
     let config = crate::utils::config_types::SapConfig::load().ok();
     let date_format = config
@@ -536,26 +606,30 @@ pub fn run_date_update(session: &GuiSession, params: &VL06ODateUpdateParams) -> 
         .and_then(|c| c.global.as_ref())
         .map(|g| g.date_format.as_str())
         .unwrap_or("mm/dd/yyyy");
-    
+
     // Format date according to configuration
-    let format_str = if date_format.to_lowercase() == "yyyy-mm-dd" { "%Y-%m-%d" } else { "%m/%d/%Y" };
-    
+    let format_str = if date_format.to_lowercase() == "yyyy-mm-dd" {
+        "%Y-%m-%d"
+    } else {
+        "%m/%d/%Y"
+    };
+
     // Format target date for SAP
     let target_date_str = params.target_date.format(format_str).to_string();
-    
+
     // Check if tCode is active
     if !assert_tcode(session, "VL06O", Some(0))? {
         println!("Failed to activate VL06O transaction");
         return Ok((0, Vec::new()));
     }
-    
+
     // Press "List Outbound Deliveries" button
     if let Ok(btn) = session.find_by_id("wnd[0]/usr/btnBUTTON6".to_string()) {
         if let Some(button) = btn.downcast::<GuiButton>() {
             button.press()?;
         }
     }
-    
+
     // Apply variant if provided
     if let Some(variant_name) = &params.sap_variant_name {
         if !variant_name.is_empty() {
@@ -565,28 +639,28 @@ pub fn run_date_update(session: &GuiSession, params: &VL06ODateUpdateParams) -> 
                     main_window.send_v_key(17)?; // F4 key for variant selection
                 }
             }
-            
+
             // Traditional variant select
             if let Ok(txt) = session.find_by_id("wnd[1]/usr/txtV-LOW".to_string()) {
                 if let Some(text_field) = txt.downcast::<GuiTextField>() {
                     text_field.set_text(variant_name.clone())?;
                 }
             }
-            
+
             // Clear name
             if let Ok(txt) = session.find_by_id("wnd[1]/usr/txtENAME-LOW".to_string()) {
                 if let Some(text_field) = txt.downcast::<GuiTextField>() {
                     text_field.set_text("".to_string())?;
                 }
             }
-            
+
             // Enter
             if let Ok(wnd) = session.find_by_id("wnd[1]".to_string()) {
                 if let Some(modal_window) = wnd.downcast::<GuiModalWindow>() {
                     modal_window.send_v_key(0)?; // Enter key
                 }
             }
-            
+
             // Close
             if let Ok(wnd) = session.find_by_id("wnd[1]".to_string()) {
                 if let Some(modal_window) = wnd.downcast::<GuiModalWindow>() {
@@ -595,11 +669,13 @@ pub fn run_date_update(session: &GuiSession, params: &VL06ODateUpdateParams) -> 
             }
         }
     }
-    
+
     // Press Multi Shipment or Multi Delivery button based on is_shipment flag
     if params.is_shipment {
         // Press Multi Shipment button
-        if let Ok(btn) = session.find_by_id("wnd[0]/usr/btn%_IT_TKNUM_%_APP_%-VALU_PUSH".to_string()) {
+        if let Ok(btn) =
+            session.find_by_id("wnd[0]/usr/btn%_IT_TKNUM_%_APP_%-VALU_PUSH".to_string())
+        {
             if let Some(button) = btn.downcast::<GuiButton>() {
                 button.press()?;
                 println!("Pressed Multi Shipment button");
@@ -607,67 +683,80 @@ pub fn run_date_update(session: &GuiSession, params: &VL06ODateUpdateParams) -> 
         }
     } else {
         // Press Multi Delivery button
-        if let Ok(btn) = session.find_by_id("wnd[0]/usr/btn%_IT_VBELN_%_APP_%-VALU_PUSH".to_string()) {
+        if let Ok(btn) =
+            session.find_by_id("wnd[0]/usr/btn%_IT_VBELN_%_APP_%-VALU_PUSH".to_string())
+        {
             if let Some(button) = btn.downcast::<GuiButton>() {
                 button.press()?;
                 println!("Pressed Multi Delivery button");
             }
         }
     }
-    
+
     // Clear previous entries
     if let Ok(window) = session.find_by_id("wnd[1]".to_string()) {
         if let Some(modal_window) = window.downcast::<GuiModalWindow>() {
             modal_window.send_v_key(24)?; // Shift+F8 to clear entries
         }
     }
-    
+
     // Enter numbers using the scrollable paste function
-    let item_type = if params.is_shipment { "shipment" } else { "delivery" };
-    println!("Pasting {} {} numbers for date update...", params.entries.len(), item_type);
-    let table_id = "tabsTAB_STRIP/tabpSIVA/ssubSCREEN_HEADER:SAPLALDB:3010";
+    let item_type = if params.is_shipment {
+        "shipment"
+    } else {
+        "delivery"
+    };
+    println!(
+        "Pasting {} {} numbers for date update...",
+        params.entries.len(),
+        item_type
+    );
+    let table_id = "tabsTAB_STRIP/tabpSIVA/ssubSCREEN_HEADER:SAPLALDB:3010/tblSAPLALDBSINGLE";
     let batch_size = 7; // Number of visible rows in the table
-    
+
     let paste_result = paste_values_with_scroll(
         session,
         1, // Window index
         table_id,
         &params.entries,
-        batch_size
+        batch_size,
     )?;
-    
+
     if !paste_result {
         println!("Failed to paste delivery numbers for date update");
         return Ok((0, Vec::new()));
     }
-    
+
     // Close Multi-Window
     if let Ok(window) = session.find_by_id("wnd[1]".to_string()) {
         if let Some(modal_window) = window.downcast::<GuiModalWindow>() {
             modal_window.send_v_key(8)?; // F8 key to close
         }
     }
-    
+
     // Execute
     if let Ok(wnd) = session.find_by_id("wnd[0]".to_string()) {
         if let Some(main_window) = wnd.downcast::<GuiMainWindow>() {
             main_window.send_v_key(8)?; // F8 key to execute
         }
     }
-    
+
     // Press F5 (Select All)
     if let Ok(wnd) = session.find_by_id("wnd[0]".to_string()) {
         if let Some(main_window) = wnd.downcast::<GuiMainWindow>() {
             main_window.send_v_key(5)?; // F5 key to refresh
         }
     }
-    
-    println!("Starting VL06O date update for {} deliveries", params.entries.len());
-    
+
+    println!(
+        "Starting VL06O date update for {} deliveries",
+        params.entries.len()
+    );
+
     // Initialize counter and changes vector
     let mut counter = 0;
     let mut changes = Vec::new();
-    
+
     // Press F13 (Shift+F1) to begin processing - this is the key step that starts the update process
     if let Ok(wnd) = session.find_by_id("wnd[0]".to_string()) {
         if let Some(main_window) = wnd.downcast::<GuiMainWindow>() {
@@ -675,10 +764,9 @@ pub fn run_date_update(session: &GuiSession, params: &VL06ODateUpdateParams) -> 
             println!("Pressed Shift+F1 to begin processing");
         }
     }
-    
+
     // Loop through deliveries
     loop {
-
         // Check for popup message after starting processing
         let err_ctrl = exist_ctrl(session, 1, "", true)?;
         if err_ctrl.cband && err_ctrl.ctext.contains("Information") {
@@ -694,15 +782,22 @@ pub fn run_date_update(session: &GuiSession, params: &VL06ODateUpdateParams) -> 
         pause(None);
 
         // Check if date field exists
-        let date_field = exist_ctrl(session, 0, r"/usr/tabsTAXI_TABSTRIP_OVERVIEW/tabpT\01/ssubSUBSCREEN_BODY:SAPMV50A:1102/ctxtLIKP-WADAT", true)?;
+        let date_field = exist_ctrl(
+            session,
+            0,
+            r"/usr/tabsTAXI_TABSTRIP_OVERVIEW/tabpT\01/ssubSUBSCREEN_BODY:SAPMV50A:1102/ctxtLIKP-WADAT",
+            true,
+        )?;
 
         match date_field.cband {
             true => { /* no-op */ }
-            false =>  { break }
+            false => break,
         }
 
         // Get delivery number
-        let delivery_number = if let Ok(txt) = session.find_by_id("wnd[0]/usr/subSUBSCREEN_HEADER:SAPMV50A:1502/ctxtLIKP-VBELN".to_string()) {
+        let delivery_number = if let Ok(txt) = session
+            .find_by_id("wnd[0]/usr/subSUBSCREEN_HEADER:SAPMV50A:1502/ctxtLIKP-VBELN".to_string())
+        {
             if let Some(text_field) = txt.downcast::<GuiCTextField>() {
                 text_field.text()?
             } else {
@@ -711,20 +806,22 @@ pub fn run_date_update(session: &GuiSession, params: &VL06ODateUpdateParams) -> 
         } else {
             "Unknown".to_string()
         };
-        
+
         println!("Working with delivery ({})", delivery_number);
 
         /* pause */
         pause(None);
 
         // Select item overview tab (1st)
-        if let Ok(tab) = session.find_by_id(r"wnd[0]/usr/tabsTAXI_TABSTRIP_OVERVIEW/tabpT\01".to_string()) {
+        if let Ok(tab) =
+            session.find_by_id(r"wnd[0]/usr/tabsTAXI_TABSTRIP_OVERVIEW/tabpT\01".to_string())
+        {
             if let Some(tab_strip) = tab.downcast::<GuiTab>() {
                 tab_strip.select()?;
                 println!("Selected item overview tab");
             }
         }
-        
+
         // Check if date is changeable
         let date_changeable = if let Ok(txt) = session.find_by_id(r"wnd[0]/usr/tabsTAXI_TABSTRIP_OVERVIEW/tabpT\01/ssubSUBSCREEN_BODY:SAPMV50A:1102/ctxtLIKP-WADAT".to_string()) {
             if let Some(text_field) = txt.downcast::<GuiCTextField>() {
@@ -735,10 +832,13 @@ pub fn run_date_update(session: &GuiSession, params: &VL06ODateUpdateParams) -> 
         } else {
             false
         };
-        
+
         if !date_changeable {
-            println!("Delivery date not changeable for delivery {}", delivery_number);
-            
+            println!(
+                "Delivery date not changeable for delivery {}",
+                delivery_number
+            );
+
             // F3 back
             if let Ok(window) = session.find_by_id("wnd[0]".to_string()) {
                 if let Some(wnd) = window.downcast::<GuiMainWindow>() {
@@ -762,22 +862,24 @@ pub fn run_date_update(session: &GuiSession, params: &VL06ODateUpdateParams) -> 
             } else {
                 "Unknown".to_string()
             };
-            
+
             // Change date
             if let Ok(txt) = session.find_by_id(r"wnd[0]/usr/tabsTAXI_TABSTRIP_OVERVIEW/tabpT\01/ssubSUBSCREEN_BODY:SAPMV50A:1102/ctxtLIKP-WADAT".to_string()) {
                 if let Some(text_field) = txt.downcast::<GuiCTextField>() {
                     text_field.set_text(target_date_str.clone())?;
                 }
             }
-            
-            println!("Changing date from ({}) to ({})", original_date, target_date_str);
-        
+
+            println!(
+                "Changing date from ({}) to ({})",
+                original_date, target_date_str
+            );
+
             /* pause */
             pause(None);
-            
+
             // Enter loop to handle any messages
             loop {
-
                 // Send enter key (vkey0)
                 if let Ok(window) = session.find_by_id("wnd[0]".to_string()) {
                     if let Some(wnd) = window.downcast::<GuiMainWindow>() {
@@ -785,8 +887,7 @@ pub fn run_date_update(session: &GuiSession, params: &VL06ODateUpdateParams) -> 
                         println!("Sent (Enter) key");
                     }
                 }
-                
-                
+
                 // Get status bar message
                 let status_msg = hit_ctrl(session, 0, "/sbar", "Text", "Get", "")?;
                 if !status_msg.is_empty() {
@@ -800,7 +901,7 @@ pub fn run_date_update(session: &GuiSession, params: &VL06ODateUpdateParams) -> 
                 /* pause */
                 pause(None);
             }
-            
+
             // Record change if date was actually changed
             if original_date != target_date_str {
                 changes.push((delivery_number.clone(), original_date));
@@ -808,7 +909,7 @@ pub fn run_date_update(session: &GuiSession, params: &VL06ODateUpdateParams) -> 
 
             /* pause */
             pause(None);
-            
+
             // Save
             if let Ok(wnd) = session.find_by_id("wnd[0]".to_string()) {
                 if let Some(main_window) = wnd.downcast::<GuiMainWindow>() {
@@ -819,7 +920,7 @@ pub fn run_date_update(session: &GuiSession, params: &VL06ODateUpdateParams) -> 
 
             /* pause */
             pause(None);
-                
+
             // Handle confirmation popup - "Continue with next delivery?" - Always click Yes
             let popup_ctrl = exist_ctrl(session, 1, "/usr/btnSPOP-OPTION1", true)?;
             if popup_ctrl.cband {
@@ -834,24 +935,28 @@ pub fn run_date_update(session: &GuiSession, params: &VL06ODateUpdateParams) -> 
             /* pause */
             pause(None);
         }
-        
+
         // Increment counter
         if counter > params.entries.len() as i32 {
             println!("Done with {} items", counter);
             break;
         } else {
             counter += 1;
-            println!("One more on the counter!! Now: {} out of {}", counter, params.entries.len() as i32);
+            println!(
+                "One more on the counter!! Now: {} out of {}",
+                counter,
+                params.entries.len() as i32
+            );
         }
         /* pause */
         pause(None);
     }
-    
+
     // Check for any final status bar message
     let bar_msg = hit_ctrl(session, 0, "/sbar", "Text", "Get", "")?;
     if bar_msg.contains("restricted") {
         println!("Error: ({})", bar_msg);
-        
+
         // F3 to exit
         if let Ok(wnd) = session.find_by_id("wnd[0]".to_string()) {
             if let Some(main_window) = wnd.downcast::<GuiMainWindow>() {
@@ -860,9 +965,9 @@ pub fn run_date_update(session: &GuiSession, params: &VL06ODateUpdateParams) -> 
             }
         }
     }
-    
+
     println!("Done... with ({}) items.", counter);
-    
+
     Ok((counter, changes))
 }
 

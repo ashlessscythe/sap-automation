@@ -35,6 +35,14 @@ layout_columns = [
 ]
 tab_number = "2"
 serial_number = "SN12345"
+pre_export_back = true
+
+[tcode.y_dn3_47000149]
+plants = [
+  "BRUH",
+  "OTHER",
+  "REBRUH"
+]
 
 [loop]
 tcode = "VT11"

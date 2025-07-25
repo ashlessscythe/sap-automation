@@ -8,22 +8,22 @@ use std::vec::Vec;
 pub struct SapConfig {
     #[serde(skip)]
     pub config_path: String,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub global: Option<GlobalConfig>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub build: Option<BuildConfig>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tcode: Option<HashMap<String, TcodeConfig>>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub loop_config: Option<LoopConfig>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sequence: Option<SequenceConfig>,
-    
+
     #[serde(skip)]
     pub raw_config: Option<toml::Value>,
 }
@@ -33,22 +33,22 @@ pub struct SapConfig {
 pub struct GlobalConfig {
     #[serde(default = "default_instance_id")]
     pub instance_id: String,
-    
+
     #[serde(default = "get_default_reports_dir")]
     pub reports_dir: String,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_tcode: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_menu_option: Option<usize>,
-    
+
     #[serde(default = "default_date_format")]
     pub date_format: String,
-    
+
     #[serde(default = "default_timezone")]
     pub timezone: String,
-    
+
     #[serde(flatten)]
     pub additional_params: HashMap<String, String>,
 }
@@ -57,7 +57,7 @@ pub struct GlobalConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BuildConfig {
     pub target: String,
-    
+
     #[serde(flatten)]
     pub additional_params: HashMap<String, String>,
 }
@@ -67,25 +67,25 @@ pub struct BuildConfig {
 pub struct TcodeConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub variant: Option<String>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub layout: Option<String>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub column_name: Option<String>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub date_range_start: Option<String>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub date_range_end: Option<String>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub by_date: Option<String>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub serial_number: Option<String>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tab_number: Option<String>,
 
@@ -95,7 +95,11 @@ pub struct TcodeConfig {
     /// List of columns to use for layout setup (if provided in config)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub layout_columns: Option<Vec<String>>,
-    
+
+    /// List of plants for 149 report
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plants: Option<Vec<String>>,
+
     #[serde(flatten)]
     pub additional_params: HashMap<String, String>,
 }
@@ -104,13 +108,13 @@ pub struct TcodeConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoopConfig {
     pub tcode: String,
-    
+
     #[serde(default = "default_iterations")]
     pub iterations: String,
-    
+
     #[serde(default = "default_delay_seconds")]
     pub delay_seconds: String,
-    
+
     #[serde(flatten)]
     pub params: HashMap<String, String>,
 }
@@ -120,16 +124,16 @@ pub struct LoopConfig {
 pub struct SequenceConfig {
     #[serde(default = "default_sequence_options")]
     pub options: Vec<String>,
-    
+
     #[serde(default = "default_iterations")]
     pub iterations: String,
-    
+
     #[serde(default = "default_delay_seconds")]
     pub delay_seconds: String,
-    
+
     #[serde(default = "default_interval_seconds")]
     pub interval_seconds: String,
-    
+
     #[serde(flatten)]
     pub params: HashMap<String, String>,
 }

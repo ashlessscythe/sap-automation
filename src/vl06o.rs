@@ -636,7 +636,7 @@ pub fn run_date_update(
             // Variant select window
             if let Ok(wnd) = session.find_by_id("wnd[0]".to_string()) {
                 if let Some(main_window) = wnd.downcast::<GuiMainWindow>() {
-                    main_window.send_v_key(17)?; // F4 key for variant selection
+                    main_window.send_v_key(17)?; // Shift+F5 key for variant selection
                 }
             }
 

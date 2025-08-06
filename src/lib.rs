@@ -1,4 +1,5 @@
 pub mod app;
+pub mod tui;
 pub mod utils;
 pub mod vl06o;
 pub mod vl06o_delivery_module;

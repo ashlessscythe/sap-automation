@@ -1,10 +1,10 @@
-use dialoguer::Select;
 use sap_automation::utils::config_types::SapConfig;
 use sap_scripting::*;
 use std::thread;
 use std::time::Duration;
 
 mod app;
+mod tui;
 mod utils;
 mod vl06o;
 mod vl06o_delivery_module;
@@ -210,12 +210,23 @@ fn main() -> anyhow::Result<()> {
             ]
         };
 
-        let choice = Select::new()
-            .with_prompt("Choose an option")
-            .items(&options)
-            .default(default_option.unwrap_or(0))
-            .interact()
-            .unwrap();
+        let choice = match tui::show_selection_menu(
+            "SAP Automation - Main Menu",
+            options.into_iter().map(|s| s.to_string()).collect(),
+            default_option,
+        ) {
+            Ok(Some(selected)) => selected,
+            Ok(None) => {
+                // User pressed Esc or q to exit
+                clear_screen();
+                println!("Exiting application...");
+                return Ok(());
+            }
+            Err(e) => {
+                eprintln!("Error with TUI: {}", e);
+                return Err(anyhow::anyhow!("TUI error: {}", e));
+            }
+        };
 
         match choice {
             0 => {

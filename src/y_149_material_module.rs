@@ -1,0 +1,146 @@
+use chrono::{Duration as ChronoDuration, Local};
+use crossterm::{
+    execute,
+    terminal::{Clear, ClearType},
+};
+use dialoguer::Input;
+use sap_scripting::*;
+use std::io::{self};
+use windows::core::Result;
+
+use crate::utils::config_types::SapConfig;
+use crate::y_149_material::{run_material_export, Report149MaterialParams};
+
+pub fn run_149_material_module(session: &GuiSession) -> Result<()> {
+    clear_screen();
+    println!("149 Report - Material Not TSP");
+    println!("=============================");
+
+    // Get parameters from user
+    let params = get_149_material_parameters()?;
+
+    // Run the export
+    match run_material_export(session, &params) {
+        Ok(true) => {
+            println!("149 material report export completed successfully!");
+        }
+        Ok(false) => {
+            println!("149 material report export failed or was cancelled.");
+        }
+        Err(e) => {
+            println!("Error running 149 material report export: {}", e);
+        }
+    }
+
+    // Wait for user to press enter before returning to main menu
+    println!("\nPress Enter to return to main menu...");
+    let mut input = String::new();
+    io::stdin().read_line(&mut input).unwrap();
+
+    Ok(())
+}
+
+fn clear_screen() {
+    execute!(std::io::stdout(), Clear(ClearType::All)).unwrap();
+}
+
+fn get_149_material_parameters() -> Result<Report149MaterialParams> {
+    let mut params = Report149MaterialParams::default();
+
+    // Check if we have a variant in config
+    if let Ok(config) = SapConfig::load() {
+        if let Some(tcode_config) = config.get_tcode_config("y_dn3_47000149", Some(true)) {
+            if let Some(variant) = tcode_config.get("mat_variant") {
+                params.variant = Some(variant.clone());
+                println!("Using variant from config: {}", variant);
+            }
+        }
+    }
+
+    // Get material number
+    let material: String = Input::new()
+        .with_prompt("Material number (required)")
+        .allow_empty(false)
+        .interact_text()
+        .unwrap();
+
+    params.material = material;
+
+    // Only get plant and signi if no variant exists
+    if params.variant.is_none() {
+        // Get plant
+        let plant: String = Input::new()
+            .with_prompt("Plant code (optional)")
+            .allow_empty(true)
+            .interact_text()
+            .unwrap();
+
+        params.plant = plant;
+
+        // Get signi (default to "")
+        let trailer: String = Input::new()
+            .with_prompt("Trailer Number (optional)")
+            .default("".to_string())
+            .allow_empty(true)
+            .interact_text()
+            .unwrap();
+
+        params.trailer = trailer;
+    } else {
+        // Set empty values when variant is used
+        params.plant = String::new();
+        params.trailer = String::new();
+    }
+
+    // Check if we have date range in config
+    let mut use_config_dates = false;
+    if let Ok(config) = SapConfig::load() {
+        if let Some(raw_config) = &config.raw_config {
+            if let Some(tcode_section) = raw_config.get("tcode") {
+                if let Some(y_dn3_section) = tcode_section.get("y_dn3_47000149") {
+                    if let Some(days_range) = y_dn3_section.get("149_days_range") {
+                        if let Some(days) = days_range.as_integer() {
+                            let today = Local::now().naive_local().date();
+                            let start_date = today - ChronoDuration::days(days);
+                            let end_date = today + ChronoDuration::days(1);
+
+                            params.date_low = start_date.format("%Y-%m-%d").to_string();
+                            params.date_high = end_date.format("%Y-%m-%d").to_string();
+                            use_config_dates = true;
+                            println!(
+                                "Using date range from config: {} to {}",
+                                params.date_low, params.date_high
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if !use_config_dates {
+        // Get number of days back
+        let days_back: i64 = Input::new()
+            .with_prompt("How many days back from today?")
+            .interact_text()
+            .unwrap();
+
+        // Calculate start date by subtracting days from today
+        let today = Local::now().naive_local().date();
+        let start_date = today - ChronoDuration::days(days_back);
+        let end_date = today + ChronoDuration::days(1); // Tomorrow
+
+        params.date_low = start_date.format("%Y-%m-%d").to_string();
+        params.date_high = end_date.format("%Y-%m-%d").to_string();
+
+        println!("Date range: {} to {}", params.date_low, params.date_high);
+    }
+
+    clear_screen();
+
+    println!("----------------------------------------");
+    println!("Running 149 material report with params: {:#?}", params);
+    println!("----------------------------------------");
+
+    Ok(params)
+}

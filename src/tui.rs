@@ -67,6 +67,53 @@ impl App {
         self.update_scroll_offset();
     }
 
+    pub fn page_down(&mut self) {
+        let i = match self.state.selected() {
+            Some(i) => {
+                let page_size = 10; // Jump by 10 items
+                if i + page_size >= self.items.len() {
+                    self.items.len() - 1
+                } else {
+                    i + page_size
+                }
+            }
+            None => 0,
+        };
+        self.state.select(Some(i));
+        self.selected = Some(i);
+        self.update_scroll_offset();
+    }
+
+    pub fn page_up(&mut self) {
+        let i = match self.state.selected() {
+            Some(i) => {
+                let page_size = 10; // Jump by 10 items
+                if i < page_size {
+                    0
+                } else {
+                    i - page_size
+                }
+            }
+            None => 0,
+        };
+        self.state.select(Some(i));
+        self.selected = Some(i);
+        self.update_scroll_offset();
+    }
+
+    pub fn go_to_end(&mut self) {
+        let i = self.items.len() - 1;
+        self.state.select(Some(i));
+        self.selected = Some(i);
+        self.update_scroll_offset();
+    }
+
+    pub fn go_to_home(&mut self) {
+        self.state.select(Some(0));
+        self.selected = Some(0);
+        self.update_scroll_offset();
+    }
+
     fn update_scroll_offset(&mut self) {
         if let Some(selected) = self.state.selected() {
             // Keep selected item in the middle of visible area when possible
@@ -130,6 +177,18 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                         KeyCode::Char('k') | KeyCode::Up => {
                             app.previous();
                         }
+                        KeyCode::PageDown => {
+                            app.page_down();
+                        }
+                        KeyCode::PageUp => {
+                            app.page_up();
+                        }
+                        KeyCode::End => {
+                            app.go_to_end();
+                        }
+                        KeyCode::Home => {
+                            app.go_to_home();
+                        }
                         KeyCode::Char(' ') | KeyCode::Enter => {
                             return Ok(app.get_selected());
                         }
@@ -148,9 +207,9 @@ fn ui(f: &mut Frame, app: &App) {
         .margin(2)
         .constraints(
             [
-                Constraint::Length(3),
-                Constraint::Min(0),
-                Constraint::Length(3),
+                Constraint::Length(3), // Title
+                Constraint::Min(5),    // Main content (minimum 5 lines)
+                Constraint::Length(5), // Instructions (increased from 3 to 5)
             ]
             .as_ref(),
         )
@@ -247,11 +306,19 @@ fn ui(f: &mut Frame, app: &App) {
     let status_text = format!("{} / {}", selected_index + 1, app.items.len());
     let instructions = Paragraph::new(vec![
         Line::from(vec![
-            Span::styled("↑/↓", Style::default().fg(Color::Yellow)),
-            Span::styled(" or ", Style::default().fg(Color::Gray)),
-            Span::styled("j/k", Style::default().fg(Color::Yellow)),
-            Span::styled(": Navigate", Style::default().fg(Color::Gray)),
-            Span::styled("    ", Style::default().fg(Color::Gray)),
+            Span::styled(
+                "Navigation: ",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("↑/↓ or j/k", Style::default().fg(Color::White)),
+            Span::styled(
+                "    Status: ",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::styled(
                 status_text,
                 Style::default()
@@ -260,16 +327,36 @@ fn ui(f: &mut Frame, app: &App) {
             ),
         ]),
         Line::from(vec![
-            Span::styled("Enter", Style::default().fg(Color::Yellow)),
-            Span::styled(" or ", Style::default().fg(Color::Gray)),
-            Span::styled("Space", Style::default().fg(Color::Yellow)),
-            Span::styled(": Select", Style::default().fg(Color::Gray)),
+            Span::styled(
+                "Page: ",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("PgUp/PgDn", Style::default().fg(Color::White)),
+            Span::styled(
+                "    Jump: ",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("Home/End", Style::default().fg(Color::White)),
         ]),
         Line::from(vec![
-            Span::styled("q", Style::default().fg(Color::Yellow)),
-            Span::styled(" or ", Style::default().fg(Color::Gray)),
-            Span::styled("Esc", Style::default().fg(Color::Yellow)),
-            Span::styled(": Exit", Style::default().fg(Color::Gray)),
+            Span::styled(
+                "Select: ",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("Enter or Space", Style::default().fg(Color::White)),
+            Span::styled(
+                "    Exit: ",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("q or Esc", Style::default().fg(Color::White)),
         ]),
     ])
     .style(Style::default().fg(Color::Gray))
@@ -333,6 +420,18 @@ fn run_grid_app<B: Backend>(
                         }
                         KeyCode::Char('k') | KeyCode::Up => {
                             app.previous();
+                        }
+                        KeyCode::PageDown => {
+                            app.page_down();
+                        }
+                        KeyCode::PageUp => {
+                            app.page_up();
+                        }
+                        KeyCode::End => {
+                            app.go_to_end();
+                        }
+                        KeyCode::Home => {
+                            app.go_to_home();
                         }
                         KeyCode::Char(' ') | KeyCode::Enter => {
                             return Ok(app.get_selected());
@@ -407,7 +506,7 @@ fn grid_ui(f: &mut Frame, app: &App) {
                 .style(Style::default().fg(Color::Gray))
                 .title("Options"),
         )
-        .highlight_style(
+        .row_highlight_style(
             Style::default()
                 .fg(Color::Black)
                 .bg(Color::Blue)

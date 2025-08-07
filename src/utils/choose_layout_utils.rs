@@ -29,6 +29,12 @@ pub fn choose_layout(
         tcode, layout_row
     );
 
+    // Special handling for 149 tcode (y_dn3_47000149)
+    if tcode.to_lowercase() == "y_dn3_47000149" {
+        eprintln!("DEBUG: Using special 149 layout selection method");
+        return choose_layout_149(session, layout_row);
+    }
+
     // Create a mutable copy of layout_row that we can modify in the loop
     let mut current_layout = layout_row.to_string();
 
@@ -354,6 +360,136 @@ pub fn choose_layout(
     Ok(msg)
 }
 
+/// Special layout selection method for 149 tcode (y_dn3_47000149)
+///
+/// This method uses a grid-based approach instead of search dialog
+/// Based on the VBA code:
+/// session.findById("wnd[0]/tbar[1]/btn[33]").press
+/// session.findById("wnd[1]/usr/ssubD0500_SUBSCREEN:SAPLSLVC_DIALOG:0501/cntlG51_CONTAINER/shellcont/shell").setCurrentCell 6,"TEXT"
+/// session.findById("wnd[1]/usr/ssubD0500_SUBSCREEN:SAPLSLVC_DIALOG:0501/cntlG51_CONTAINER/shellcont/shell").selectedRows = "6"
+/// session.findById("wnd[1]/usr/ssubD0500_SUBSCREEN:SAPLSLVC_DIALOG:0501/cntlG51_CONTAINER/shellcont/shell").clickCurrentCell
+pub fn choose_layout_149(session: &GuiSession, layout_name: &str) -> windows::core::Result<String> {
+    eprintln!(
+        "DEBUG: Starting 149 layout selection for layout: {}",
+        layout_name
+    );
+
+    // Step 1: Press the layout button (wnd[0]/tbar[1]/btn[33])
+    eprintln!("DEBUG: Pressing layout button");
+    if let Ok(button) = session.find_by_id("wnd[0]/tbar[1]/btn[33]".to_string()) {
+        if let Some(btn) = button.downcast::<GuiButton>() {
+            btn.press()?;
+            eprintln!("DEBUG: Layout button pressed successfully");
+        } else {
+            eprintln!("DEBUG: Layout button found but downcast failed");
+            return Ok("Failed to press layout button".to_string());
+        }
+    } else {
+        eprintln!("DEBUG: Layout button not found");
+        return Ok("Failed to find layout button".to_string());
+    }
+
+    // Wait for window 1 to appear
+    thread::sleep(Duration::from_millis(1000));
+
+    // Step 2: Find the grid container
+    let grid_id =
+        "wnd[1]/usr/ssubD0500_SUBSCREEN:SAPLSLVC_DIALOG:0501/cntlG51_CONTAINER/shellcont/shell";
+    eprintln!("DEBUG: Looking for grid at: {}", grid_id);
+
+    if let Ok(grid_obj) = session.find_by_id(grid_id.to_string()) {
+        if let Some(grid) = grid_obj.downcast::<GuiGridView>() {
+            eprintln!("DEBUG: Grid found successfully");
+
+            // Step 3: Search for the layout in the grid
+            let mut layout_found = false;
+            let mut layout_row = -1;
+
+            // Get the number of rows in the grid
+            let row_count = grid.row_count()?;
+            eprintln!("DEBUG: Grid has {} rows", row_count);
+
+            // Search through the grid rows to find the layout
+            for i in 0..row_count {
+                if let Ok(cell_text) = grid.get_cell_value(i, "TEXT".to_string()) {
+                    eprintln!("DEBUG: Row {} has text: '{}'", i, cell_text);
+                    if cell_text.trim().to_lowercase() == layout_name.trim().to_lowercase() {
+                        eprintln!("DEBUG: Layout '{}' found at row {}", layout_name, i);
+                        layout_found = true;
+                        layout_row = i;
+                        break;
+                    }
+                }
+            }
+
+            if layout_found {
+                // Step 4: Set current cell to the found row
+                eprintln!(
+                    "DEBUG: Setting current cell to row {} with column TEXT",
+                    layout_row
+                );
+                grid.set_current_cell(layout_row, "TEXT".to_string())?;
+
+                // Step 5: Select the row
+                eprintln!("DEBUG: Selecting row {}", layout_row);
+                grid.set_selected_rows(layout_row.to_string())?;
+
+                // Step 6: Click on the current cell
+                eprintln!("DEBUG: Clicking on current cell");
+                grid.click_current_cell()?;
+
+                eprintln!("DEBUG: 149 layout selection completed successfully");
+                return Ok("Layout selected successfully".to_string());
+            } else {
+                eprintln!("DEBUG: Layout '{}' not found in grid", layout_name);
+
+                // Ask user for a new layout name or to exit
+                use dialoguer::{Input, Select};
+
+                println!("Layout '{}' not found in the grid.", layout_name);
+
+                let options = vec!["Enter another layout name", "Exit layout selection"];
+                let selection = Select::new()
+                    .with_prompt("What would you like to do?")
+                    .items(&options)
+                    .default(0)
+                    .interact()
+                    .unwrap_or(1); // Default to exit if interaction fails
+
+                if selection == 0 {
+                    // User wants to try another layout name
+                    let new_layout: String = Input::new()
+                        .with_prompt("Enter new layout name")
+                        .interact_text()
+                        .unwrap_or_else(|_| String::new());
+
+                    if new_layout.is_empty() {
+                        // If user entered empty string, exit
+                        close_popups(session, None, None)?;
+                        return Ok("Layout selection cancelled".to_string());
+                    }
+
+                    // Close any remaining popups and try again
+                    close_popups(session, None, None)?;
+
+                    // Recursively call the function with the new layout name
+                    return choose_layout_149(session, &new_layout);
+                } else {
+                    // User wants to exit
+                    close_popups(session, None, None)?;
+                    return Ok("Layout selection cancelled".to_string());
+                }
+            }
+        } else {
+            eprintln!("DEBUG: Grid object found but downcast failed");
+            return Ok("Failed to access grid object".to_string());
+        }
+    } else {
+        eprintln!("DEBUG: Grid not found at: {}", grid_id);
+        return Ok("Failed to find layout grid".to_string());
+    }
+}
+
 /// Trigger layout popup based on transaction code
 ///
 /// This function is a port of the VBA function layout_popup
@@ -393,6 +529,14 @@ pub fn layout_popup(session: &GuiSession, tcode: &str) -> windows::core::Result<
                     if let Some(btn) = button.downcast::<GuiButton>() {
                         btn.press()?;
                     }
+                }
+            }
+        }
+        "y_dn3_47000149" => {
+            // Layout button for 149 tcode
+            if let Ok(button) = session.find_by_id("wnd[0]/tbar[1]/btn[33]".to_string()) {
+                if let Some(btn) = button.downcast::<GuiButton>() {
+                    btn.press()?;
                 }
             }
         }

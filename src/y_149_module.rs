@@ -105,6 +105,10 @@ fn create_149_params_from_config(config: &SapConfig) -> Report149Params {
         if let Some(variant) = tcode_config.get("variant") {
             params.variant = variant.clone();
         }
+        // get layout from config
+        if let Some(layout) = tcode_config.get("layout") {
+            params.layout = layout.clone();
+        }
     }
 
     // Set plants if available - we need to get this from the raw config since it's an array

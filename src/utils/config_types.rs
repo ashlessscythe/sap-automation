@@ -100,6 +100,10 @@ pub struct TcodeConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub plants: Option<Vec<String>>,
 
+    /// Export type for file export (0=unconverted, 1=text with tabs, 2=rich text, 3=HTML, 4=clipboard)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub export_type: Option<u8>,
+
     #[serde(flatten)]
     pub additional_params: HashMap<String, String>,
 }

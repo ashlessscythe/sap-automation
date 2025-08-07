@@ -45,6 +45,7 @@ plants = [
 ]
 mat_variant = "material_missing"
 149_days_range = 5
+export_type = 0
 
 [loop]
 tcode = "VT11"

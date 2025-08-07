@@ -73,10 +73,25 @@ pub fn run_149_auto(session: &GuiSession) -> Result<()> {
     // Create Report149Params from configuration
     let params = create_149_params_from_config(&config);
 
+    // Determine file extension for display
+    let file_extension = match params.export_type {
+        0 | 1 => "txt",   // unconverted or text with tabs
+        2 => "rtf",       // rich text format
+        3 => "html",      // HTML format
+        4 => "clipboard", // clipboard - no file
+        _ => "txt",       // default to txt for unknown values
+    };
+
     println!("Running 149 report with the following parameters:");
     println!("-----------------------------------------------");
     println!("Variant: {}", params.variant);
     println!("Plants: {:?}", params.plants);
+    println!(
+        "Export Type: {} ({})",
+        params.export_type,
+        get_export_type_description(params.export_type)
+    );
+    println!("File Extension: {}", file_extension);
     println!("-----------------------------------------------");
 
     // Run the export
@@ -109,6 +124,10 @@ fn create_149_params_from_config(config: &SapConfig) -> Report149Params {
         if let Some(layout) = tcode_config.get("layout") {
             params.layout = layout.clone();
         }
+        // get export_type from config - now using the proper field
+        if let Some(export_type) = tcode_config.get("export_type") {
+            params.export_type = export_type.clone().parse::<u8>().unwrap();
+        }
     }
 
     // Set plants if available - we need to get this from the raw config since it's an array
@@ -133,6 +152,17 @@ fn create_149_params_from_config(config: &SapConfig) -> Report149Params {
 
 fn clear_screen() {
     execute!(std::io::stdout(), Clear(ClearType::All)).unwrap();
+}
+
+fn get_export_type_description(export_type: u8) -> &'static str {
+    match export_type {
+        0 => "unconverted",
+        1 => "text with tabs",
+        2 => "rich text format",
+        3 => "HTML format",
+        4 => "clipboard",
+        _ => "unknown",
+    }
 }
 
 fn get_149_parameters() -> Result<Report149Params> {
@@ -183,6 +213,17 @@ fn get_149_parameters() -> Result<Report149Params> {
     } else {
         params.plants = plants;
     }
+
+    // Get export type
+    let export_type: u8 = Input::new()
+        .with_prompt(
+            "Export type (0=unconverted, 1=text with tabs, 2=rich text, 3=HTML, 4=clipboard)",
+        )
+        .default(1)
+        .interact_text()
+        .unwrap();
+
+    params.export_type = export_type;
 
     clear_screen();
 

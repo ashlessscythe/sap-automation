@@ -15,6 +15,7 @@ pub struct Report149Params {
     pub plants: Vec<String>,
     pub t_code: String,
     pub layout: String,
+    pub export_type: u8,
 }
 
 impl Default for Report149Params {
@@ -24,6 +25,7 @@ impl Default for Report149Params {
             plants: Vec::new(),
             t_code: "y_dn3_47000149".to_string(),
             layout: "pending".to_string(),
+            export_type: 1, // Default to text with tabs
         }
     }
 }
@@ -114,7 +116,7 @@ pub fn run_export(session: &GuiSession, params: &Report149Params) -> Result<bool
         }
 
         // Export to file
-        if let Err(e) = export_to_file(session, plant) {
+        if let Err(e) = export_to_file(session, plant, params.export_type) {
             println!("Error exporting for plant {}: {}", plant, e);
             continue;
         }
@@ -133,7 +135,7 @@ pub fn run_export(session: &GuiSession, params: &Report149Params) -> Result<bool
 }
 
 /// Export the current data to a file
-fn export_to_file(session: &GuiSession, plant: &str) -> Result<()> {
+fn export_to_file(session: &GuiSession, plant: &str, export_type: u8) -> Result<()> {
     // Select Export menu
     if let Ok(menu) = session.find_by_id("wnd[0]/mbar/menu[0]/menu[3]/menu[2]".to_string()) {
         if let Some(menu_item) = menu.downcast::<GuiMenu>() {
@@ -141,11 +143,22 @@ fn export_to_file(session: &GuiSession, plant: &str) -> Result<()> {
         }
     }
 
-    // Select "Text with tabs" option
-    if let Ok(radio) = session.find_by_id(
-        "wnd[1]/usr/subSUBSCREEN_STEPLOOP:SAPLSPO5:0150/sub:SAPLSPO5:0150/radSPOPLI-SELFLAG[1,0]"
-            .to_string(),
-    ) {
+    // Select export format based on export_type
+    let radio_index = match export_type {
+        0 => "0", // unconverted
+        1 => "1", // text with tabs (default)
+        2 => "2", // rich text format
+        3 => "3", // HTML format
+        4 => "4", // clipboard
+        _ => "1", // default to text with tabs for unknown values
+    };
+
+    let radio_id = format!(
+        "wnd[1]/usr/subSUBSCREEN_STEPLOOP:SAPLSPO5:0150/sub:SAPLSPO5:0150/radSPOPLI-SELFLAG[{},0]",
+        radio_index
+    );
+
+    if let Ok(radio) = session.find_by_id(radio_id) {
         if let Some(radio_button) = radio.downcast::<GuiRadioButton>() {
             radio_button.select()?;
             radio_button.set_focus()?;
@@ -159,20 +172,41 @@ fn export_to_file(session: &GuiSession, plant: &str) -> Result<()> {
         }
     }
 
-    // Use the standard file path and timestamp logic
-    let (file_path, base_file_name) = get_tcode_file_path("y_149", "txt");
-    // Insert plant into the filename before the extension
-    let file_name = if let Some(stripped) = base_file_name.strip_suffix(".txt") {
-        format!("{}-{}.txt", stripped, plant)
-    } else {
-        format!("{}-{}.txt", base_file_name, plant)
+    // Determine file extension based on export type
+    let file_extension = match export_type {
+        0 | 1 => "txt", // unconverted or text with tabs
+        2 => "rtf",     // rich text format
+        3 => "html",    // HTML format
+        4 => "",        // clipboard - no file
+        _ => "txt",     // default to txt for unknown values
     };
+
+    // For clipboard export, don't create a file
+    if export_type == 4 {
+        println!("Exporting to clipboard - no file created");
+        return Ok(());
+    }
+
+    // Use the standard file path and timestamp logic with appropriate extension
+    let (file_path, base_file_name) = get_tcode_file_path("y_149", file_extension);
+    // Insert plant into the filename before the extension
+    let file_name =
+        if let Some(stripped) = base_file_name.strip_suffix(&format!(".{}", file_extension)) {
+            format!("{}-{}.{}", stripped, plant, file_extension)
+        } else {
+            format!("{}-{}.{}", base_file_name, plant, file_extension)
+        };
 
     // Save SAP file using the utility (handles setting path and filename in dialog)
     save_sap_file(session, &file_path, &file_name, Some(false))?;
 
     // Wait a bit for export to complete
     std::thread::sleep(std::time::Duration::from_millis(2000));
+
+    println!(
+        "Successfully exported data for plant {} to {}.{}",
+        plant, file_name, file_extension
+    );
 
     Ok(())
 }

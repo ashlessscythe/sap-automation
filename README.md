@@ -108,6 +108,57 @@ This will present a menu with options to log in to SAP, with support for saving 
 
 The application looks for credentials in the user's Documents folder under `SAP/cryptauth_*.txt`. The instance ID can be configured via the `SAP_INSTANCE_ID` environment variable or in the configuration file.
 
+## Terminal User Interface (TUI)
+
+This application features a modern terminal user interface built with [ratatui](https://github.com/ratatui-org/ratatui), providing an intuitive and responsive menu system for navigating SAP automation features.
+
+### TUI Features
+
+The TUI provides:
+
+- **Interactive Menu Navigation**: Easy-to-use selection menus for all application features
+- **Real-time Status Display**: Shows current selection position and total items
+- **Responsive Design**: Adapts to different terminal sizes
+- **Keyboard Shortcuts**: Efficient navigation using familiar key combinations
+
+### Navigation Controls
+
+The TUI supports the following navigation controls:
+
+| Action             | Keys                    |
+| ------------------ | ----------------------- |
+| **Move Up**        | `↑` (Up Arrow) or `k`   |
+| **Move Down**      | `↓` (Down Arrow) or `j` |
+| **Page Up**        | `PgUp`                  |
+| **Page Down**      | `PgDn`                  |
+| **Jump to Top**    | `Home`                  |
+| **Jump to Bottom** | `End`                   |
+| **Select Item**    | `Enter` or `Space`      |
+| **Exit/Cancel**    | `q` or `Esc`            |
+
+### Menu Example
+
+The application presents a clean, organized menu interface for selecting SAP automation operations:
+
+![TUI Menu Example](docs/tui_example.png)
+
+The menu displays:
+
+- **Title Bar**: Shows the current menu context
+- **Selection List**: Available options with highlighted current selection
+- **Status Bar**: Current position and total items
+- **Navigation Instructions**: Quick reference for available controls
+
+### TUI Components
+
+The TUI system includes several specialized components:
+
+- **Selection Menus**: Standard list-based selection for choosing operations
+- **Grid Menus**: Alternative grid layout for better organization of many options
+- **Input Dialogs**: Text input prompts for configuration and data entry
+
+All TUI components maintain consistent navigation patterns and visual styling for a cohesive user experience.
+
 ## Line Endings
 
 This project uses Git's line ending normalization to ensure consistent behavior across different operating systems. The `.gitattributes` file configures:

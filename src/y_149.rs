@@ -3,6 +3,7 @@ use sap_scripting::*;
 use std::path::Path;
 use windows::core::Result;
 
+use crate::utils::choose_layout_utils::*;
 use crate::utils::sap_file_utils::{get_tcode_file_path, save_sap_file};
 use crate::utils::sap_tcode_utils::*;
 use crate::utils::sap_wnd_utils::*;
@@ -13,6 +14,7 @@ pub struct Report149Params {
     pub variant: String,
     pub plants: Vec<String>,
     pub t_code: String,
+    pub layout: String,
 }
 
 impl Default for Report149Params {
@@ -21,6 +23,7 @@ impl Default for Report149Params {
             variant: "149_unload".to_string(),
             plants: Vec::new(),
             t_code: "y_dn3_47000149".to_string(),
+            layout: "pending".to_string(),
         }
     }
 }
@@ -103,6 +106,13 @@ pub fn run_export(session: &GuiSession, params: &Report149Params) -> Result<bool
         } else {
             println!("[DEBUG] Could not find main window to send F8");
         }
+
+        // choose layout
+        if let Err(e) = choose_layout_149(session, &params.layout) {
+            println!("Error choosing layout: {}", e);
+            continue;
+        }
+
         // Export to file
         if let Err(e) = export_to_file(session, plant) {
             println!("Error exporting for plant {}: {}", plant, e);

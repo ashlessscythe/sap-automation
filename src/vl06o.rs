@@ -265,6 +265,33 @@ fn pause(time: Option<u64>) {
     }
 }
 
+fn try_open_local_file_export(session: &GuiSession) -> bool {
+    // Prioritize VB-observed path for 'Save list in file...'
+    let candidates = [
+        "wnd[0]/mbar/menu[0]/menu[5]/menu[2]", // List -> Export -> Local file (VB example)
+        "wnd[0]/mbar/menu[0]/menu[5]/menu[0]", // List -> Export -> Local file (common)
+        "wnd[0]/mbar/menu[0]/menu[3]/menu[2]", // Alt path (used in 149)
+        "wnd[0]/mbar/menu[0]/menu[3]/menu[0]", // Alt path
+    ];
+
+    for path in candidates.iter() {
+        if let Ok(menu) = session.find_by_id((*path).to_string()) {
+            if let Some(menu_item) = menu.downcast::<GuiMenu>() {
+                if menu_item.select().is_ok() {
+                    // Consider success if a modal window appeared
+                    if let Ok(err_wnd) = exist_ctrl(session, 1, "", true) {
+                        if err_wnd.cband {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    false
+}
+
 /// Run VL06O export with the given parameters
 ///
 /// This function is a port of the VBA function VL06O_DeliveryList_Run_Export
@@ -402,14 +429,9 @@ pub fn run_export(session: &GuiSession, params: &VL06OParams) -> Result<bool> {
     // Export preference: try local file export if configured; otherwise Excel
     if let Ok(config) = SapConfig::load() {
         if let Some(exp_type) = config.get_effective_export_type("VL06O") {
-            if let Ok(menu) = session.find_by_id("wnd[0]/mbar/menu[0]/menu[3]/menu[2]".to_string())
-            {
-                if let Some(menu_item) = menu.downcast::<GuiMenu>() {
-                    if menu_item.select().is_ok() {
-                        if export_local_file(session, "VL06O", exp_type, None).is_ok() {
-                            return Ok(true);
-                        }
-                    }
+            if try_open_local_file_export(session) {
+                if export_local_file(session, "VL06O", exp_type, None).is_ok() {
+                    return Ok(true);
                 }
             }
             println!("Local file export path not available; falling back to Excel export...");
@@ -589,14 +611,9 @@ pub fn run_export_delivery_packages(
     // Export preference: try local file export if configured; otherwise Excel
     if let Ok(config) = SapConfig::load() {
         if let Some(exp_type) = config.get_effective_export_type("VL06O") {
-            if let Ok(menu) = session.find_by_id("wnd[0]/mbar/menu[0]/menu[3]/menu[2]".to_string())
-            {
-                if let Some(menu_item) = menu.downcast::<GuiMenu>() {
-                    if menu_item.select().is_ok() {
-                        if export_local_file(session, "VL06O", exp_type, None).is_ok() {
-                            return Ok(true);
-                        }
-                    }
+            if try_open_local_file_export(session) {
+                if export_local_file(session, "VL06O", exp_type, None).is_ok() {
+                    return Ok(true);
                 }
             }
             println!("Local file export path not available; falling back to Excel export...");

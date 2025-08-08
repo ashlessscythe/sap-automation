@@ -49,52 +49,58 @@ pub fn run_vl06o_delivery_packages_module(session: &GuiSession) -> Result<()> {
 /// Read a tab-delimited text file and extract a column by header name
 fn read_tab_delimited_column(file_path: &str, header_name: &str) -> std::io::Result<Vec<String>> {
     use std::fs::File;
-    use std::io::{BufRead, BufReader};
+    use std::io::{BufRead, BufReader, Read};
 
     let file = File::open(file_path)?;
-    let reader = BufReader::new(file);
+    let mut reader = BufReader::new(file);
 
-    let mut lines = reader.lines();
+    // Read lines as raw bytes to tolerate non-UTF-8, converting lossily
+    let mut buf: Vec<u8> = Vec::with_capacity(16 * 1024);
+    let mut header_idx: Option<usize> = None;
+    let mut values: Vec<String> = Vec::new();
+    let mut first_non_empty_seen = false;
 
-    // Find first non-empty header line
-    let mut header_line = String::new();
-    while let Some(line) = lines.next() {
-        let l = line?;
-        if !l.trim().is_empty() {
-            header_line = l;
+    loop {
+        buf.clear();
+        let mut line = Vec::<u8>::new();
+        let n = reader.read_until(b'\n', &mut line)?;
+        if n == 0 {
             break;
         }
-    }
 
-    if header_line.is_empty() {
-        return Ok(vec![]);
-    }
-
-    let headers: Vec<&str> = header_line.split('\t').collect();
-    let mut target_idx: Option<usize> = None;
-    for (i, h) in headers.iter().enumerate() {
-        if h.trim().eq_ignore_ascii_case(header_name) {
-            target_idx = Some(i);
-            break;
-        }
-    }
-
-    let idx = match target_idx {
-        Some(i) => i,
-        None => return Ok(vec![]),
-    };
-
-    let mut values = Vec::new();
-    for line in lines {
-        let l = line?;
-        if l.trim().is_empty() {
+        // Convert to lossy UTF-8 string
+        let mut s = String::from_utf8_lossy(&line).to_string();
+        // Trim CRLF and whitespace
+        s = s.trim_end_matches(['\r', '\n']).to_string();
+        if s.trim().is_empty() {
             continue;
         }
-        let cols: Vec<&str> = l.split('\t').collect();
-        if let Some(val) = cols.get(idx) {
-            let v = val.trim().trim_matches('"').to_string();
-            if !v.is_empty() {
-                values.push(v);
+
+        if !first_non_empty_seen {
+            first_non_empty_seen = true;
+            // Strip possible BOM
+            if s.starts_with('\u{FEFF}') {
+                s = s.trim_start_matches('\u{FEFF}').to_string();
+            }
+            // Split headers by tab and find the requested column index
+            let headers: Vec<String> = s.split('\t').map(|h| h.trim().to_string()).collect();
+            for (i, h) in headers.iter().enumerate() {
+                if h.eq_ignore_ascii_case(header_name) {
+                    header_idx = Some(i);
+                    break;
+                }
+            }
+            continue;
+        }
+
+        // Data row
+        if let Some(idx) = header_idx {
+            let cols: Vec<&str> = s.split('\t').collect();
+            if let Some(val) = cols.get(idx) {
+                let v = val.trim().trim_matches('"').to_string();
+                if !v.is_empty() {
+                    values.push(v);
+                }
             }
         }
     }

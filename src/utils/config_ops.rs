@@ -20,6 +20,7 @@ impl Default for SapConfig {
                 default_menu_option: Some(get_default_menu_option()),
                 date_format: default_date_format(),
                 timezone: default_timezone(),
+                default_export_type: None,
                 additional_params: HashMap::new(),
             }),
             build: None,
@@ -117,6 +118,11 @@ impl SapConfig {
                                     .and_then(|v| v.as_str())
                                     .unwrap_or(&default_timezone())
                                     .to_string(),
+                                default_export_type: match global.get("default_export_type") {
+                                    Some(toml::Value::Integer(i)) => Some(*i as u8),
+                                    Some(toml::Value::String(s)) => s.parse::<u8>().ok(),
+                                    _ => None,
+                                },
                                 additional_params: HashMap::new(),
                             };
 
@@ -126,8 +132,10 @@ impl SapConfig {
                                     "instance_id",
                                     "reports_dir",
                                     "default_tcode",
+                                    "default_menu_option",
                                     "date_format",
                                     "timezone",
+                                    "default_export_type",
                                 ]
                                 .contains(&key.as_str())
                                 {
@@ -222,7 +230,9 @@ impl SapConfig {
                                             "by_date",
                                             "serial_number",
                                             "tab_number",
+                                            "export_type",
                                             "add_layout_columns",
+                                            "layout_columns",
                                         ]
                                         .contains(&key.as_str())
                                         {
@@ -262,7 +272,7 @@ impl SapConfig {
                                 params: HashMap::new(),
                             };
 
-                            // Extract additional loop parameters
+                            // Add additional loop parameters
                             for (key, value) in loop_table {
                                 if !["tcode", "iterations", "delay_seconds"].contains(&key.as_str())
                                 {
@@ -276,22 +286,28 @@ impl SapConfig {
                         }
 
                         // Extract sequence section
-                        if let Some(sequence_table) =
-                            parsed.get("sequence").and_then(|v| v.as_table())
-                        {
+                        if let Some(seq_table) = parsed.get("sequence").and_then(|v| v.as_table()) {
                             let mut sequence_config = SequenceConfig {
-                                options: Vec::new(),
-                                iterations: sequence_table
+                                options: seq_table
+                                    .get("options")
+                                    .and_then(|v| v.as_array())
+                                    .map(|arr| {
+                                        arr.iter()
+                                            .filter_map(|val| val.as_str().map(|s| s.to_string()))
+                                            .collect::<Vec<String>>()
+                                    })
+                                    .unwrap_or_default(),
+                                iterations: seq_table
                                     .get("iterations")
                                     .and_then(|v| v.as_str())
                                     .unwrap_or(&default_iterations())
                                     .to_string(),
-                                delay_seconds: sequence_table
+                                delay_seconds: seq_table
                                     .get("delay_seconds")
                                     .and_then(|v| v.as_str())
                                     .unwrap_or(&default_delay_seconds())
                                     .to_string(),
-                                interval_seconds: sequence_table
+                                interval_seconds: seq_table
                                     .get("interval_seconds")
                                     .and_then(|v| v.as_str())
                                     .unwrap_or(&default_interval_seconds())
@@ -299,19 +315,8 @@ impl SapConfig {
                                 params: HashMap::new(),
                             };
 
-                            // Extract options array
-                            if let Some(options_array) =
-                                sequence_table.get("options").and_then(|v| v.as_array())
-                            {
-                                for option in options_array {
-                                    if let Some(option_str) = option.as_str() {
-                                        sequence_config.options.push(option_str.to_string());
-                                    }
-                                }
-                            }
-
-                            // Extract additional sequence parameters
-                            for (key, value) in sequence_table {
+                            // Add additional sequence parameters
+                            for (key, value) in seq_table {
                                 if !["options", "iterations", "delay_seconds", "interval_seconds"]
                                     .contains(&key.as_str())
                                 {
@@ -325,14 +330,9 @@ impl SapConfig {
 
                             config.sequence = Some(sequence_config);
                         }
-                    } else {
-                        // Handle legacy format (with sap_config section)
-                        config = Self::load_legacy_format(parsed, config)?;
                     }
                 }
-                Err(e) => {
-                    return Err(anyhow!("Failed to parse config file: {}", e));
-                }
+                Err(e) => return Err(anyhow!("Failed to parse config: {}", e)),
             }
         }
 
@@ -374,6 +374,7 @@ impl SapConfig {
                     .and_then(|v| v.as_str())
                     .unwrap_or(&default_timezone())
                     .to_string(),
+                default_export_type: None, // Legacy format doesn't have this
                 additional_params: HashMap::new(),
             };
 
@@ -564,6 +565,10 @@ impl SapConfig {
                 content.push_str(&format!("default_menu_option = {}\n", default_menu_option));
             }
 
+            if let Some(default_export_type) = &global.default_export_type {
+                content.push_str(&format!("default_export_type = {}\n", default_export_type));
+            }
+
             // Add additional global parameters
             for (key, value) in &global.additional_params {
                 content.push_str(&format!("{} = \"{}\"\n", key, value));
@@ -607,6 +612,10 @@ impl SapConfig {
 
                 if let Some(tab_number) = &tcode_config.tab_number {
                     content.push_str(&format!("tab_number = \"{}\"\n", tab_number));
+                }
+
+                if let Some(export_type) = &tcode_config.export_type {
+                    content.push_str(&format!("export_type = {}\n", export_type));
                 }
 
                 if let Some(layout_columns) = &tcode_config.layout_columns {
@@ -797,6 +806,20 @@ impl SapConfig {
         }
     }
 
+    /// Determine effective export type for a tcode: prefer tcode.export_type, else global.default_export_type
+    pub fn get_effective_export_type(&self, tcode: &str) -> Option<u8> {
+        // Prefer tcode-specific value
+        if let Some(tcode_map) = self.get_tcode_config(tcode, Some(true)) {
+            if let Some(val) = tcode_map.get("export_type") {
+                if let Ok(num) = val.parse::<u8>() {
+                    return Some(num);
+                }
+            }
+        }
+        // Fall back to global
+        self.global.as_ref().and_then(|g| g.default_export_type)
+    }
+
     /// Get the instance ID
     pub fn get_instance_id(&self) -> String {
         self.global
@@ -825,6 +848,7 @@ impl SapConfig {
                 default_menu_option: Some(get_default_menu_option()),
                 date_format: default_date_format(),
                 timezone: default_timezone(),
+                default_export_type: None,
                 additional_params: HashMap::new(),
             });
         }
@@ -842,6 +866,7 @@ impl SapConfig {
                 default_menu_option: Some(get_default_menu_option()),
                 date_format: default_date_format(),
                 timezone: default_timezone(),
+                default_export_type: None,
                 additional_params: HashMap::new(),
             });
         }

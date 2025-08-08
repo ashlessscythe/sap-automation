@@ -5,7 +5,14 @@ target = "i686-pc-windows-msvc"
 instance_id = "ES1"
 reports_dir = "C:\\temp\\reports"
 default_tcode = "VT11"
-timezone = "-7"
+timezone = "MST"
+# 0 = unconverted or text with tabs
+# 1 = text with tabs
+# 2 = rich text format
+# 3 = HTML format
+# 4 = clipboard - no file
+# excel = excel file (menu option differs for each tcode)
+default_export_type = 0
 
 [tcode.VT11]
 variant = "testing_7"

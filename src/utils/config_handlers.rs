@@ -5,9 +5,9 @@ use std::io;
 use std::thread;
 use std::time::Duration;
 
+use crate::utils::config_types::get_default_menu_option;
 use crate::utils::config_types::SapConfig;
 use crate::utils::config_types::*;
-use crate::utils::config_types::get_default_menu_option;
 
 /// Handle configuring SAP automation parameters
 pub fn handle_configure_sap_params() -> Result<()> {
@@ -55,10 +55,12 @@ pub fn handle_configure_sap_params() -> Result<()> {
             }
             1 => {
                 // Configure Default TCode
-                let current = config.global.as_ref()
+                let current = config
+                    .global
+                    .as_ref()
                     .and_then(|g| g.default_tcode.clone())
                     .unwrap_or_default();
-                
+
                 let tcode: String = Input::new()
                     .with_prompt("Enter Default TCode (e.g., VT11, VL06O, ZMDESNR)")
                     .allow_empty(true)
@@ -82,6 +84,7 @@ pub fn handle_configure_sap_params() -> Result<()> {
                             default_menu_option: Some(get_default_menu_option()),
                             date_format: crate::utils::config_types::default_date_format(),
                             timezone: crate::utils::config_types::default_timezone(),
+                            default_export_type: None,
                             additional_params: HashMap::new(),
                         });
                     }
@@ -90,10 +93,12 @@ pub fn handle_configure_sap_params() -> Result<()> {
             }
             2 => {
                 // Configure Default Menu Option
-                let current = config.global.as_ref()
+                let current = config
+                    .global
+                    .as_ref()
                     .and_then(|g| g.default_menu_option)
                     .unwrap_or_else(get_default_menu_option);
-                
+
                 let menu_option_str = current.to_string();
                 let menu_option: String = Input::new()
                     .with_prompt("Enter Default Menu Option (0-based index)")
@@ -115,11 +120,12 @@ pub fn handle_configure_sap_params() -> Result<()> {
                                 default_menu_option: Some(option),
                                 date_format: crate::utils::config_types::default_date_format(),
                                 timezone: crate::utils::config_types::default_timezone(),
+                                default_export_type: None,
                                 additional_params: HashMap::new(),
                             });
                         }
                         println!("Default Menu Option set to: {}", option);
-                    },
+                    }
                     Err(_) => {
                         println!("Invalid input. Using default value: {}", current);
                         if let Some(global) = &mut config.global {
@@ -130,13 +136,15 @@ pub fn handle_configure_sap_params() -> Result<()> {
             }
             3 => {
                 // Configure Date Format
-                let current = config.global.as_ref()
+                let current = config
+                    .global
+                    .as_ref()
                     .map(|g| g.date_format.clone())
                     .unwrap_or_else(crate::utils::config_types::default_date_format);
-                
+
                 let format_options = vec!["mm/dd/yyyy", "yyyy-mm-dd"];
                 let default_index = if current == "yyyy-mm-dd" { 1 } else { 0 };
-                
+
                 let format_choice = Select::new()
                     .with_prompt("Select date format")
                     .items(&format_options)
@@ -145,7 +153,7 @@ pub fn handle_configure_sap_params() -> Result<()> {
                     .unwrap();
 
                 let date_format = format_options[format_choice].to_string();
-                
+
                 if let Some(global) = &mut config.global {
                     global.date_format = date_format.clone();
                 } else {
@@ -156,6 +164,7 @@ pub fn handle_configure_sap_params() -> Result<()> {
                         default_menu_option: Some(get_default_menu_option()),
                         date_format: date_format.clone(),
                         timezone: crate::utils::config_types::default_timezone(),
+                        default_export_type: None,
                         additional_params: HashMap::new(),
                     });
                 }
@@ -163,15 +172,19 @@ pub fn handle_configure_sap_params() -> Result<()> {
             }
             4 => {
                 // Configure Timezone
-                let current = config.global.as_ref()
+                let current = config
+                    .global
+                    .as_ref()
                     .map(|g| g.timezone.clone())
                     .unwrap_or_else(crate::utils::config_types::default_timezone);
-                
+
                 println!("\nTimezone Options:");
                 println!("1. Standard timezone names: UTC, MST, MDT, EST, EDT, CST, CDT, PST, PDT");
-                println!("2. IANA timezone database names: America/Denver, Europe/London, Asia/Tokyo");
+                println!(
+                    "2. IANA timezone database names: America/Denver, Europe/London, Asia/Tokyo"
+                );
                 println!("3. Legacy numeric offsets: -7 (for MST), -6 (for MDT), 0 (for UTC)");
-                
+
                 let timezone: String = Input::new()
                     .with_prompt("Enter timezone (e.g., 'MDT', 'America/Denver', '-7')")
                     .allow_empty(false)
@@ -189,6 +202,7 @@ pub fn handle_configure_sap_params() -> Result<()> {
                         default_menu_option: Some(get_default_menu_option()),
                         date_format: crate::utils::config_types::default_date_format(),
                         timezone: timezone.clone(),
+                        default_export_type: None,
                         additional_params: HashMap::new(),
                     });
                 }
@@ -205,7 +219,7 @@ pub fn handle_configure_sap_params() -> Result<()> {
             7 => {
                 // Show Current Configuration
                 show_current_configuration(&config);
-                
+
                 println!("\nPress Enter to continue...");
                 let mut input = String::new();
                 io::stdin().read_line(&mut input).unwrap();
@@ -237,14 +251,14 @@ fn handle_configure_tcode_params(config: &mut SapConfig) -> Result<()> {
 
     // Get list of available TCodes
     let mut tcode_names = vec![];
-    
+
     // Clone the tcode map to avoid borrowing issues
     let tcode_configs = config.tcode.clone().unwrap_or_default();
-    
+
     for tcode_name in tcode_configs.keys() {
         tcode_names.push(tcode_name.clone());
     }
-    
+
     // Add option to add a new TCode
     tcode_names.push("Add New TCode".to_string());
     tcode_names.push("Back".to_string());
@@ -268,19 +282,19 @@ fn handle_configure_tcode_params(config: &mut SapConfig) -> Result<()> {
             .allow_empty(false)
             .interact()
             .unwrap();
-        
+
         // Ensure tcode map exists
         if config.tcode.is_none() {
             config.tcode = Some(HashMap::new());
         }
-        
+
         // Add new TCode if it doesn't exist
         if let Some(tcode_configs) = &mut config.tcode {
             if !tcode_configs.contains_key(&tcode) {
                 tcode_configs.insert(tcode.clone(), TcodeConfig::default());
             }
         }
-        
+
         tcode
     } else {
         // User selected an existing TCode
@@ -301,7 +315,7 @@ fn configure_tcode_parameters(config: &mut SapConfig, tcode_name: &str) -> Resul
     if config.tcode.is_none() {
         config.tcode = Some(HashMap::new());
     }
-    
+
     // Ensure TCode config exists
     if let Some(tcode_configs) = &mut config.tcode {
         if !tcode_configs.contains_key(tcode_name) {
@@ -428,7 +442,7 @@ fn configure_tcode_parameters(config: &mut SapConfig, tcode_name: &str) -> Resul
                 let current = tcode_config.by_date.clone().unwrap_or_default();
                 let by_date_options = vec!["true", "false"];
                 let default_index = if current == "true" { 0 } else { 1 };
-                
+
                 let by_date_choice = Select::new()
                     .with_prompt("Filter by date?")
                     .items(&by_date_options)
@@ -494,7 +508,9 @@ fn configure_tcode_parameters(config: &mut SapConfig, tcode_name: &str) -> Resul
                     tcode_config.additional_params.remove(&param_name);
                     println!("Parameter '{}' removed.", param_name);
                 } else {
-                    tcode_config.additional_params.insert(param_name.clone(), param_value.clone());
+                    tcode_config
+                        .additional_params
+                        .insert(param_name.clone(), param_value.clone());
                     println!("Parameter '{}' set to: {}", param_name, param_value);
                 }
             }
@@ -590,15 +606,18 @@ fn configure_tcode_parameters(config: &mut SapConfig, tcode_name: &str) -> Resul
             }
             9 => {
                 // Delete This TCode Configuration
-                println!("Are you sure you want to delete the configuration for TCode '{}'? (y/n)", tcode_name);
+                println!(
+                    "Are you sure you want to delete the configuration for TCode '{}'? (y/n)",
+                    tcode_name
+                );
                 let mut confirm = String::new();
                 io::stdin().read_line(&mut confirm).unwrap();
-                
+
                 if confirm.trim().to_lowercase() == "y" {
                     if let Some(tcode_configs) = &mut config.tcode {
                         tcode_configs.remove(tcode_name);
                         println!("TCode '{}' configuration deleted.", tcode_name);
-                        
+
                         // Save configuration
                         if let Err(e) = config.save() {
                             eprintln!("Failed to save configuration: {}", e);
@@ -607,7 +626,7 @@ fn configure_tcode_parameters(config: &mut SapConfig, tcode_name: &str) -> Resul
                             println!("Configuration saved successfully.");
                             thread::sleep(Duration::from_secs(1));
                         }
-                        
+
                         return Ok(());
                     }
                 } else {
@@ -629,7 +648,7 @@ fn configure_tcode_parameters(config: &mut SapConfig, tcode_name: &str) -> Resul
         if let Some(tcode_configs) = &mut config.tcode {
             tcode_configs.insert(tcode_name.to_string(), tcode_config.clone());
         }
-        
+
         if let Err(e) = config.save() {
             eprintln!("Failed to save configuration: {}", e);
             thread::sleep(Duration::from_secs(2));
@@ -730,7 +749,11 @@ fn handle_configure_loop_params(config: &mut SapConfig) -> Result<()> {
                     .interact()
                     .unwrap();
 
-                let current_value = loop_config.params.get(&param_name).cloned().unwrap_or_default();
+                let current_value = loop_config
+                    .params
+                    .get(&param_name)
+                    .cloned()
+                    .unwrap_or_default();
                 let param_value: String = Input::new()
                     .with_prompt("Enter Parameter Value")
                     .allow_empty(true)
@@ -742,7 +765,9 @@ fn handle_configure_loop_params(config: &mut SapConfig) -> Result<()> {
                     loop_config.params.remove(&param_name);
                     println!("Parameter '{}' removed.", param_name);
                 } else {
-                    loop_config.params.insert(param_name.clone(), param_value.clone());
+                    loop_config
+                        .params
+                        .insert(param_name.clone(), param_value.clone());
                     println!("Parameter '{}' set to: {}", param_name, param_value);
                 }
             }
@@ -810,7 +835,7 @@ fn handle_configure_loop_params(config: &mut SapConfig) -> Result<()> {
         // Save configuration after each change
         // Update the loop config in the main config
         config.loop_config = Some(loop_config.clone());
-        
+
         if let Err(e) = config.save() {
             eprintln!("Failed to save configuration: {}", e);
             thread::sleep(Duration::from_secs(2));
@@ -825,22 +850,22 @@ fn handle_configure_loop_params(config: &mut SapConfig) -> Result<()> {
 fn show_current_configuration(config: &SapConfig) {
     println!("\nCurrent Configuration:");
     println!("---------------------");
-    
+
     // Show global configuration
     if let Some(global) = &config.global {
         println!("Instance ID: {}", global.instance_id);
         println!("Reports Directory: {}", global.reports_dir);
         println!("Date Format: {}", global.date_format);
         println!("Timezone: {}", global.timezone);
-        
+
         if let Some(default_tcode) = &global.default_tcode {
             println!("Default TCode: {}", default_tcode);
         }
-        
+
         if let Some(default_menu_option) = &global.default_menu_option {
             println!("Default Menu Option: {}", default_menu_option);
         }
-        
+
         if !global.additional_params.is_empty() {
             println!("\nGlobal Parameters:");
             for (key, value) in &global.additional_params {
@@ -848,45 +873,45 @@ fn show_current_configuration(config: &SapConfig) {
             }
         }
     }
-    
+
     // Show TCode configurations
     if let Some(tcode_configs) = &config.tcode {
         if !tcode_configs.is_empty() {
             println!("\nTCode Configurations:");
-            
+
             for (tcode_name, tcode_config) in tcode_configs {
                 println!("\n  {}:", tcode_name);
-                
+
                 if let Some(variant) = &tcode_config.variant {
                     println!("    Variant: {}", variant);
                 }
-                
+
                 if let Some(layout) = &tcode_config.layout {
                     println!("    Layout: {}", layout);
                 }
-                
+
                 if let Some(column_name) = &tcode_config.column_name {
                     println!("    Column Name: {}", column_name);
                 }
-                
+
                 if let Some(date_range_start) = &tcode_config.date_range_start {
                     if let Some(date_range_end) = &tcode_config.date_range_end {
                         println!("    Date Range: {} - {}", date_range_start, date_range_end);
                     }
                 }
-                
+
                 if let Some(by_date) = &tcode_config.by_date {
                     println!("    By Date: {}", by_date);
                 }
-                
+
                 if let Some(serial_number) = &tcode_config.serial_number {
                     println!("    Serial Number: {}", serial_number);
                 }
-                
+
                 if let Some(tab_number) = &tcode_config.tab_number {
                     println!("    Tab Number: {}", tab_number);
                 }
-                
+
                 if !tcode_config.additional_params.is_empty() {
                     println!("    Additional Parameters:");
                     for (key, value) in &tcode_config.additional_params {
@@ -896,14 +921,14 @@ fn show_current_configuration(config: &SapConfig) {
             }
         }
     }
-    
+
     // Show Loop configuration
     if let Some(loop_config) = &config.loop_config {
         println!("\nLoop Configuration:");
         println!("  TCode: {}", loop_config.tcode);
         println!("  Iterations: {}", loop_config.iterations);
         println!("  Delay: {} seconds", loop_config.delay_seconds);
-        
+
         if !loop_config.params.is_empty() {
             println!("  Parameters:");
             for (key, value) in &loop_config.params {

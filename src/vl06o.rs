@@ -7,7 +7,9 @@ use windows::core::Result;
 use crate::utils::select_layout_utils::check_select_layout;
 use crate::utils::{choose_layout, sap_file_utils::*};
 // Import specific functions to avoid ambiguity
+use crate::utils::config_types::SapConfig;
 use crate::utils::sap_ctrl_utils::*;
+use crate::utils::sap_export_utils::export_local_file;
 use crate::utils::sap_tcode_utils::*;
 use crate::utils::sap_wnd_utils::*;
 
@@ -397,6 +399,23 @@ pub fn run_export(session: &GuiSession, params: &VL06OParams) -> Result<bool> {
     let err_msg = hit_ctrl(session, 0, "/sbar", "Text", "Get", "")?;
     println!("Statusbar message: ({})", err_msg);
 
+    // Export preference: try local file export if configured; otherwise Excel
+    if let Ok(config) = SapConfig::load() {
+        if let Some(exp_type) = config.get_effective_export_type("VL06O") {
+            if let Ok(menu) = session.find_by_id("wnd[0]/mbar/menu[0]/menu[3]/menu[2]".to_string())
+            {
+                if let Some(menu_item) = menu.downcast::<GuiMenu>() {
+                    if menu_item.select().is_ok() {
+                        if export_local_file(session, "VL06O", exp_type, None).is_ok() {
+                            return Ok(true);
+                        }
+                    }
+                }
+            }
+            println!("Local file export path not available; falling back to Excel export...");
+        }
+    }
+
     // Export as Excel
     if let Ok(menu) = session.find_by_id("wnd[0]/mbar/menu[0]/menu[5]/menu[1]".to_string()) {
         if let Some(menu_item) = menu.downcast::<GuiMenu>() {
@@ -565,6 +584,23 @@ pub fn run_export_delivery_packages(
     // select layout
     if let Some(layout_row) = &params.layout_row {
         choose_layout(session, &params.t_code, layout_row.as_str())?;
+    }
+
+    // Export preference: try local file export if configured; otherwise Excel
+    if let Ok(config) = SapConfig::load() {
+        if let Some(exp_type) = config.get_effective_export_type("VL06O") {
+            if let Ok(menu) = session.find_by_id("wnd[0]/mbar/menu[0]/menu[3]/menu[2]".to_string())
+            {
+                if let Some(menu_item) = menu.downcast::<GuiMenu>() {
+                    if menu_item.select().is_ok() {
+                        if export_local_file(session, "VL06O", exp_type, None).is_ok() {
+                            return Ok(true);
+                        }
+                    }
+                }
+            }
+            println!("Local file export path not available; falling back to Excel export...");
+        }
     }
 
     // Export as Excel

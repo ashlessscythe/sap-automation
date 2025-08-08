@@ -9,7 +9,7 @@ use std::io::{self};
 use windows::core::Result;
 
 use crate::utils::config_types::SapConfig;
-use crate::y_149_material::{run_material_export, Report149MaterialParams};
+use crate::y_149_material::{run_export, Report149MaterialParams};
 
 pub fn run_149_material_module(session: &GuiSession) -> Result<()> {
     clear_screen();
@@ -20,7 +20,7 @@ pub fn run_149_material_module(session: &GuiSession) -> Result<()> {
     let params = get_149_material_parameters()?;
 
     // Run the export
-    match run_material_export(session, &params) {
+    match run_export(session, &params) {
         Ok(true) => {
             println!("149 material report export completed successfully!");
         }
@@ -107,18 +107,18 @@ fn get_149_material_parameters() -> Result<Report149MaterialParams> {
         params.plant = plant;
 
         // Get signi (default to "")
-        let trailer: String = Input::new()
-            .with_prompt("Trailer Number (optional)")
+        let signi: String = Input::new()
+            .with_prompt("Significance/Trailer (optional)")
             .default("".to_string())
             .allow_empty(true)
             .interact_text()
             .unwrap();
 
-        params.trailer = trailer;
+        params.signi = signi;
     } else {
         // Set empty values when variant is used
         params.plant = String::new();
-        params.trailer = String::new();
+        params.signi = String::new();
     }
 
     // Check if we have date range in config

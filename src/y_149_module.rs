@@ -120,13 +120,18 @@ fn create_149_params_from_config(config: &SapConfig) -> Report149Params {
         if let Some(variant) = tcode_config.get("variant") {
             params.variant = variant.clone();
         }
-        // get layout from config
-        if let Some(layout) = tcode_config.get("layout") {
-            params.layout = layout.clone();
-        }
         // get export_type from config - now using the proper field
         if let Some(export_type) = tcode_config.get("export_type") {
-            params.export_type = export_type.clone().parse::<u8>().unwrap();
+            if let Ok(v) = export_type.parse::<u8>() {
+                params.export_type = v;
+            }
+        }
+    }
+
+    // If tcode didn't specify an export type, fall back to global default
+    if params.export_type == 1 {
+        if let Some(v) = config.get_effective_export_type("y_dn3_47000149") {
+            params.export_type = v;
         }
     }
 
@@ -214,7 +219,7 @@ fn get_149_parameters() -> Result<Report149Params> {
         params.plants = plants;
     }
 
-    // Get export type
+    // Get export type (will be overridden by config on auto run)
     let export_type: u8 = Input::new()
         .with_prompt(
             "Export type (0=unconverted, 1=text with tabs, 2=rich text, 3=HTML, 4=clipboard)",
@@ -229,7 +234,6 @@ fn get_149_parameters() -> Result<Report149Params> {
 
     println!("-------------------------------");
     println!("Running 149 report with params: {:#?}", params);
-    println!("-------------------------------");
 
     Ok(params)
 }

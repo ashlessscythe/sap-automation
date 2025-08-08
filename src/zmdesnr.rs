@@ -1,10 +1,12 @@
-use sap_scripting::*;
-use windows::core::Result;
 use crate::utils::sap_file_utils::*;
 use crate::utils::select_layout_utils::check_select_layout;
 use crate::utils::setup_layout_utils::setup_layout;
+use sap_scripting::*;
+use windows::core::Result;
 // Import specific functions to avoid ambiguity
+use crate::utils::config_types::SapConfig;
 use crate::utils::sap_ctrl_utils::hit_ctrl;
+use crate::utils::sap_export_utils::export_local_file;
 use crate::utils::sap_tcode_utils::*;
 use crate::utils::sap_wnd_utils::*;
 
@@ -51,7 +53,7 @@ impl Default for ZMDESNRParams {
 /// It adds columns to the layout based on the add_layout_columns configuration
 fn add_layout_columns(session: &GuiSession, params: &ZMDESNRParams) -> Result<bool> {
     println!("Adding layout columns...");
-    
+
     // Get columns from params if available
     let add_layout_columns = match &params.additional_params.add_layout_columns {
         Some(columns) if !columns.is_empty() => columns,
@@ -60,9 +62,9 @@ fn add_layout_columns(session: &GuiSession, params: &ZMDESNRParams) -> Result<bo
             return Ok(true);
         }
     };
-    
+
     println!("Adding columns: {:?}", add_layout_columns);
-    
+
     // Select menu option 4/0/0 (Change Layout)
     if let Ok(menu) = session.find_by_id("wnd[0]/mbar/menu[4]/menu[0]/menu[0]".to_string()) {
         if let Some(menu_item) = menu.downcast::<GuiMenu>() {
@@ -85,14 +87,14 @@ fn add_layout_columns(session: &GuiSession, params: &ZMDESNRParams) -> Result<bo
     } else if !layout_result.unwrap() {
         println!("setup_layout returned false, layout columns may not have been added");
     }
-    
+
     // Send VKey 0 (Enter)
     if let Ok(window) = session.find_by_id("wnd[1]".to_string()) {
         if let Some(wnd) = window.downcast::<GuiModalWindow>() {
             wnd.send_v_key(0)?;
         }
     }
-    
+
     println!("Layout columns added successfully.");
     Ok(true)
 }
@@ -145,15 +147,14 @@ pub fn run_export(session: &GuiSession, params: &ZMDESNRParams) -> Result<bool> 
             }
         }
         true // Assume success for unhandled tabs
-    };            
-    
+    };
+
     // Execute
     if let Ok(btn) = session.find_by_id("wnd[0]/tbar[1]/btn[8]".to_string()) {
         if let Some(button) = btn.downcast::<GuiButton>() {
             button.press()?;
         }
     }
-            
 
     // If tab operations failed, return early
     if !tab_operation_success {
@@ -195,11 +196,29 @@ pub fn run_export(session: &GuiSession, params: &ZMDESNRParams) -> Result<bool> 
             println!("Statusbar message: {}", bar_msg);
         }
     }
-    
+
     // Add layout columns if configured
     if let Err(e) = add_layout_columns(session, params) {
         println!("Error adding layout columns: {}", e);
         // Continue with export even if adding columns failed
+    }
+
+    // Try local file export if configured (0..=4). Fallback to Excel export.
+    if let Ok(config) = SapConfig::load() {
+        if let Some(exp_type) = config.get_effective_export_type("ZMDESNR") {
+            // Attempt to open local file export dialog
+            if let Ok(menu) = session.find_by_id("wnd[0]/mbar/menu[0]/menu[3]/menu[2]".to_string())
+            {
+                if let Some(menu_item) = menu.downcast::<GuiMenu>() {
+                    if menu_item.select().is_ok() {
+                        if export_local_file(session, "ZMDESNR", exp_type, None).is_ok() {
+                            return Ok(true);
+                        }
+                    }
+                }
+            }
+            println!("Local file export path not available; falling back to Excel export...");
+        }
     }
 
     // Export as Excel (common for all tabs)
@@ -240,14 +259,13 @@ fn handle_tab2_operations(session: &GuiSession, params: &ZMDESNRParams) -> Resul
                     text_field.set_text(serial.clone())?;
                 }
             }
-            
 
             return Ok(true);
         }
     }
 
     // If no serial number provided, continue with delivery numbers
-    
+
     // Clear the Low Delivery Number field
     if let Ok(txt) = session.find_by_id("wnd[0]/usr/tabsTABSTRIP_TABB1/tabpUCOMM2/ssub%_SUBSCREEN_TABB1:ZMDE_SERIALNUMBER_HISTORY:9002/txtS_VBELN-LOW".to_string()) {
         if let Some(text_field) = txt.downcast::<GuiTextField>() {

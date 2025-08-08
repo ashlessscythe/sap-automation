@@ -10,10 +10,10 @@ use std::io::{self};
 use std::path::Path;
 use windows::core::Result;
 
-use crate::utils::{config_ops::get_reports_dir, excel_path_utils::resolve_path};
 use crate::utils::config_types::SapConfig;
 use crate::utils::excel_file_ops::read_excel_column;
 use crate::utils::excel_path_utils::{get_excel_file_path, get_newest_file};
+use crate::utils::{config_ops::get_reports_dir, excel_path_utils::resolve_path};
 use crate::vl06o::{run_export_delivery_packages, VL06ODeliveryParams};
 
 /// Run VL06O export with delivery numbers to get package counts
@@ -46,9 +46,64 @@ pub fn run_vl06o_delivery_packages_module(session: &GuiSession) -> Result<()> {
     Ok(())
 }
 
+/// Read a tab-delimited text file and extract a column by header name
+fn read_tab_delimited_column(file_path: &str, header_name: &str) -> std::io::Result<Vec<String>> {
+    use std::fs::File;
+    use std::io::{BufRead, BufReader};
+
+    let file = File::open(file_path)?;
+    let reader = BufReader::new(file);
+
+    let mut lines = reader.lines();
+
+    // Find first non-empty header line
+    let mut header_line = String::new();
+    while let Some(line) = lines.next() {
+        let l = line?;
+        if !l.trim().is_empty() {
+            header_line = l;
+            break;
+        }
+    }
+
+    if header_line.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let headers: Vec<&str> = header_line.split('\t').collect();
+    let mut target_idx: Option<usize> = None;
+    for (i, h) in headers.iter().enumerate() {
+        if h.trim().eq_ignore_ascii_case(header_name) {
+            target_idx = Some(i);
+            break;
+        }
+    }
+
+    let idx = match target_idx {
+        Some(i) => i,
+        None => return Ok(vec![]),
+    };
+
+    let mut values = Vec::new();
+    for line in lines {
+        let l = line?;
+        if l.trim().is_empty() {
+            continue;
+        }
+        let cols: Vec<&str> = l.split('\t').collect();
+        if let Some(val) = cols.get(idx) {
+            let v = val.trim().trim_matches('"').to_string();
+            if !v.is_empty() {
+                values.push(v);
+            }
+        }
+    }
+
+    Ok(values)
+}
+
 /// Run VL06O delivery packages auto using default configs
-/// This function automatically gets deliveries from the "Delivery" column
-/// in the latest Excel file in the zmdesnr subdirectory
+/// This function automatically gets deliveries from the latest file in the zmdesnr subdirectory
 pub fn run_vl06o_delivery_packages_auto(session: &GuiSession) -> Result<()> {
     clear_screen();
     println!("VL06O - Auto Run Delivery Packages");
@@ -109,44 +164,81 @@ pub fn run_vl06o_delivery_packages_auto(session: &GuiSession) -> Result<()> {
         }
     }
 
-    // Get the newest Excel file in the ZMDESNR directory
-    let excel_path = get_newest_file(&zmdesnr_dir, "xlsx")?;
+    // Determine expected extension from ZMDESNR effective export type
+    let ext = match config.get_effective_export_type("ZMDESNR") {
+        Some(0) | Some(1) => "txt", // unconverted or text with tabs
+        Some(2) => "rtf",           // rich text
+        Some(3) => "html",          // HTML
+        Some(4) => {
+            println!("ZMDESNR export is set to clipboard; no file available. Looking for Excel fallback...");
+            "xlsx"
+        }
+        _ => "xlsx", // Default to Excel
+    };
 
-    if excel_path.is_empty() {
-        println!("No Excel files found in ZMDESNR directory.");
-        println!("Please run ZMDESNR export first to generate an Excel file.");
+    // Get the newest file in the ZMDESNR directory with the chosen extension
+    let newest_path = get_newest_file(&zmdesnr_dir, ext)?;
+
+    if newest_path.is_empty() {
+        println!("No .{} files found in ZMDESNR directory.", ext);
+        println!("Please run ZMDESNR export first to generate a file.");
         println!("\nPress Enter to return to main menu...");
         let mut input = String::new();
         io::stdin().read_line(&mut input).unwrap();
         return Ok(());
     }
 
-    println!("Using newest Excel file: {}", excel_path);
+    println!("Using newest {} file: {}", ext, newest_path);
 
-    // Read the delivery numbers from the Excel file
-    match read_excel_column(&excel_path, "Sheet1", "Delivery") {
-        Ok(delivery_numbers) => {
-            if delivery_numbers.is_empty() {
-                println!("No delivery numbers found in Excel file.");
+    // Read the delivery numbers from the newest file based on extension
+    let column_name = params
+        .column_name
+        .clone()
+        .unwrap_or_else(|| "Delivery".to_string());
+    let delivery_numbers = if ext.eq_ignore_ascii_case("xlsx") {
+        match read_excel_column(&newest_path, "Sheet1", &column_name) {
+            Ok(nums) => nums,
+            Err(e) => {
+                println!("Error reading Excel file: {}", e);
                 println!("\nPress Enter to return to main menu...");
                 let mut input = String::new();
                 io::stdin().read_line(&mut input).unwrap();
                 return Ok(());
-            } else {
-                println!(
-                    "Found {} delivery numbers in Excel file.",
-                    delivery_numbers.len()
-                );
-                params.delivery_numbers = delivery_numbers;
             }
         }
-        Err(e) => {
-            println!("Error reading Excel file: {}", e);
-            println!("\nPress Enter to return to main menu...");
-            let mut input = String::new();
-            io::stdin().read_line(&mut input).unwrap();
-            return Ok(());
+    } else if ext.eq_ignore_ascii_case("txt") {
+        match read_tab_delimited_column(&newest_path, &column_name) {
+            Ok(nums) => nums,
+            Err(e) => {
+                println!("Error reading text file: {}", e);
+                println!("\nPress Enter to return to main menu...");
+                let mut input = String::new();
+                io::stdin().read_line(&mut input).unwrap();
+                return Ok(());
+            }
         }
+    } else {
+        println!("Unsupported file type for auto-load: .{}", ext);
+        println!("Currently supported: xlsx, txt (tab-delimited).");
+        println!("\nPress Enter to return to main menu...");
+        let mut input = String::new();
+        io::stdin().read_line(&mut input).unwrap();
+        return Ok(());
+    };
+
+    if delivery_numbers.is_empty() {
+        println!("No delivery numbers found in {} file.", ext);
+        println!("\nPress Enter to return to main menu...");
+        let mut input = String::new();
+        io::stdin().read_line(&mut input).unwrap();
+        return Ok(());
+    } else {
+        println!(
+            "Found {} delivery numbers in {} file.",
+            delivery_numbers.len(),
+            ext
+        );
+        params.delivery_numbers = delivery_numbers;
     }
 
     println!("Running VL06O delivery packages with the following parameters:");
@@ -191,11 +283,19 @@ fn get_vl06o_delivery_parameters() -> Result<VL06ODeliveryParams> {
         .and_then(|c| c.global.as_ref())
         .map(|g| g.date_format.as_str())
         .unwrap_or("mm/dd/yyyy");
-    
+
     // Format date according to configuration
-    let format_str = if date_format.to_lowercase() == "yyyy-mm-dd" { "%Y-%m-%d" } else { "%m/%d/%Y" };
-    let prompt_format = if date_format.to_lowercase() == "yyyy-mm-dd" { "YYYY-MM-DD" } else { "MM/DD/YYYY" };
-    
+    let format_str = if date_format.to_lowercase() == "yyyy-mm-dd" {
+        "%Y-%m-%d"
+    } else {
+        "%m/%d/%Y"
+    };
+    let prompt_format = if date_format.to_lowercase() == "yyyy-mm-dd" {
+        "YYYY-MM-DD"
+    } else {
+        "MM/DD/YYYY"
+    };
+
     // Get start date
     let start_date_str: String = Input::new()
         .with_prompt(format!("Start date ({})", prompt_format))
@@ -221,9 +321,9 @@ fn get_vl06o_delivery_parameters() -> Result<VL06ODeliveryParams> {
         Some(variant) => format!("SAP variant name (default: {})", variant),
         None => "SAP variant name (leave empty for none)".to_string(),
     };
-    
+
     let variant_initial = params.sap_variant_name.clone().unwrap_or_default();
-    
+
     let variant_name: String = Input::new()
         .with_prompt(&variant_prompt)
         .with_initial_text(variant_initial)
@@ -242,9 +342,9 @@ fn get_vl06o_delivery_parameters() -> Result<VL06ODeliveryParams> {
         Some(layout) => format!("Layout row (default: {})", layout),
         None => "Layout row (leave empty for default)".to_string(),
     };
-    
+
     let layout_initial = params.layout_row.clone().unwrap_or_default();
-    
+
     let layout_row: String = Input::new()
         .with_prompt(&layout_prompt)
         .with_initial_text(layout_initial)
@@ -288,7 +388,11 @@ fn get_vl06o_delivery_parameters() -> Result<VL06ODeliveryParams> {
         println!("Column name provided: {}", col_name);
 
         // Ask how to input delivery numbers
-        let input_options = vec!["Read from Excel file", "Enter manually", "Paste from clipboard"];
+        let input_options = vec![
+            "Read from Excel file",
+            "Enter manually",
+            "Paste from clipboard",
+        ];
         let input_choice = Select::new()
             .with_prompt("How would you like to input delivery numbers?")
             .items(&input_options)
@@ -301,18 +405,18 @@ fn get_vl06o_delivery_parameters() -> Result<VL06ODeliveryParams> {
                 // Paste from clipboard
                 println!("Please paste delivery numbers from clipboard (one per line):");
                 println!("When finished, press Enter twice.");
-                
+
                 let mut delivery_numbers = Vec::new();
                 let mut buffer = String::new();
-                
+
                 loop {
                     let mut line = String::new();
                     io::stdin().read_line(&mut line).unwrap();
-                    
+
                     if line.trim().is_empty() && buffer.trim().is_empty() {
                         break;
                     }
-                    
+
                     if line.trim().is_empty() {
                         // Process buffer
                         for number in buffer.lines() {
@@ -324,56 +428,59 @@ fn get_vl06o_delivery_parameters() -> Result<VL06ODeliveryParams> {
                         buffer.clear();
                         break;
                     }
-                    
+
                     buffer.push_str(&line);
                 }
-                
+
                 if delivery_numbers.is_empty() {
                     println!("No delivery numbers entered.");
                 } else {
                     println!("Found {} delivery numbers.", delivery_numbers.len());
                     params.delivery_numbers = delivery_numbers;
                 }
-            },
+            }
             1 => {
                 // Enter manually
                 let delivery_numbers_str: String = Input::new()
                     .with_prompt("Enter delivery numbers (comma-separated)")
                     .interact_text()
                     .unwrap();
-                
+
                 let delivery_numbers: Vec<String> = delivery_numbers_str
                     .split(',')
                     .map(|s| s.trim().to_string())
                     .filter(|s| !s.is_empty())
                     .collect();
-                
+
                 if delivery_numbers.is_empty() {
                     println!("No delivery numbers entered.");
                 } else {
                     println!("Found {} delivery numbers.", delivery_numbers.len());
                     params.delivery_numbers = delivery_numbers;
                 }
-            },
+            }
             0 => {
                 // Read from Excel file
                 println!("Select an Excel file containing delivery numbers:");
-                
+
                 // Get the reports directory as the default starting point
                 let reports_dir = get_reports_dir();
                 println!("Current reports directory: {}", reports_dir);
-                
+
                 // Ask if user wants to use a subdirectory
                 println!("You can enter a subdirectory name to navigate to a specific folder.");
-                println!("For example, entering 'subpath' will navigate to {}\\subpath", reports_dir);
+                println!(
+                    "For example, entering 'subpath' will navigate to {}\\subpath",
+                    reports_dir
+                );
                 println!("Or press Enter to use the current reports directory.");
-                
+
                 // Create prompt with default value
                 let subdir_prompt = match &params.subdir {
                     Some(subdir) => format!("Enter subdirectory (default: {})", subdir),
                     None => "Enter subdirectory (optional)".to_string(),
                 };
-                
+
                 let subdir_initial = params.subdir.clone().unwrap_or_default();
 
                 let subdir: String = Input::new()
@@ -382,14 +489,14 @@ fn get_vl06o_delivery_parameters() -> Result<VL06ODeliveryParams> {
                     .allow_empty(true)
                     .interact_text()
                     .unwrap();
-                
+
                 // Save the subdir value back to params for future use
                 params.subdir = if subdir.is_empty() {
-                    params.subdir.clone()  // Keep the default if empty
+                    params.subdir.clone() // Keep the default if empty
                 } else {
                     Some(subdir.clone())
                 };
-                
+
                 // Determine the directory to use
                 let dir_to_use = if subdir.is_empty() {
                     reports_dir.clone()
@@ -400,30 +507,30 @@ fn get_vl06o_delivery_parameters() -> Result<VL06ODeliveryParams> {
                     println!("Using directory: {}", path);
                     path
                 };
-                
+
                 // Use the get_excel_file_path function to select an Excel file
                 println!("Please select an Excel file from the dialog...");
                 println!("Press Enter to continue to file selection...");
                 let mut input = String::new();
                 io::stdin().read_line(&mut input).unwrap();
-                
+
                 match get_excel_file_path(&dir_to_use) {
                     Ok(excel_path) => {
                         println!("Selected Excel file: {}", excel_path);
-                        
+
                         // Loop until we get a valid column name or user chooses to exit
                         let mut column_valid = false;
-                        
+
                         while !column_valid {
                             // Get the column name
                             let column_name: String = Input::new()
                                 .with_prompt("Enter column name containing delivery numbers")
                                 .interact_text()
                                 .unwrap();
-                            
+
                             if column_name.is_empty() {
                                 println!("Column name is empty.");
-                                
+
                                 // Ask if user wants to try again or return to main menu
                                 let options = vec!["Try again", "Return to main menu"];
                                 let choice = Select::new()
@@ -432,7 +539,7 @@ fn get_vl06o_delivery_parameters() -> Result<VL06ODeliveryParams> {
                                     .default(0)
                                     .interact()
                                     .unwrap();
-                                
+
                                 if choice == 1 {
                                     // User wants to return to main menu
                                     println!("Returning to main menu...");
@@ -441,22 +548,23 @@ fn get_vl06o_delivery_parameters() -> Result<VL06ODeliveryParams> {
                                 // Otherwise, loop continues for another attempt
                             } else {
                                 println!("Reading from column: {}", column_name);
-                                
+
                                 // Read the delivery numbers from the Excel file
                                 match read_excel_column(&excel_path, "Sheet1", &column_name) {
                                     Ok(delivery_numbers) => {
                                         if delivery_numbers.is_empty() {
                                             println!("No delivery numbers found in column '{}' of the Excel file.", column_name);
-                                            
+
                                             // Ask if user wants to try again or return to main menu
-                                            let options = vec!["Try another column", "Return to main menu"];
+                                            let options =
+                                                vec!["Try another column", "Return to main menu"];
                                             let choice = Select::new()
                                                 .with_prompt("What would you like to do?")
                                                 .items(&options)
                                                 .default(0)
                                                 .interact()
                                                 .unwrap();
-                                            
+
                                             if choice == 1 {
                                                 // User wants to return to main menu
                                                 println!("Returning to main menu...");
@@ -464,24 +572,31 @@ fn get_vl06o_delivery_parameters() -> Result<VL06ODeliveryParams> {
                                             }
                                             // Otherwise, loop continues for another attempt
                                         } else {
-                                            println!("Found {} delivery numbers in Excel file.", delivery_numbers.len());
+                                            println!(
+                                                "Found {} delivery numbers in Excel file.",
+                                                delivery_numbers.len()
+                                            );
                                             params.delivery_numbers = delivery_numbers;
                                             column_valid = true; // Exit the loop
                                         }
-                                    },
+                                    }
                                     Err(e) => {
                                         println!("Error reading Excel file: {}", e);
-                                        println!("Column '{}' may not exist in the Excel file.", column_name);
-                                        
+                                        println!(
+                                            "Column '{}' may not exist in the Excel file.",
+                                            column_name
+                                        );
+
                                         // Ask if user wants to try again or return to main menu
-                                        let options = vec!["Try another column", "Return to main menu"];
+                                        let options =
+                                            vec!["Try another column", "Return to main menu"];
                                         let choice = Select::new()
                                             .with_prompt("What would you like to do?")
                                             .items(&options)
                                             .default(0)
                                             .interact()
                                             .unwrap();
-                                        
+
                                         if choice == 1 {
                                             // User wants to return to main menu
                                             println!("Returning to main menu...");
@@ -492,26 +607,26 @@ fn get_vl06o_delivery_parameters() -> Result<VL06ODeliveryParams> {
                                 }
                             }
                         }
-                        
+
                         // Wait for user to acknowledge before continuing
                         println!("Press Enter to continue...");
                         let mut input = String::new();
                         io::stdin().read_line(&mut input).unwrap();
-                    },
+                    }
                     Err(e) => {
                         println!("Error selecting Excel file: {}", e);
                         println!("Error details: {}", e);
-                        
+
                         // Wait for user to acknowledge before continuing
                         println!("Press Enter to continue...");
                         let mut input = String::new();
                         io::stdin().read_line(&mut input).unwrap();
                     }
                 }
-            },
+            }
             _ => {
                 println!("Unexpected option selected.");
-                
+
                 // Wait for user to acknowledge before continuing
                 println!("Press Enter to continue...");
                 let mut input = String::new();
@@ -551,27 +666,28 @@ fn parse_date(date_str: &str) -> Result<NaiveDate> {
             if let Ok(date) = NaiveDate::parse_from_str(date_str, "%Y-%m-%d") {
                 return Ok(date);
             }
-            
+
             // Fallback to other formats
             if let Ok(date) = NaiveDate::parse_from_str(date_str, "%m/%d/%Y") {
                 return Ok(date);
             }
-            
+
             if let Ok(date) = NaiveDate::parse_from_str(date_str, "%m-%d-%Y") {
                 return Ok(date);
             }
-        },
-        _ => { // Default to mm/dd/yyyy
+        }
+        _ => {
+            // Default to mm/dd/yyyy
             // Try MM/DD/YYYY format first
             if let Ok(date) = NaiveDate::parse_from_str(date_str, "%m/%d/%Y") {
                 return Ok(date);
             }
-            
+
             // Fallback to other formats
             if let Ok(date) = NaiveDate::parse_from_str(date_str, "%m-%d-%Y") {
                 return Ok(date);
             }
-            
+
             if let Ok(date) = NaiveDate::parse_from_str(date_str, "%Y-%m-%d") {
                 return Ok(date);
             }

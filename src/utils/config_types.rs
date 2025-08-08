@@ -49,6 +49,10 @@ pub struct GlobalConfig {
     #[serde(default = "default_timezone")]
     pub timezone: String,
 
+    /// Global default export type for local file export (0..=4)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_export_type: Option<u8>,
+
     #[serde(flatten)]
     pub additional_params: HashMap<String, String>,
 }
@@ -142,7 +146,7 @@ pub struct SequenceConfig {
     pub params: HashMap<String, String>,
 }
 
-/// Gets the default reports directory path with \\\\
+/// Gets the default reports directory path with \\\
 // return double backslash based on userprofile
 pub fn get_default_reports_dir() -> String {
     let user_profile = env::var("USERPROFILE").unwrap_or_else(|_| ".".to_string());

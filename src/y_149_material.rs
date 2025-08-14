@@ -1,6 +1,7 @@
 use sap_scripting::*;
 use windows::core::Result;
 
+use crate::utils::choose_layout_utils::choose_layout_149;
 use crate::utils::sap_ctrl_utils::exist_ctrl;
 use crate::utils::sap_export_utils::export_local_file;
 use crate::utils::sap_tcode_utils::{assert_tcode, variant_select};
@@ -9,6 +10,7 @@ use crate::utils::sap_tcode_utils::{assert_tcode, variant_select};
 #[derive(Debug)]
 pub struct Report149MaterialParams {
     pub variant: Option<String>,
+    pub layout: Option<String>,
     pub material: String,
     pub plant: String,
     pub signi: String,
@@ -21,6 +23,7 @@ impl Default for Report149MaterialParams {
     fn default() -> Self {
         Self {
             variant: None,
+            layout: None,
             material: String::new(),
             plant: String::new(),
             signi: String::new(),
@@ -132,6 +135,13 @@ pub fn run_export(session: &GuiSession, params: &Report149MaterialParams) -> Res
 
     if error_detected {
         return Ok(false);
+    }
+
+    // Use layout if provided
+    if let Some(layout) = &params.layout {
+        if let Err(e) = choose_layout_149(session, layout) {
+            println!("Error choosing layout: {}", e);
+        }
     }
 
     println!("DEBUG: No error window found, continuing...");

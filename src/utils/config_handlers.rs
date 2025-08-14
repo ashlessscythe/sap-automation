@@ -668,6 +668,7 @@ fn handle_configure_loop_params(config: &mut SapConfig) -> Result<()> {
     if config.loop_config.is_none() {
         config.loop_config = Some(LoopConfig {
             tcode: "".to_string(),
+            tcode_run_type: None,
             iterations: default_iterations(),
             delay_seconds: default_delay_seconds(),
             params: HashMap::new(),
@@ -677,6 +678,7 @@ fn handle_configure_loop_params(config: &mut SapConfig) -> Result<()> {
     // Get a clone of the loop config to avoid borrowing issues
     let mut loop_config = config.loop_config.clone().unwrap_or(LoopConfig {
         tcode: "".to_string(),
+        tcode_run_type: None,
         iterations: default_iterations(),
         delay_seconds: default_delay_seconds(),
         params: HashMap::new(),

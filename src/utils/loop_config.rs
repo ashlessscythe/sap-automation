@@ -6,8 +6,8 @@ use std::io;
 use std::thread;
 use std::time::Duration;
 
-use crate::utils::config_types::SapConfig;
 use crate::utils::config_types::LoopConfig as ConfigLoopConfig;
+use crate::utils::config_types::SapConfig;
 use crate::utils::sap_tcode_utils::{assert_tcode, check_tcode, variant_select};
 use crate::vl06o_module::run_vl06o_auto;
 use crate::vt11_module::run_vt11_auto;
@@ -17,6 +17,7 @@ use crate::zmdesnr_module::run_zmdesnr_auto;
 #[derive(Debug, Clone)]
 pub struct LoopConfig {
     pub tcode: String,
+    pub tcode_run_type: Option<String>,
     pub iterations: usize,
     pub delay_seconds: u64,
     pub params: HashMap<String, String>,
@@ -26,6 +27,7 @@ impl Default for LoopConfig {
     fn default() -> Self {
         Self {
             tcode: String::new(),
+            tcode_run_type: None,
             iterations: 1,
             delay_seconds: 60,
             params: HashMap::new(),
@@ -42,30 +44,39 @@ impl LoopConfig {
     /// Load loop configuration from config.toml file
     pub fn load() -> Result<Self> {
         let mut config = Self::default();
-        
+
         // Try to read from config file via SapConfig
         if let Ok(sap_config) = SapConfig::load() {
             // Check if loop configuration exists in the new format
             if let Some(loop_config) = &sap_config.loop_config {
                 // Get tcode
                 config.tcode = loop_config.tcode.clone();
-                
+
+                // Get tcode_run_type
+                config.tcode_run_type = loop_config.tcode_run_type.clone();
+
                 // Get iterations
                 if let Ok(iter_val) = loop_config.iterations.parse::<usize>() {
                     config.iterations = iter_val;
                 }
-                
+
                 // Get delay seconds
                 if let Ok(delay_val) = loop_config.delay_seconds.parse::<u64>() {
                     config.delay_seconds = delay_val;
                 }
-                
+
                 // Get parameters - now handling params without loop_ prefix
                 for (key, value) in &loop_config.params {
                     // If key starts with param_, remove it to get the actual parameter name
                     if key.starts_with("param_") {
                         let param_name = key.replacen("param_", "", 1);
-                        config.params.insert(param_name, value.clone());
+
+                        // Special handling for tcode_run_type parameter
+                        if param_name == "tcode_run_type" {
+                            config.tcode_run_type = Some(value.clone());
+                        } else {
+                            config.params.insert(param_name, value.clone());
+                        }
                     } else {
                         // Otherwise, use the key as is
                         config.params.insert(key.clone(), value.clone());
@@ -79,7 +90,7 @@ impl LoopConfig {
                         config.tcode = tcode.clone();
                     }
                 }
-                
+
                 // Check if there are any loop-related parameters in the global additional_params
                 if let Some(global) = &sap_config.global {
                     for (key, value) in &global.additional_params {
@@ -95,40 +106,47 @@ impl LoopConfig {
                             }
                         } else if key.starts_with("loop_param_") {
                             let param_name = key.replacen("loop_param_", "", 1);
-                            config.params.insert(param_name, value.clone());
+
+                            // Special handling for tcode_run_type parameter
+                            if param_name == "tcode_run_type" {
+                                config.tcode_run_type = Some(value.clone());
+                            } else {
+                                config.params.insert(param_name, value.clone());
+                            }
                         }
                     }
                 }
             }
         }
-        
+
         Ok(config)
     }
-    
+
     /// Save loop configuration to config.toml file
     pub fn save(&self) -> Result<()> {
         let mut sap_config = SapConfig::load()?;
-        
+
         // Create or update loop configuration
         let mut loop_params = HashMap::new();
-        
+
         // Add parameters with param_ prefix
         for (key, value) in &self.params {
             loop_params.insert(format!("param_{}", key), value.clone());
         }
-        
+
         let loop_config = ConfigLoopConfig {
             tcode: self.tcode.clone(),
+            tcode_run_type: self.tcode_run_type.clone(),
             iterations: self.iterations.to_string(),
             delay_seconds: self.delay_seconds.to_string(),
             params: loop_params,
         };
-        
+
         sap_config.loop_config = Some(loop_config);
-        
+
         // Save the updated configuration
         sap_config.save()?;
-        
+
         Ok(())
     }
 }
@@ -137,13 +155,14 @@ impl LoopConfig {
 pub fn handle_configure_loop() -> Result<()> {
     println!("Configure Loop Parameters");
     println!("========================");
-    
+
     // Load current configuration
     let mut config = LoopConfig::load()?;
-    
+
     // Present options to the user
     let options = vec![
         "Configure TCode",
+        "Configure TCode Run Type",
         "Configure Iterations",
         "Configure Delay (seconds)",
         "Add/Edit Parameter",
@@ -151,7 +170,7 @@ pub fn handle_configure_loop() -> Result<()> {
         "Show Current Configuration",
         "Back to Main Menu",
     ];
-    
+
     loop {
         let selection = Select::new()
             .with_prompt("Choose an option")
@@ -159,7 +178,7 @@ pub fn handle_configure_loop() -> Result<()> {
             .default(0)
             .interact()
             .unwrap();
-            
+
         match selection {
             0 => {
                 // Configure TCode
@@ -170,11 +189,32 @@ pub fn handle_configure_loop() -> Result<()> {
                     .default(current)
                     .interact()
                     .unwrap();
-                    
+
                 config.tcode = tcode.clone();
                 println!("TCode set to: {}", tcode);
-            },
+            }
             1 => {
+                // Configure TCode Run Type
+                let current = config.tcode_run_type.clone().unwrap_or_default();
+                let run_type: String = Input::new()
+                    .with_prompt("Enter TCode Run Type (e.g., rcv, mat, tsp for 149 report, or leave empty for default)")
+                    .allow_empty(true)
+                    .default(current)
+                    .interact()
+                    .unwrap();
+
+                config.tcode_run_type = if run_type.is_empty() {
+                    None
+                } else {
+                    Some(run_type.clone())
+                };
+                if run_type.is_empty() {
+                    println!("TCode Run Type cleared (will use default)");
+                } else {
+                    println!("TCode Run Type set to: {}", run_type);
+                }
+            }
+            2 => {
                 // Configure Iterations
                 let current = config.iterations.to_string();
                 let iterations_str: String = Input::new()
@@ -183,7 +223,7 @@ pub fn handle_configure_loop() -> Result<()> {
                     .default(current)
                     .interact()
                     .unwrap();
-                    
+
                 if let Ok(iterations) = iterations_str.parse::<usize>() {
                     config.iterations = iterations;
                     if iterations == 0 {
@@ -192,10 +232,13 @@ pub fn handle_configure_loop() -> Result<()> {
                         println!("Iterations set to: {}", iterations);
                     }
                 } else {
-                    println!("Invalid number. Keeping current value: {}", config.iterations);
+                    println!(
+                        "Invalid number. Keeping current value: {}",
+                        config.iterations
+                    );
                 }
-            },
-            2 => {
+            }
+            3 => {
                 // Configure Delay
                 let current = config.delay_seconds.to_string();
                 let delay_str: String = Input::new()
@@ -204,22 +247,25 @@ pub fn handle_configure_loop() -> Result<()> {
                     .default(current)
                     .interact()
                     .unwrap();
-                    
+
                 if let Ok(delay) = delay_str.parse::<u64>() {
                     config.delay_seconds = delay;
                     println!("Delay set to: {} seconds", delay);
                 } else {
-                    println!("Invalid number. Keeping current value: {} seconds", config.delay_seconds);
+                    println!(
+                        "Invalid number. Keeping current value: {} seconds",
+                        config.delay_seconds
+                    );
                 }
-            },
-            3 => {
+            }
+            4 => {
                 // Add/Edit Parameter
                 let param_name: String = Input::new()
                     .with_prompt("Enter Parameter Name")
                     .allow_empty(false)
                     .interact()
                     .unwrap();
-                    
+
                 let current_value = config.params.get(&param_name).cloned().unwrap_or_default();
                 let param_value: String = Input::new()
                     .with_prompt("Enter Parameter Value")
@@ -227,78 +273,85 @@ pub fn handle_configure_loop() -> Result<()> {
                     .default(current_value)
                     .interact()
                     .unwrap();
-                    
+
                 if param_value.is_empty() {
                     config.params.remove(&param_name);
                     println!("Parameter '{}' removed.", param_name);
                 } else {
-                    config.params.insert(param_name.clone(), param_value.clone());
+                    config
+                        .params
+                        .insert(param_name.clone(), param_value.clone());
                     println!("Parameter '{}' set to: {}", param_name, param_value);
                 }
-            },
-            4 => {
+            }
+            5 => {
                 // Remove Parameter
                 let mut param_names: Vec<String> = Vec::new();
-                
+
                 // Add parameters
                 for key in config.params.keys() {
                     param_names.push(key.clone());
                 }
-                
+
                 if param_names.is_empty() {
                     println!("No parameters to remove.");
                     thread::sleep(Duration::from_secs(2));
                     continue;
                 }
-                
+
                 param_names.push("Cancel".to_string());
-                
+
                 let selection = Select::new()
                     .with_prompt("Select parameter to remove")
                     .items(&param_names)
                     .default(0)
                     .interact()
                     .unwrap();
-                    
+
                 if selection == param_names.len() - 1 {
                     // User selected Cancel
                     continue;
                 }
-                
+
                 let param_name = &param_names[selection];
                 config.params.remove(param_name);
                 println!("Parameter '{}' removed.", param_name);
-            },
-            5 => {
+            }
+            6 => {
                 // Show Current Configuration
                 println!("\nCurrent Loop Configuration:");
                 println!("---------------------------");
                 println!("TCode: {}", config.tcode);
+                if let Some(run_type) = &config.tcode_run_type {
+                    println!("TCode Run Type: {}", run_type);
+                } else {
+                    println!("TCode Run Type: (default)");
+                }
                 if config.iterations == 0 {
                     println!("Iterations: infinite (until Ctrl+C)");
                 } else {
                     println!("Iterations: {}", config.iterations);
                 }
                 println!("Delay: {} seconds", config.delay_seconds);
-                
+
                 if !config.params.is_empty() {
                     println!("\nParameters:");
                     for (key, value) in &config.params {
                         println!("  {}: {}", key, value);
                     }
                 }
-                
+
                 println!("\nPress Enter to continue...");
                 let mut input = String::new();
                 io::stdin().read_line(&mut input).unwrap();
                 continue;
-            },
+            }
             _ => {
                 // Back to Main Menu
                 break;
             }
         }
-        
+
         // Save configuration after each change
         if let Err(e) = config.save() {
             eprintln!("Failed to save configuration: {}", e);
@@ -308,7 +361,7 @@ pub fn handle_configure_loop() -> Result<()> {
             thread::sleep(Duration::from_secs(1));
         }
     }
-    
+
     Ok(())
 }
 
@@ -316,7 +369,7 @@ pub fn handle_configure_loop() -> Result<()> {
 pub fn run_loop(session: &GuiSession) -> Result<()> {
     println!("Run Loop from Configuration");
     println!("==========================");
-    
+
     // Load loop configuration
     let config = match LoopConfig::load() {
         Ok(cfg) => cfg,
@@ -328,7 +381,7 @@ pub fn run_loop(session: &GuiSession) -> Result<()> {
             return Ok(());
         }
     };
-    
+
     // Check if TCode is configured
     if config.tcode.is_empty() {
         println!("No TCode configured for loop execution.");
@@ -338,67 +391,105 @@ pub fn run_loop(session: &GuiSession) -> Result<()> {
         io::stdin().read_line(&mut input).unwrap();
         return Ok(());
     }
-    
-    println!("Running TCode '{}' in a loop with the following configuration:", config.tcode);
+
+    println!(
+        "Running TCode '{}' in a loop with the following configuration:",
+        config.tcode
+    );
+    if let Some(run_type) = &config.tcode_run_type {
+        println!("TCode Run Type: {}", run_type);
+    } else {
+        println!("TCode Run Type: (default)");
+    }
     if config.iterations == 0 {
         println!("Iterations: infinite (until Ctrl+C)");
     } else {
         println!("Iterations: {}", config.iterations);
     }
     println!("Delay: {} seconds", config.delay_seconds);
-    
+
     if !config.params.is_empty() {
         println!("\nParameters:");
         for (key, value) in &config.params {
             println!("  {}: {}", key, value);
         }
     }
-    
+
     println!("\nPress Enter to start the loop or Ctrl+C to cancel...");
     let mut input = String::new();
     io::stdin().read_line(&mut input).unwrap();
-    
+
     // Run the TCode in a loop
     let mut iteration = 1;
     loop {
         // Display iteration information
         if config.iterations == 0 {
-            println!("\nIteration {} (infinite loop, press Ctrl+C to stop)", iteration);
+            println!(
+                "\nIteration {} (infinite loop, press Ctrl+C to stop)",
+                iteration
+            );
         } else {
             println!("\nIteration {}/{}", iteration, config.iterations);
         }
-        
+
         // Check if the TCode is active
         if !check_tcode(session, &config.tcode, Some(true), Some(true))? {
             println!("Failed to activate TCode '{}'", config.tcode);
             break;
         }
-        
+
         // Run the TCode with the configured parameters
         match config.tcode.as_str() {
             "VL06O" => {
                 run_vl06o_auto(session)?;
-            },
+            }
             "VT11" => {
                 run_vt11_auto(session)?;
-            },
+            }
             "ZMDESNR" => {
                 run_zmdesnr_auto(session)?;
-            },
+            }
+            "y_dn3_47000149" | "Y_DN3_47000149" => {
+                // Handle 149 report with different run types
+                match config.tcode_run_type.as_deref() {
+                    Some("rcv") => {
+                        println!("Running 149 RCV auto...");
+                        crate::y_149_rcv_module::run_149_rcv_auto(session)?;
+                    }
+                    Some("mat") | Some("tsp") => {
+                        println!("Running 149 Material Not TSP auto...");
+                        crate::y_149_material_module::run_149_material_auto(session)?;
+                    }
+                    Some("") | None => {
+                        println!("Running 149 regular auto...");
+                        crate::y_149_module::run_149_auto(session)?;
+                    }
+                    Some(unknown_type) => {
+                        println!(
+                            "Unknown run type '{}' for 149 report. Running regular 149 auto...",
+                            unknown_type
+                        );
+                        crate::y_149_module::run_149_auto(session)?;
+                    }
+                }
+            }
             _ => {
                 // For other TCodes, just run the TCode and apply variant if specified
                 if !assert_tcode(session, &config.tcode, Some(0))? {
                     println!("Failed to activate TCode '{}'", config.tcode);
                     break;
                 }
-                
+
                 // Apply variant if specified
                 if let Some(variant) = config.params.get("variant") {
                     if !variant.is_empty() && !variant_select(session, &config.tcode, variant)? {
-                        println!("Failed to select variant '{}' for TCode '{}'", variant, config.tcode);
+                        println!(
+                            "Failed to select variant '{}' for TCode '{}'",
+                            variant, config.tcode
+                        );
                     }
                 }
-                
+
                 // Execute the TCode
                 if let Ok(wnd) = session.find_by_id("wnd[0]".to_string()) {
                     if let Some(gui) = wnd.downcast::<GuiMainWindow>() {
@@ -407,24 +498,27 @@ pub fn run_loop(session: &GuiSession) -> Result<()> {
                 }
             }
         }
-        
+
         // Check if we should continue the loop
         if config.iterations > 0 && iteration >= config.iterations {
             break;
         }
-        
+
         // Increment iteration counter
         iteration += 1;
-        
+
         // Wait for the specified delay before the next iteration
-        println!("Waiting {} seconds before next iteration...", config.delay_seconds);
+        println!(
+            "Waiting {} seconds before next iteration...",
+            config.delay_seconds
+        );
         thread::sleep(Duration::from_secs(config.delay_seconds));
     }
-    
+
     println!("\nLoop execution completed.");
     println!("\nPress Enter to return to main menu...");
     let mut input = String::new();
     io::stdin().read_line(&mut input).unwrap();
-    
+
     Ok(())
 }

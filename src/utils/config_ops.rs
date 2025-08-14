@@ -259,6 +259,10 @@ impl SapConfig {
                                     .and_then(|v| v.as_str())
                                     .unwrap_or("")
                                     .to_string(),
+                                tcode_run_type: loop_table
+                                    .get("tcode_run_type")
+                                    .and_then(|v| v.as_str())
+                                    .map(|s| s.to_string()),
                                 iterations: loop_table
                                     .get("iterations")
                                     .and_then(|v| v.as_str())
@@ -417,6 +421,10 @@ impl SapConfig {
                     .and_then(|v| v.as_str())
                     .unwrap_or(&default_tcode)
                     .to_string(),
+                tcode_run_type: sap_config
+                    .get("loop_tcode_run_type")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
                 iterations: sap_config
                     .get("loop_iterations")
                     .and_then(|v| v.as_str())

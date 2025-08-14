@@ -1,4 +1,6 @@
+use sap_automation::cli::{Cli, Commands};
 use sap_automation::utils::config_types::SapConfig;
+use sap_automation::utils::unattended_runner::{init_sap_connection, run_loop_unattended, run_sequence_unattended};
 use sap_scripting::*;
 use std::thread;
 use std::time::Duration;
@@ -35,6 +37,54 @@ use y_149_rcv_module::{run_149_rcv_auto, run_149_rcv_module};
 use zmdesnr_module::{run_zmdesnr_auto, run_zmdesnr_module};
 
 fn main() -> anyhow::Result<()> {
+    // Parse command line arguments
+    let cli = Cli::parse();
+    
+    // If command-line arguments are provided, run in unattended mode
+    if let Some(command) = cli.command {
+        return match command {
+            Commands::RunLoop { skip_sap_check } => {
+                run_unattended_loop(skip_sap_check)
+            }
+            Commands::RunSequence { skip_sap_check } => {
+                run_unattended_sequence(skip_sap_check)
+            }
+        };
+    }
+    
+    // Otherwise, run in interactive mode
+    run_interactive_mode()
+}
+
+fn run_unattended_loop(skip_sap_check: bool) -> anyhow::Result<()> {
+    println!("SAP Automation - Unattended Loop Mode");
+    println!("=====================================");
+    
+    // Initialize SAP connection
+    let (com_instance, _wrapper, _engine, _connection, session) = init_sap_connection()?;
+    
+    // Run the loop unattended
+    run_loop_unattended(&session, skip_sap_check)?;
+    
+    println!("Unattended loop execution completed successfully.");
+    Ok(())
+}
+
+fn run_unattended_sequence(skip_sap_check: bool) -> anyhow::Result<()> {
+    println!("SAP Automation - Unattended Sequence Mode");
+    println!("=========================================");
+    
+    // Initialize SAP connection
+    let (com_instance, _wrapper, _engine, _connection, session) = init_sap_connection()?;
+    
+    // Run the sequence unattended
+    run_sequence_unattended(&session, skip_sap_check)?;
+    
+    println!("Unattended sequence execution completed successfully.");
+    Ok(())
+}
+
+fn run_interactive_mode() -> anyhow::Result<()> {
     // Initialize logging if needed
     // pretty_env_logger::init();
 

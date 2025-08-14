@@ -16,6 +16,8 @@ Key features include:
 - Support for transaction code execution and verification
 - Data export capabilities
 - Per-tcode configuration management
+- **Command-line interface for unattended automation**
+- **Loop and sequence execution without user interaction**
 
 ## Terminal User Interface (TUI)
 
@@ -67,6 +69,41 @@ The TUI system includes several specialized components:
 - **Input Dialogs**: Text input prompts for configuration and data entry
 
 All TUI components maintain consistent navigation patterns and visual styling for a cohesive user experience.
+
+## Command Line Interface (CLI)
+
+The application also supports command-line operation for automation scenarios. This allows you to run SAP automation tasks without any user interaction, making it perfect for:
+
+- **Scheduled tasks and batch processing**
+- **CI/CD pipeline integration**
+- **Automation scripts**
+- **Testing and validation**
+
+### Command Line Usage
+
+```bash
+# Show help
+./sap_automation.exe --help
+
+# Run loop configuration unattended
+./sap_automation.exe run-loop
+
+# Run sequence configuration unattended
+./sap_automation.exe run-sequence
+
+# Skip SAP connection check (for testing)
+./sap_automation.exe run-loop --skip-sap-check
+```
+
+### Key Benefits
+
+- **No User Interaction**: Runs completely automatically
+- **Configuration Driven**: Uses your existing `config.toml` settings
+- **Error Handling**: Clear error messages and exit codes
+- **Logging**: All output goes to console for easy logging
+- **Backward Compatible**: Interactive mode remains unchanged
+
+For detailed command-line usage information, see [COMMAND_LINE_USAGE.md](COMMAND_LINE_USAGE.md).
 
 ## Dependencies
 

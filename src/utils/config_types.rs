@@ -117,6 +117,9 @@ pub struct TcodeConfig {
 pub struct LoopConfig {
     pub tcode: String,
 
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tcode_run_type: Option<String>,
+
     #[serde(default = "default_iterations")]
     pub iterations: String,
 

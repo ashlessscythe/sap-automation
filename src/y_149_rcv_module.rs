@@ -134,11 +134,6 @@ pub fn run_149_rcv_auto(session: &GuiSession) -> Result<()> {
         }
     }
 
-    // Wait for user to press enter before returning to main menu
-    println!("\nPress Enter to return to main menu...");
-    let mut input = String::new();
-    io::stdin().read_line(&mut input).unwrap();
-
     Ok(())
 }
 

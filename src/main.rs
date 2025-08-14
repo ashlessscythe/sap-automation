@@ -29,9 +29,9 @@ use utils::sequence_config::{handle_configure_sequence, run_sequence};
 use vl06o_delivery_module::{run_vl06o_delivery_packages_auto, run_vl06o_delivery_packages_module};
 use vl06o_module::{run_vl06o_auto, run_vl06o_date_update_module, run_vl06o_module};
 use vt11_module::{run_vt11_auto, run_vt11_module};
-use y_149_material_module::run_149_material_module;
+use y_149_material_module::{run_149_material_auto, run_149_material_module};
 use y_149_module::{run_149_auto, run_149_module};
-use y_149_rcv_module::{run_149_rcv_module, run_149_rcv_auto};
+use y_149_rcv_module::{run_149_rcv_auto, run_149_rcv_module};
 use zmdesnr_module::{run_zmdesnr_auto, run_zmdesnr_module};
 
 fn main() -> anyhow::Result<()> {

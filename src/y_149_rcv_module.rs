@@ -5,6 +5,7 @@ use crossterm::{
 };
 use dialoguer::Input;
 use sap_scripting::*;
+use std::collections::HashMap;
 use std::io::{self};
 use windows::core::Result;
 
@@ -38,6 +39,149 @@ pub fn run_149_rcv_module(session: &GuiSession) -> Result<()> {
     io::stdin().read_line(&mut input).unwrap();
 
     Ok(())
+}
+
+pub fn run_149_rcv_auto(session: &GuiSession) -> Result<()> {
+    clear_screen();
+    println!("149 Report - RCV Auto Run from Configuration");
+    println!("===========================================");
+
+    // Load configuration
+    let config = match SapConfig::load() {
+        Ok(cfg) => cfg,
+        Err(e) => {
+            println!("Error loading configuration: {}", e);
+            println!("\nPress Enter to return to main menu...");
+            let mut input = String::new();
+            io::stdin().read_line(&mut input).unwrap();
+            return Ok(());
+        }
+    };
+
+    // Get Y_149 RCV specific configuration
+    let tcode_config = match config.get_tcode_config("y_dn3_47000149", Some(true)) {
+        Some(cfg) => cfg,
+        None => {
+            println!("No configuration found for y_dn3_47000149.");
+            println!("Please configure y_dn3_47000149 parameters first.");
+            println!("\nPress Enter to return to main menu...");
+            let mut input = String::new();
+            io::stdin().read_line(&mut input).unwrap();
+            return Ok(());
+        }
+    };
+
+    // Create Report149RcvParams from configuration
+    println!("Getting 149 RCV params from config");
+    let mut params = create_149_rcv_params_from_config(&tcode_config);
+
+    // Set date range if available (rcv_days_back) - access raw config directly
+    if let Some(raw_config) = &config.raw_config {
+        if let Some(tcode_section) = raw_config.get("tcode") {
+            if let Some(y_dn3_section) = tcode_section.get("y_dn3_47000149") {
+                if let Some(rcv_days_back) = y_dn3_section.get("rcv_days_back") {
+                    if let Some(days) = rcv_days_back.as_integer() {
+                        let today = Local::now().naive_local().date();
+                        let start_date = today - ChronoDuration::days(days);
+                        let end_date = today;
+
+                        params.date_low = start_date.format("%Y-%m-%d").to_string();
+                        params.date_high = end_date.format("%Y-%m-%d").to_string();
+                        println!(
+                            "Using date range from config: {} to {}",
+                            params.date_low, params.date_high
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    // If no date range was set from config, set default dates
+    if params.date_low.is_empty() || params.date_high.is_empty() {
+        let today = Local::now().naive_local().date();
+        params.date_low = today.format("%Y-%m-%d").to_string();
+        params.date_high = today.format("%Y-%m-%d").to_string();
+        println!(
+            "Using default date range: {} to {}",
+            params.date_low, params.date_high
+        );
+    }
+
+    println!("Running 149 RCV with the following parameters:");
+    println!("-------------------------------------------");
+    println!("Variant: {:?}", params.variant);
+    println!("Layout: {:?}", params.layout);
+    println!("Plant: {}", params.plant);
+    println!("Date Range: {} to {}", params.date_low, params.date_high);
+    println!(
+        "Export Type: {} ({})",
+        params.export_type,
+        get_export_type_description(params.export_type)
+    );
+    println!("-------------------------------------------");
+
+    // Run the export
+    match run_export(session, &params) {
+        Ok(true) => {
+            println!("149 RCV report export completed successfully!");
+        }
+        Ok(false) => {
+            println!("149 RCV report export failed or was cancelled.");
+        }
+        Err(e) => {
+            println!("Error running 149 RCV report export: {}", e);
+        }
+    }
+
+    // Wait for user to press enter before returning to main menu
+    println!("\nPress Enter to return to main menu...");
+    let mut input = String::new();
+    io::stdin().read_line(&mut input).unwrap();
+
+    Ok(())
+}
+
+fn create_149_rcv_params_from_config(config: &HashMap<String, String>) -> Report149RcvParams {
+    let mut params = Report149RcvParams::default();
+
+    // Display the default values loaded from config
+    println!("Default values from config:");
+    println!("  Variant: {:?}", params.variant);
+    println!("  Layout: {:?}", params.layout);
+    println!("  Export Type: {:?}", params.export_type);
+
+    // Set variant if available (rcv_variant)
+    if let Some(variant) = config.get("rcv_variant") {
+        params.variant = Some(variant.clone());
+    }
+
+    // Set layout if available (rcv_layout)
+    if let Some(layout) = config.get("rcv_layout") {
+        params.layout = Some(layout.clone());
+    }
+
+    // Set export type if available
+    if let Some(export_type) = config.get("export_type") {
+        if let Ok(export_type_val) = export_type.parse::<u8>() {
+            params.export_type = export_type_val;
+        }
+    }
+
+    // Set plant if available (required when no variant)
+    if params.variant.is_none() {
+        if let Some(plant) = config.get("plant") {
+            params.plant = plant.clone();
+        } else {
+            // If no variant and no plant in config, use a default or ask user
+            params.plant = "BRUH".to_string(); // Default plant from config example
+        }
+    } else {
+        // Set empty plant when variant is used
+        params.plant = String::new();
+    }
+
+    params
 }
 
 fn clear_screen() {

@@ -45,6 +45,8 @@ serial_number = "SN12345"
 pre_export_back = true
 
 [tcode.y_dn3_47000149]
+variant = "variant_name"
+layout = "pending"
 plants = [
   "BRUH",
   "OTHER",
@@ -53,6 +55,9 @@ plants = [
 mat_variant = "material_missing"
 149_days_range = 5
 export_type = 0
+rcv_variant = "material_rcv"
+rcv_days_back = 1
+rcv_layout = "rcv_layoutname"
 
 [loop]
 tcode = "VT11"

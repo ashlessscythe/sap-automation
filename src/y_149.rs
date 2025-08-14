@@ -2,6 +2,7 @@ use sap_scripting::*;
 use windows::core::Result;
 
 use crate::utils::choose_layout_utils::*;
+use crate::utils::config_types::SapConfig;
 use crate::utils::sap_export_utils::export_local_file;
 use crate::utils::sap_tcode_utils::*;
 
@@ -103,7 +104,7 @@ pub fn run_export(session: &GuiSession, params: &Report149Params) -> Result<bool
         }
 
         // choose layout if configured
-        if let Ok(cfg) = crate::utils::config_types::SapConfig::load() {
+        if let Ok(cfg) = SapConfig::load() {
             if let Some(tcode_cfg) = cfg.get_tcode_config("y_dn3_47000149", Some(true)) {
                 if let Some(layout) = tcode_cfg.get("layout") {
                     if let Err(e) = choose_layout_149(session, layout) {

@@ -22,6 +22,12 @@ date_range_end = "12/31/2023"
 by_date = "true"
 by_delivery = "false"
 
+[tcode.ZVT11]
+variant = "variantname"
+layout = "layoutname"
+by_delivery = "true"
+export_type = 0
+
 [tcode.VL06O]
 variant = "delivery_layout"
 layout = "delivery_view"

@@ -47,7 +47,10 @@ pub fn run_vl06o_delivery_packages_module(session: &GuiSession) -> Result<()> {
 }
 
 /// Read a tab-delimited text file and extract a column by header name
-fn read_tab_delimited_column(file_path: &str, header_name: &str) -> std::io::Result<Vec<String>> {
+pub fn read_tab_delimited_column(
+    file_path: &str,
+    header_name: &str,
+) -> std::io::Result<Vec<String>> {
     use std::fs::File;
     use std::io::{BufRead, BufReader, Read};
 

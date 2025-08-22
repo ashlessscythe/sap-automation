@@ -13,7 +13,6 @@ use crate::utils::config_types::SapConfig;
 use crate::vt11::{run_export, VT11Params};
 
 pub fn run_vt11_module(session: &GuiSession) -> Result<()> {
-
     clear_screen();
     println!("VT11 - Shipment List Planning");
     println!("============================");
@@ -43,7 +42,6 @@ pub fn run_vt11_module(session: &GuiSession) -> Result<()> {
 }
 
 pub fn run_vt11_auto(session: &GuiSession) -> Result<()> {
-
     clear_screen();
     println!("VT11 - Auto Run from Configuration");
     println!("=================================");
@@ -86,6 +84,7 @@ pub fn run_vt11_auto(session: &GuiSession) -> Result<()> {
         params.end_date.format("%m/%d/%Y")
     );
     println!("Filter by Date: {}", params.by_date);
+    println!("Filter by Delivery: {}", params.by_delivery);
     println!("Limiter: {:?}", params.limiter);
     println!("------------------------------------------");
 
@@ -135,6 +134,11 @@ fn create_vt11_params_from_config(config: &HashMap<String, String>) -> VT11Param
     // Set by_date if available
     if let Some(by_date) = config.get("by_date") {
         params.by_date = by_date.to_lowercase() == "true";
+    }
+
+    // Set by_delivery if available
+    if let Some(by_delivery) = config.get("by_delivery") {
+        params.by_delivery = by_delivery.to_lowercase() == "true";
     }
 
     // Set limiter if available
@@ -208,6 +212,17 @@ fn get_vt11_parameters() -> Result<VT11Params> {
         .unwrap();
 
     params.by_date = by_date_choice == 0;
+
+    // Get by_delivery option
+    let by_delivery_options = vec!["Yes", "No"];
+    let by_delivery_choice = Select::new()
+        .with_prompt("Filter by delivery?")
+        .items(&by_delivery_options)
+        .default(1)
+        .interact()
+        .unwrap();
+
+    params.by_delivery = by_delivery_choice == 0;
 
     // Get limiter option
     let limiter_options = vec!["None", "Delivery", "Date Range"];

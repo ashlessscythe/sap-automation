@@ -31,6 +31,10 @@ pub fn get_available_menu_options() -> Vec<MenuOption> {
             name: "VL06O - Auto Run Delivery Packages".to_string(),
         },
         MenuOption {
+            id: "2".to_string(),
+            name: "VT11 - Auto Run".to_string(),
+        },
+        MenuOption {
             id: "11".to_string(),
             name: "Y_149 - Auto Run".to_string(),
         },
@@ -57,6 +61,10 @@ pub fn execute_menu_option(session: &GuiSession, id: &str) -> Result<()> {
         "7" => {
             println!("Running VL06O Delivery Packages Auto...");
             run_vl06o_delivery_packages_auto(session)?;
+        }
+        "2" => {
+            println!("Running VT11 Auto...");
+            crate::vt11_module::run_vt11_auto(session)?;
         }
         "11" => {
             println!("Running Y_149 Auto...");

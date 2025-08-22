@@ -4,7 +4,12 @@ use windows::core::Result;
 
 use crate::utils::{choose_layout, sap_file_utils::*};
 // Import specific functions to avoid ambiguity
+use crate::utils::config_ops::get_reports_dir;
+use crate::utils::excel_file_ops::read_excel_column;
+use crate::utils::excel_path_utils::get_newest_file;
 use crate::utils::sap_ctrl_utils::exist_ctrl;
+use crate::utils::sap_ctrl_utils::hit_ctrl;
+use crate::utils::sap_export_utils::export_local_file;
 use crate::utils::sap_tcode_utils::*;
 use crate::utils::sap_wnd_utils::*;
 
@@ -16,6 +21,7 @@ pub struct VT11Params {
     pub sap_variant_name: Option<String>,
     pub layout_row: Option<String>,
     pub by_date: bool,
+    pub by_delivery: bool,
     pub limiter: Option<String>,
     pub t_code: String,
 }
@@ -28,10 +34,110 @@ impl Default for VT11Params {
             sap_variant_name: None,
             layout_row: None,
             by_date: true,
+            by_delivery: false,
             limiter: None,
             t_code: "VT11".to_string(),
         }
     }
+}
+
+/// Get delivery numbers from the latest ZMDESNR export file (same as VL06O delivery module)
+fn get_delivery_numbers_from_zmdesnr() -> Result<Vec<String>> {
+    let reports_dir = get_reports_dir();
+    let zmdesnr_dir = format!("{}\\zmdesnr", reports_dir);
+
+    // Load configuration to get ZMDESNR effective export type
+    let config = match crate::utils::config_types::SapConfig::load() {
+        Ok(cfg) => cfg,
+        Err(e) => {
+            println!("Error loading configuration: {}", e);
+            return Ok(Vec::new());
+        }
+    };
+
+    // Determine expected extension from ZMDESNR effective export type
+    let ext = match config.get_effective_export_type("ZMDESNR") {
+        Some(0) | Some(1) => "txt", // unconverted or text with tabs
+        Some(2) => "rtf",           // rich text
+        Some(3) => "html",          // HTML
+        Some(4) => {
+            println!("ZMDESNR export is set to clipboard; no file available. Looking for Excel fallback...");
+            "xlsx"
+        }
+        _ => "txt", // Default to text
+    };
+
+    println!("Looking for ZMDESNR files with extension: .{}", ext);
+
+    // Get the newest file in the ZMDESNR directory with the chosen extension
+    let newest_path = get_newest_file(&zmdesnr_dir, ext)?;
+
+    if newest_path.is_empty() {
+        println!("No ZMDESNR export files found in: {}", zmdesnr_dir);
+        return Ok(Vec::new());
+    }
+
+    println!("Reading delivery numbers from: {}", newest_path);
+
+    // Read delivery numbers from the 'Delivery' column based on file type
+    let delivery_numbers = if ext.eq_ignore_ascii_case("xlsx") {
+        read_excel_column(&newest_path, "Sheet1", "Delivery")?
+    } else if ext.eq_ignore_ascii_case("txt") {
+        // For text files, we need to use the tab-delimited reader
+        // Import the function from vl06o_delivery_module
+        match crate::vl06o_delivery_module::read_tab_delimited_column(&newest_path, "Delivery") {
+            Ok(nums) => nums,
+            Err(e) => {
+                println!("Error reading text file: {}", e);
+                return Ok(Vec::new());
+            }
+        }
+    } else {
+        // For other file types, try Excel reader as fallback
+        match read_excel_column(&newest_path, "Sheet1", "Delivery") {
+            Ok(nums) => nums,
+            Err(_) => {
+                println!("Failed to read file with extension .{}", ext);
+                Vec::new()
+            }
+        }
+    };
+
+    if delivery_numbers.is_empty() {
+        println!("No delivery numbers found in the 'Delivery' column");
+    } else {
+        println!("Found {} delivery numbers", delivery_numbers.len());
+    }
+
+    Ok(delivery_numbers)
+}
+
+/// Try to open the local file export dialog for VT11
+fn try_open_local_file_export(session: &GuiSession) -> bool {
+    // Prioritize VB-observed path for 'Save list in file...'
+    let candidates = [
+        "wnd[0]/mbar/menu[0]/menu[9]/menu[2]", // List -> Export -> Local file (VB example)
+        "wnd[0]/mbar/menu[0]/menu[9]/menu[0]", // List -> Export -> Local file (common)
+        "wnd[0]/mbar/menu[0]/menu[3]/menu[2]", // Alt path (used in 149)
+        "wnd[0]/mbar/menu[0]/menu[3]/menu[0]", // Alt path
+    ];
+
+    for path in candidates.iter() {
+        if let Ok(menu) = session.find_by_id((*path).to_string()) {
+            if let Some(menu_item) = menu.downcast::<GuiMenu>() {
+                if menu_item.select().is_ok() {
+                    // Consider success if a modal window appeared
+                    if let Ok(err_wnd) = exist_ctrl(session, 1, "", true) {
+                        if err_wnd.cband {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    false
 }
 
 /// Run VT11 export with the given parameters
@@ -82,21 +188,88 @@ pub fn run_export(session: &GuiSession, params: &VT11Params) -> Result<bool> {
         }
     }
 
-    // Handle limiter if provided
+    // Handle delivery limitation if by_delivery is true
+    if params.by_delivery {
+        println!("Filtering by delivery numbers...");
+
+        // Get delivery numbers from ZMDESNR export (same source as VL06O delivery module)
+        let mut delivery_numbers = get_delivery_numbers_from_zmdesnr()?;
+
+        // dedup delivery numbers and remove empties
+        delivery_numbers = delivery_numbers
+            .into_iter()
+            .filter(|s| !s.trim().is_empty())
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        delivery_numbers.sort(); // Optional: sort for consistency
+        println!("Sanitized delivery numbers: {}", delivery_numbers.len());
+
+        if !delivery_numbers.is_empty() {
+            // Press the multi delivery button
+            if let Ok(btn) =
+                session.find_by_id("wnd[0]/usr/btn%_S_VBELN_%_APP_%-VALU_PUSH".to_string())
+            {
+                if let Some(button) = btn.downcast::<GuiButton>() {
+                    button.press()?;
+                    println!("Pressed multi delivery button");
+                }
+            }
+
+            // Wait for the popup window to appear
+            std::thread::sleep(std::time::Duration::from_millis(1000));
+
+            // Check if popup window exists
+            let popup_exists = exist_ctrl(session, 1, "", true)?;
+            if popup_exists.cband {
+                println!(
+                    "Pasting {} delivery numbers using scrollable paste...",
+                    delivery_numbers.len()
+                );
+
+                // Use the same table ID pattern as VL06O
+                let table_id =
+                    "tabsTAB_STRIP/tabpSIVA/ssubSCREEN_HEADER:SAPLALDB:3010/tblSAPLALDBSINGLE";
+                let batch_size = 7; // Number of visible rows in the table
+
+                // Use paste_values_with_scroll for efficient pasting
+                let paste_result = crate::utils::sap_ctrl_utils::paste_values_with_scroll(
+                    session,
+                    1, // Window index for popup
+                    table_id,
+                    &delivery_numbers,
+                    batch_size,
+                )?;
+
+                if !paste_result {
+                    println!("Failed to paste delivery numbers");
+                    return Ok(false);
+                }
+
+                println!(
+                    "Successfully pasted {} delivery numbers",
+                    delivery_numbers.len()
+                );
+
+                // Close the popup by pressing Enter to confirm
+                if let Ok(window) = session.find_by_id("wnd[1]".to_string()) {
+                    if let Some(modal_window) = window.downcast::<GuiModalWindow>() {
+                        modal_window.send_v_key(8)?; // (F8) to close modal
+                        println!("Confirmed delivery selection and closed popup");
+                    }
+                }
+            }
+        } else {
+            println!("No delivery numbers found, but delivery limitation is required.");
+            println!("VT11 export cannot proceed without delivery numbers.");
+            return Ok(false);
+        }
+    }
+
+    // Handle other limiters if provided
     if let Some(limiter) = &params.limiter {
         if !limiter.is_empty() {
             match limiter.to_lowercase().as_str() {
-                "delivery" => {
-                    // This would require clipboard functionality which is more complex in Rust
-                    // For now, we'll just log that this functionality is not yet implemented
-                    println!("Delivery limiter functionality not yet implemented");
-
-                    // In a full implementation, we would:
-                    // 1. Get the delivery numbers from Excel
-                    // 2. Press the multi outbound delivery button
-                    // 3. Paste the delivery numbers
-                    // 4. Close the popup
-                }
                 "date_range" => {
                     // Blank 2nd description to prevent issues
                     if let Ok(txt) = session.find_by_id("wnd[0]/usr/txtK_TPBEZ-HIGH".to_string()) {
@@ -104,9 +277,6 @@ pub fn run_export(session: &GuiSession, params: &VT11Params) -> Result<bool> {
                             text_field.set_text("".to_string())?;
                         }
                     }
-
-                    // This would also require clipboard functionality
-                    println!("Date range limiter functionality not yet implemented");
                 }
                 _ => {
                     println!("Unknown limiter type: {}", limiter);
@@ -116,9 +286,10 @@ pub fn run_export(session: &GuiSession, params: &VT11Params) -> Result<bool> {
     }
 
     // Execute the transaction
-    if let Ok(btn) = session.find_by_id("wnd[0]/tbar[1]/btn[8]".to_string()) {
-        if let Some(button) = btn.downcast::<GuiButton>() {
-            button.press()?;
+    if let Ok(wnd) = session.find_by_id("wnd[0]".to_string()) {
+        if let Some(window) = wnd.downcast::<GuiMainWindow>() {
+            window.send_v_key(8)?;
+            println!("Sent Execute (F8) key");
         }
     }
 
@@ -202,7 +373,19 @@ pub fn run_export(session: &GuiSession, params: &VT11Params) -> Result<bool> {
         }
     }
 
-    // Export to Excel
+    // Export preference: try local file export if configured; otherwise Excel
+    if let Ok(config) = crate::utils::config_types::SapConfig::load() {
+        if let Some(exp_type) = config.get_effective_export_type("VT11") {
+            if try_open_local_file_export(session) {
+                if export_local_file(session, "VT11", exp_type, None).is_ok() {
+                    return Ok(true);
+                }
+            }
+            println!("Local file export path not available; falling back to Excel export...");
+        }
+    }
+
+    // Export as Excel (fallback)
     if let Ok(menu) = session.find_by_id("wnd[0]/mbar/menu[0]/menu[10]/menu[0]".to_string()) {
         if let Some(menu_item) = menu.downcast::<GuiMenu>() {
             menu_item.select()?;

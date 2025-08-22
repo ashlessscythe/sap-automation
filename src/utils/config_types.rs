@@ -88,6 +88,9 @@ pub struct TcodeConfig {
     pub by_date: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub by_delivery: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub serial_number: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -20,6 +20,7 @@ layout = "my_layout"
 date_range_start = "01/01/2023"
 date_range_end = "12/31/2023"
 by_date = "true"
+by_delivery = "false"
 
 [tcode.VL06O]
 variant = "delivery_layout"

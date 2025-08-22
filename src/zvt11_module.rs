@@ -78,9 +78,7 @@ pub fn run_zvt11_auto(session: &GuiSession) -> Result<()> {
     println!("  By Delivery: {}", params.by_delivery);
     println!("  Limiter: {:?}", params.limiter);
 
-    println!("\nPress Enter to start export...");
-    let mut input = String::new();
-    std::io::stdin().read_line(&mut input).unwrap();
+    println!("\nStarting export (auto) mode...");
 
     // Run the export
     match run_export(session, &params) {
@@ -94,10 +92,6 @@ pub fn run_zvt11_auto(session: &GuiSession) -> Result<()> {
             eprintln!("Error running ZVT11 export: {}", e);
         }
     }
-
-    println!("\nPress Enter to continue...");
-    let mut input = String::new();
-    std::io::stdin().read_line(&mut input).unwrap();
 
     Ok(())
 }

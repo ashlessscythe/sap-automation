@@ -35,6 +35,12 @@ pub fn choose_layout(
         return choose_layout_149(session, layout_row);
     }
 
+    // Special handling for ZVT11 tcode
+    if tcode.to_lowercase() == "zvt11" {
+        eprintln!("DEBUG: Using special ZVT11 layout selection method");
+        return choose_layout_zvt11(session, layout_row);
+    }
+
     // Create a mutable copy of layout_row that we can modify in the loop
     let mut current_layout = layout_row.to_string();
 
@@ -487,6 +493,149 @@ pub fn choose_layout_149(session: &GuiSession, layout_name: &str) -> windows::co
     } else {
         eprintln!("DEBUG: Grid not found at: {}", grid_id);
         return Ok("Failed to find layout grid".to_string());
+    }
+}
+
+/// Special layout selection method for ZVT11 tcode
+///
+/// This method uses a grid-based approach similar to 149
+/// Based on the VBA code pattern for ZVT11 layout selection
+pub fn choose_layout_zvt11(
+    session: &GuiSession,
+    layout_name: &str,
+) -> windows::core::Result<String> {
+    eprintln!(
+        "DEBUG: Starting ZVT11 layout selection for layout: {}",
+        layout_name
+    );
+
+    // Step 1: Press the layout button (wnd[0]/tbar[1]/btn[33])
+    eprintln!("DEBUG: Pressing layout button");
+    if let Ok(button) = session.find_by_id("wnd[0]/tbar[1]/btn[33]".to_string()) {
+        if let Some(btn) = button.downcast::<GuiButton>() {
+            btn.press()?;
+            eprintln!("DEBUG: Layout button pressed successfully");
+        } else {
+            eprintln!("DEBUG: Layout button found but downcast failed");
+            return Ok("Failed to press layout button".to_string());
+        }
+    } else {
+        eprintln!("DEBUG: Layout button not found");
+        return Ok("Failed to find layout button".to_string());
+    }
+
+    // Wait for window 1 to appear
+    thread::sleep(Duration::from_millis(1000));
+
+    // Step 2: Find the grid container - ZVT11 uses a different grid ID
+    let grid_id =
+        "wnd[1]/usr/ssubD0500_SUBSCREEN:SAPLSLVC_DIALOG:0501/cntlG51_CONTAINER/shellcont/shell";
+    eprintln!("DEBUG: Looking for ZVT11 grid at: {}", grid_id);
+
+    if let Ok(grid_obj) = session.find_by_id(grid_id.to_string()) {
+        if let Some(grid) = grid_obj.downcast::<GuiGridView>() {
+            eprintln!("DEBUG: ZVT11 grid found successfully");
+
+            // Step 3: Search for the layout in the grid
+            let mut layout_found = false;
+            let mut layout_row = -1;
+
+            // Get the number of rows in the grid
+            let row_count = grid.row_count()?;
+            eprintln!("DEBUG: ZVT11 grid has {} rows", row_count);
+
+            // Search through the grid rows to find the layout
+            // ZVT11 might use different column names, try common ones
+            let column_names = ["LAYOUT", "NAME", "TEXT", "DESCRIPTION"];
+
+            for i in 0..row_count {
+                for col_name in &column_names {
+                    if let Ok(cell_text) = grid.get_cell_value(i, col_name.to_string()) {
+                        eprintln!(
+                            "DEBUG: Row {} column {} has text: '{}'",
+                            i, col_name, cell_text
+                        );
+                        if cell_text.trim().to_lowercase() == layout_name.trim().to_lowercase() {
+                            eprintln!(
+                                "DEBUG: Layout '{}' found at row {} column {}",
+                                layout_name, i, col_name
+                            );
+                            layout_found = true;
+                            layout_row = i;
+                            break;
+                        }
+                    }
+                }
+                if layout_found {
+                    break;
+                }
+            }
+
+            if layout_found {
+                // Step 4: Set current cell to the found row
+                eprintln!("DEBUG: Setting current cell to row {}", layout_row);
+                // Try to set current cell with the first available column
+                if let Ok(_) = grid.set_current_cell(layout_row, "TEXT".to_string()) {
+                    eprintln!("DEBUG: Current cell set successfully");
+                }
+
+                // Step 5: Select the row
+                eprintln!("DEBUG: Selecting row {}", layout_row);
+                grid.set_selected_rows(layout_row.to_string())?;
+
+                // Step 6: Click on the current cell
+                eprintln!("DEBUG: Clicking on current cell");
+                grid.click_current_cell()?;
+
+                eprintln!("DEBUG: ZVT11 layout selection completed successfully");
+                return Ok("Layout selected successfully".to_string());
+            } else {
+                eprintln!("DEBUG: Layout '{}' not found in ZVT11 grid", layout_name);
+
+                // Ask user for a new layout name or to exit
+                use dialoguer::{Input, Select};
+
+                println!("Layout '{}' not found in the ZVT11 grid.", layout_name);
+
+                let options = vec!["Enter another layout name", "Exit layout selection"];
+                let selection = Select::new()
+                    .with_prompt("What would you like to do?")
+                    .items(&options)
+                    .default(0)
+                    .interact()
+                    .unwrap_or(1); // Default to exit if interaction fails
+
+                if selection == 0 {
+                    // User wants to try another layout name
+                    let new_layout: String = Input::new()
+                        .with_prompt("Enter new layout name")
+                        .interact_text()
+                        .unwrap_or_else(|_| String::new());
+
+                    if new_layout.is_empty() {
+                        // If user entered empty string, exit
+                        close_popups(session, None, None)?;
+                        return Ok("Layout selection cancelled".to_string());
+                    }
+
+                    // Close any remaining popups and try again
+                    close_popups(session, None, None)?;
+
+                    // Recursively call the function with the new layout name
+                    return choose_layout_zvt11(session, &new_layout);
+                } else {
+                    // User wants to exit
+                    close_popups(session, None, None)?;
+                    return Ok("Layout selection cancelled".to_string());
+                }
+            }
+        } else {
+            eprintln!("DEBUG: ZVT11 grid object found but downcast failed");
+            return Ok("Failed to access ZVT11 grid object".to_string());
+        }
+    } else {
+        eprintln!("DEBUG: ZVT11 grid not found at: {}", grid_id);
+        return Ok("Failed to find ZVT11 layout grid".to_string());
     }
 }
 

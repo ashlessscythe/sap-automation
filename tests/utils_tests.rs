@@ -112,3 +112,19 @@ fn test_generate_timestamp() {
     // Verify it contains only digits
     assert!(timestamp.chars().all(|c| c.is_ascii_digit()));
 }
+
+#[test]
+fn test_version_constant() {
+    // Test that the version constant is correctly set from Cargo.toml
+    // This test verifies that the env! macro is working correctly
+    let version = env!("CARGO_PKG_VERSION");
+    
+    // Version should not be empty
+    assert!(!version.is_empty());
+    
+    // Version should follow semantic versioning format (e.g., "0.3.2")
+    assert!(version.matches(r"^\d+\.\d+\.\d+"));
+    
+    // Print the version for verification
+    println!("Current version: {}", version);
+}

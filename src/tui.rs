@@ -6,14 +6,17 @@ use crossterm::{
 };
 use ratatui::{
     backend::{Backend, CrosstermBackend},
-    layout::{Constraint, Direction, Layout},
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Row, Table, TableState},
+    widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Row, Table},
     Frame, Terminal,
 };
 use std::io;
 use std::time::Duration;
+
+/// Version from Cargo.toml
+const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// TUI App state
 pub struct App {
@@ -213,7 +216,24 @@ fn ui(f: &mut Frame, app: &App) {
             ]
             .as_ref(),
         )
-        .split(f.size());
+        .split(f.area());
+
+    // Add version display in lower right corner
+    let version_text = format!("v{}", VERSION);
+    let version_span = Span::styled(
+        &version_text,
+        Style::default().fg(Color::Gray).add_modifier(Modifier::DIM),
+    );
+
+    // Calculate position for version (lower right, accounting for margins)
+    let version_area = Rect::new(
+        f.area().width.saturating_sub(version_text.len() as u16 + 2),
+        f.area().height.saturating_sub(1),
+        version_text.len() as u16,
+        1,
+    );
+
+    f.render_widget(Paragraph::new(Line::from(vec![version_span])), version_area);
 
     // Calculate visible area and adjust scroll offset
     let visible_height = chunks[1].height.saturating_sub(2); // Account for borders
@@ -457,7 +477,7 @@ fn grid_ui(f: &mut Frame, app: &App) {
             ]
             .as_ref(),
         )
-        .split(f.size());
+        .split(f.area());
 
     // Title
     let title = Paragraph::new(app.title.clone())
@@ -633,7 +653,7 @@ fn input_ui(f: &mut Frame, prompt: &str, input: &str, cursor_pos: usize) {
             ]
             .as_ref(),
         )
-        .split(f.size());
+        .split(f.area());
 
     // Title
     let title = Paragraph::new("Input Dialog")

@@ -879,6 +879,103 @@ impl SapConfig {
             });
         }
     }
+
+    /// Get the date format from configuration
+    pub fn get_date_format(&self) -> String {
+        self.global
+            .as_ref()
+            .map(|g| g.date_format.clone())
+            .unwrap_or_else(default_date_format)
+    }
+
+    /// Format a date using the configured date format
+    pub fn format_date(&self, date: chrono::NaiveDate) -> String {
+        let date_format = self.get_date_format();
+        match date_format.as_str() {
+            "mm/dd/yyyy" => date.format("%m/%d/%Y").to_string(),
+            "yyyy-mm-dd" => date.format("%Y-%m-%d").to_string(),
+            "dd-mm-yy" => date.format("%d-%m-%y").to_string(),
+            "dd-mm-yyyy" => date.format("%d-%m-%Y").to_string(),
+            _ => {
+                // Default to ISO format if unknown format
+                date.format("%Y-%m-%d").to_string()
+            }
+        }
+    }
+}
+
+/// Check if a status bar message indicates a date format error
+pub fn is_date_format_error(status_text: &str) -> bool {
+    let status_lower = status_text.to_lowercase();
+    status_lower.contains("enter date in the format")
+        || status_lower.contains("date format")
+        || status_lower.contains("invalid date")
+        || status_lower.contains("date not valid")
+        || status_lower.contains("incorrect date format")
+        || status_lower.contains("wrong date format")
+}
+
+/// Get the SAP-expected date format based on the error message
+pub fn get_sap_expected_date_format(status_text: &str) -> Option<String> {
+    let status_lower = status_text.to_lowercase();
+
+    // Check for common SAP date format patterns in error messages
+    // Check longer patterns first to avoid substring matches
+    if status_lower.contains("____-__-__") || status_lower.contains("yyyy-mm-dd") {
+        Some("YYYY-MM-DD".to_string())
+    } else if status_lower.contains("__-__-__") || status_lower.contains("dd-mm-yy") {
+        Some("DD-MM-YY".to_string())
+    } else if status_lower.contains("__/__/__") || status_lower.contains("mm/dd/yyyy") {
+        Some("MM/DD/YYYY".to_string())
+    } else {
+        None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_date_format_error() {
+        assert!(is_date_format_error("Enter date in the format __-__-__"));
+        assert!(is_date_format_error("Date format error"));
+        assert!(is_date_format_error("Invalid date"));
+        assert!(is_date_format_error("Date not valid"));
+        assert!(is_date_format_error("Incorrect date format"));
+        assert!(is_date_format_error("Wrong date format"));
+        assert!(!is_date_format_error("No data found"));
+        assert!(!is_date_format_error("Success"));
+    }
+
+    #[test]
+    fn test_get_sap_expected_date_format() {
+        assert_eq!(
+            get_sap_expected_date_format("Enter date in the format __-__-__"),
+            Some("DD-MM-YY".to_string())
+        );
+        assert_eq!(
+            get_sap_expected_date_format("Date format: dd-mm-yy"),
+            Some("DD-MM-YY".to_string())
+        );
+        assert_eq!(
+            get_sap_expected_date_format("Enter date in the format __/__/__"),
+            Some("MM/DD/YYYY".to_string())
+        );
+        assert_eq!(
+            get_sap_expected_date_format("Date format: mm/dd/yyyy"),
+            Some("MM/DD/YYYY".to_string())
+        );
+        assert_eq!(
+            get_sap_expected_date_format("Enter date in the format ____-__-__"),
+            Some("YYYY-MM-DD".to_string())
+        );
+        assert_eq!(
+            get_sap_expected_date_format("Date format: yyyy-mm-dd"),
+            Some("YYYY-MM-DD".to_string())
+        );
+        assert_eq!(get_sap_expected_date_format("Some other error"), None);
+    }
 }
 
 /// Gets the configured reports directory or returns the default

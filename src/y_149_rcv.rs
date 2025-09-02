@@ -127,6 +127,48 @@ pub fn run_export(session: &GuiSession, params: &Report149RcvParams) -> Result<b
                         println!("DEBUG: Error detected in status bar: '{}'", status_text);
                         error_detected = true;
                     }
+
+                    // Check for date format errors specifically
+                    if crate::utils::config_ops::is_date_format_error(&status_text) {
+                        println!(
+                            "ERROR: Date format error detected in status bar: '{}'",
+                            status_text
+                        );
+
+                        // Try to determine what format SAP expects
+                        if let Some(sap_format) =
+                            crate::utils::config_ops::get_sap_expected_date_format(&status_text)
+                        {
+                            println!("SAP expects date format: {}", sap_format);
+
+                            // Load config to see what format we're using
+                            if let Ok(config) = crate::utils::config_types::SapConfig::load() {
+                                let our_format = config.get_date_format();
+                                println!("Our config is set to: {}", our_format);
+                                println!("SUGGESTION: Update your config.toml date_format setting to match SAP's expected format.");
+
+                                // Provide specific conversion suggestions
+                                match (our_format.as_str(), sap_format.as_str()) {
+                                    ("mm/dd/yyyy", "DD-MM-YY") => {
+                                        println!("To fix: Change date_format in config.toml from 'mm/dd/yyyy' to 'dd-mm-yy'");
+                                    }
+                                    ("yyyy-mm-dd", "DD-MM-YY") => {
+                                        println!("To fix: Change date_format in config.toml from 'yyyy-mm-dd' to 'dd-mm-yy'");
+                                    }
+                                    ("dd-mm-yy", "MM/DD/YYYY") => {
+                                        println!("To fix: Change date_format in config.toml from 'dd-mm-yy' to 'mm/dd/yyyy'");
+                                    }
+                                    ("yyyy-mm-dd", "MM/DD/YYYY") => {
+                                        println!("To fix: Change date_format in config.toml from 'yyyy-mm-dd' to 'mm/dd/yyyy'");
+                                    }
+                                    _ => {
+                                        println!("Please check your SAP system's date format requirements and update config.toml accordingly.");
+                                    }
+                                }
+                            }
+                        }
+                        error_detected = true;
+                    }
                 }
             }
         }

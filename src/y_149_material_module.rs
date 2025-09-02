@@ -85,8 +85,8 @@ pub fn run_149_material_auto(session: &GuiSession) -> Result<()> {
                         let start_date = today - ChronoDuration::days(days);
                         let end_date = today + ChronoDuration::days(1); // Tomorrow for material
 
-                        params.date_low = start_date.format("%Y-%m-%d").to_string();
-                        params.date_high = end_date.format("%Y-%m-%d").to_string();
+                        params.date_low = config.format_date(start_date);
+                        params.date_high = config.format_date(end_date);
                         println!(
                             "Using date range from config: {} to {}",
                             params.date_low, params.date_high
@@ -100,10 +100,8 @@ pub fn run_149_material_auto(session: &GuiSession) -> Result<()> {
     // If no date range was set from config, set default dates
     if params.date_low.is_empty() || params.date_high.is_empty() {
         let today = Local::now().naive_local().date();
-        params.date_low = today.format("%Y-%m-%d").to_string();
-        params.date_high = (today + ChronoDuration::days(1))
-            .format("%Y-%m-%d")
-            .to_string();
+        params.date_low = config.format_date(today);
+        params.date_high = config.format_date(today + ChronoDuration::days(1));
         println!(
             "Using default date range: {} to {}",
             params.date_low, params.date_high
@@ -298,8 +296,15 @@ fn get_149_material_parameters() -> Result<Report149MaterialParams> {
                             let start_date = today - ChronoDuration::days(days);
                             let end_date = today + ChronoDuration::days(1);
 
-                            params.date_low = start_date.format("%Y-%m-%d").to_string();
-                            params.date_high = end_date.format("%Y-%m-%d").to_string();
+                            // Load config to get date format
+                            if let Ok(config) = SapConfig::load() {
+                                params.date_low = config.format_date(start_date);
+                                params.date_high = config.format_date(end_date);
+                            } else {
+                                // Fallback to ISO format if config can't be loaded
+                                params.date_low = start_date.format("%Y-%m-%d").to_string();
+                                params.date_high = end_date.format("%Y-%m-%d").to_string();
+                            }
                             use_config_dates = true;
                             println!(
                                 "Using date range from config: {} to {}",
@@ -324,8 +329,15 @@ fn get_149_material_parameters() -> Result<Report149MaterialParams> {
         let start_date = today - ChronoDuration::days(days_back);
         let end_date = today + ChronoDuration::days(1); // Tomorrow
 
-        params.date_low = start_date.format("%Y-%m-%d").to_string();
-        params.date_high = end_date.format("%Y-%m-%d").to_string();
+        // Load config to get date format
+        if let Ok(config) = SapConfig::load() {
+            params.date_low = config.format_date(start_date);
+            params.date_high = config.format_date(end_date);
+        } else {
+            // Fallback to ISO format if config can't be loaded
+            params.date_low = start_date.format("%Y-%m-%d").to_string();
+            params.date_high = end_date.format("%Y-%m-%d").to_string();
+        }
 
         println!("Date range: {} to {}", params.date_low, params.date_high);
     }

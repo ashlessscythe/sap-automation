@@ -142,8 +142,13 @@ pub fn handle_configure_sap_params() -> Result<()> {
                     .map(|g| g.date_format.clone())
                     .unwrap_or_else(crate::utils::config_types::default_date_format);
 
-                let format_options = vec!["mm/dd/yyyy", "yyyy-mm-dd"];
-                let default_index = if current == "yyyy-mm-dd" { 1 } else { 0 };
+                let format_options = vec!["mm/dd/yyyy", "yyyy-mm-dd", "dd-mm-yy", "dd-mm-yyyy"];
+                let default_index = match current.as_str() {
+                    "yyyy-mm-dd" => 1,
+                    "dd-mm-yy" => 2,
+                    "dd-mm-yyyy" => 3,
+                    _ => 0, // default to mm/dd/yyyy
+                };
 
                 let format_choice = Select::new()
                     .with_prompt("Select date format")

@@ -1,5 +1,6 @@
 use sap_automation::cli::{Cli, Commands};
 use sap_automation::utils::config_types::SapConfig;
+use sap_automation::utils::keep_awake;
 use sap_automation::utils::unattended_runner::{
     init_sap_connection, run_loop_unattended, run_sequence_unattended,
 };
@@ -48,8 +49,8 @@ fn main() -> anyhow::Result<()> {
     // If command-line arguments are provided, run in unattended mode
     if let Some(command) = cli.command {
         return match command {
-            Commands::RunLoop { skip_sap_check } => run_unattended_loop(skip_sap_check),
-            Commands::RunSequence { skip_sap_check } => run_unattended_sequence(skip_sap_check),
+            Commands::RunLoop { skip_sap_check, keep_awake } => run_unattended_loop(skip_sap_check, keep_awake),
+            Commands::RunSequence { skip_sap_check, keep_awake } => run_unattended_sequence(skip_sap_check, keep_awake),
         };
     }
 
@@ -57,9 +58,17 @@ fn main() -> anyhow::Result<()> {
     run_interactive_mode()
 }
 
-fn run_unattended_loop(skip_sap_check: bool) -> anyhow::Result<()> {
+fn run_unattended_loop(skip_sap_check: bool, keep_awake: bool) -> anyhow::Result<()> {
     println!("SAP Automation - Unattended Loop Mode");
     println!("=====================================");
+
+    // Enable keep-awake if requested
+    if keep_awake {
+        match keep_awake::enable_keep_awake(true) {
+            Ok(_) => println!("Keep-awake enabled - system will stay awake during execution"),
+            Err(e) => eprintln!("Warning: Failed to enable keep-awake: {}", e),
+        }
+    }
 
     // Initialize SAP connection
     let (com_instance, _wrapper, _engine, _connection, session) = init_sap_connection()?;
@@ -71,9 +80,17 @@ fn run_unattended_loop(skip_sap_check: bool) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn run_unattended_sequence(skip_sap_check: bool) -> anyhow::Result<()> {
+fn run_unattended_sequence(skip_sap_check: bool, keep_awake: bool) -> anyhow::Result<()> {
     println!("SAP Automation - Unattended Sequence Mode");
     println!("=========================================");
+
+    // Enable keep-awake if requested
+    if keep_awake {
+        match keep_awake::enable_keep_awake(true) {
+            Ok(_) => println!("Keep-awake enabled - system will stay awake during execution"),
+            Err(e) => eprintln!("Warning: Failed to enable keep-awake: {}", e),
+        }
+    }
 
     // Initialize SAP connection
     let (com_instance, _wrapper, _engine, _connection, session) = init_sap_connection()?;

@@ -123,7 +123,7 @@ fn test_version_constant() {
     assert!(!version.is_empty());
     
     // Version should follow semantic versioning format (e.g., "0.3.2")
-    assert!(version.matches(r"^\d+\.\d+\.\d+"));
+    assert!(version.matches(r"^\d+\.\d+\.\d+").count() > 0);
     
     // Print the version for verification
     println!("Current version: {}", version);

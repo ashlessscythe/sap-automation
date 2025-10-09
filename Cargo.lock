@@ -1206,7 +1206,7 @@ dependencies = [
 
 [[package]]
 name = "sap_automation"
-version = "0.3.3"
+version = "0.3.5"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -1228,6 +1228,7 @@ dependencies = [
  "toml",
  "tracing",
  "windows",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]

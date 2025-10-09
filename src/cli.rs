@@ -17,6 +17,9 @@ pub enum Commands {
         /// Skip SAP connection check (for testing)
         #[arg(long, default_value = "false")]
         skip_sap_check: bool,
+        /// Keep the system awake during execution
+        #[arg(long, default_value = "false")]
+        keep_awake: bool,
     },
     
     /// Run the sequence configuration unattended
@@ -25,6 +28,9 @@ pub enum Commands {
         /// Skip SAP connection check (for testing)
         #[arg(long, default_value = "false")]
         skip_sap_check: bool,
+        /// Keep the system awake during execution
+        #[arg(long, default_value = "false")]
+        keep_awake: bool,
     },
 }
 

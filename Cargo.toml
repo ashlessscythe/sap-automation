@@ -1,6 +1,6 @@
 [package]
 name = "sap_automation"
-version = "0.3.3"
+version = "0.3.5"
 edition = "2021"
 description = "SAP GUI Automation utilities"
 
@@ -15,6 +15,11 @@ path = "src/lib.rs"
 [[bin]]
 name = "sap_automation"
 path = "src/main.rs"
+
+# Example: Keep-awake demo
+[[example]]
+name = "keep_awake_demo"
+path = "examples/keep_awake_demo.rs"
 
 [dev-dependencies]
 pretty_env_logger = "0.5.0"
@@ -39,3 +44,4 @@ serde = { version = "1.0", features = ["derive"] }
 toml = "0.8.10"
 serde_json = "1.0.140"
 ratatui = "0.29.0"
+windows-sys = { version = "0.52", features = ["Win32_System_Power"] }

@@ -13,6 +13,7 @@ pub mod config_types;
 pub mod excel_file_ops;
 pub mod excel_fileread_utils;
 pub mod excel_path_utils;
+pub mod keep_awake;
 pub mod loop_config;
 pub mod sap_constants;
 pub mod sap_crypto_utils;

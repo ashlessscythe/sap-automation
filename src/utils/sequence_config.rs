@@ -9,6 +9,7 @@ use std::time::Duration;
 use crate::utils::config_types::SapConfig;
 use crate::utils::config_types::SequenceConfig as ConfigSequenceConfig;
 use crate::vl06o_delivery_module::run_vl06o_delivery_packages_auto;
+use crate::y_149_module::run_149_auto;
 use crate::zmdesnr_module::run_zmdesnr_auto;
 use crate::zvt11_module::run_zvt11_auto;
 
@@ -37,6 +38,10 @@ pub fn get_available_menu_options() -> Vec<MenuOption> {
         MenuOption {
             id: "9".to_string(),
             name: "VL06O - Auto Run".to_string(),
+        },
+        MenuOption {
+            id: "16".to_string(),
+            name: "149 Report - Auto Run".to_string(),
         },
     ]
 }
@@ -69,6 +74,10 @@ pub fn execute_menu_option(session: &GuiSession, id: &str) -> Result<()> {
         "9" => {
             println!("Running VL06O Auto...");
             run_vl06o_delivery_packages_auto(session)?;
+        }
+        "16" => {
+            println!("Running 149 Report Auto...");
+            run_149_auto(session)?;
         }
         _ => {
             println!("Unknown option: {}", id);

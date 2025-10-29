@@ -143,20 +143,39 @@ pub fn run_vt11_listcheck_auto(session: &GuiSession) -> Result<()> {
         }
     };
 
-    let tcode_config = match config.get_tcode_config("VT11", Some(true)) {
-        Some(cfg) => cfg,
+    // Prefer [tcode.VT11.listcheck], fallback to [tcode.VT11]
+    let tcode_config = config
+        .get_tcode_config("VT11_listcheck", Some(false))
+        .or_else(|| config.get_tcode_config("VT11", Some(false)));
+
+    let tcode_config = match tcode_config {
+        Some(cfg) => {
+            println!("DEBUG: tcode_config: {:#?}", cfg);
+            cfg
+        }
         None => {
-            println!("No configuration found for VT11.");
+            println!("No configuration found for VT11_listcheck or VT11.");
             return Ok(());
         }
     };
 
-    let params = create_vt11_params_from_config(&tcode_config);
-    let deliveries = run_listcheck(session, &params)?;
-    if deliveries.is_empty() {
-        println!("No blocked deliveries found. CSV not created.");
-        return Ok(());
-    }
+    let params = create_vt11_listcheck_params_from_config(&tcode_config);
+
+    println!("Running VT11 ListCheck with the following parameters:");
+    println!("------------------------------------------");
+    println!("Variant: {:?}", params.sap_variant_name);
+    println!("Layout: {:?}", params.layout_row);
+    println!(
+        "Date Range: {} to {}",
+        params.start_date.format("%m/%d/%Y"),
+        params.end_date.format("%m/%d/%Y")
+    );
+    println!("Filter by Date: {}", params.by_date);
+    println!("Filter by Delivery: {}", params.by_delivery);
+    println!("Limiter: {:?}", params.limiter);
+    println!("------------------------------------------");
+
+    let _ = run_listcheck(session, &params)?;
 
     Ok(())
 }
@@ -203,6 +222,11 @@ fn create_vt11_params_from_config(config: &HashMap<String, String>) -> VT11Param
     }
 
     params
+}
+
+fn create_vt11_listcheck_params_from_config(config: &HashMap<String, String>) -> VT11Params {
+    // For now same as create_vt11_params_from_config; split for clarity and future tweaks
+    create_vt11_params_from_config(config)
 }
 
 fn clear_screen() {

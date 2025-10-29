@@ -14,6 +14,7 @@ use crate::utils::sap_tcode_utils::*;
 use crate::utils::sap_wnd_utils::*;
 use chrono::Local;
 use regex::Regex;
+use std::collections::HashSet;
 use std::fs::{create_dir_all, File};
 use std::io::Write;
 
@@ -434,12 +435,24 @@ pub fn run_listcheck(session: &GuiSession, params: &VT11Params) -> Result<Vec<St
     let mut eff_layout = params.layout_row.clone();
     if eff_variant.is_none() || eff_layout.is_none() {
         if let Ok(config) = crate::utils::config_types::SapConfig::load() {
-            if let Some(cfg) = config.get_tcode_config("VT11", Some(true)) {
+            // Prefer dedicated listcheck section first
+            if let Some(cfg) = config.get_tcode_config("VT11.listcheck", Some(false)) {
                 if eff_variant.is_none() {
                     eff_variant = cfg.get("variant").cloned();
                 }
                 if eff_layout.is_none() {
                     eff_layout = cfg.get("layout").cloned();
+                }
+            }
+            // Fallback to standard VT11 section
+            if eff_variant.is_none() || eff_layout.is_none() {
+                if let Some(cfg) = config.get_tcode_config("VT11", Some(false)) {
+                    if eff_variant.is_none() {
+                        eff_variant = cfg.get("variant").cloned();
+                    }
+                    if eff_layout.is_none() {
+                        eff_layout = cfg.get("layout").cloned();
+                    }
                 }
             }
         }
@@ -514,103 +527,131 @@ pub fn run_listcheck(session: &GuiSession, params: &VT11Params) -> Result<Vec<St
     let re_user = Regex::new(r"\(([A-Za-z][A-Za-z0-9_]+)\)").unwrap();
 
     // We will attempt a fixed range of row label positions as per VBA notes: lbl[8,n]
-    // Try a few pages (first page only for now)
-    for col in 4..=20 {
-        let lbl_path = format!("wnd[0]/usr/lbl[8,{}]", col);
-        if let Ok(lbl) = session.find_by_id(lbl_path.clone()) {
-            if let Some(label) = lbl.downcast::<GuiLabel>() {
-                let _ = label.set_focus();
-                let shipment_text = label.text().unwrap_or_default();
-                let shipment_number = re_any
-                    .captures(&shipment_text)
-                    .and_then(|c| c.get(0))
-                    .map(|m| m.as_str().to_string())
-                    .unwrap_or_default();
-                // Enter
-                if let Ok(wnd0) = session.find_by_id("wnd[0]".to_string()) {
-                    if let Some(win0) = wnd0.downcast::<GuiMainWindow>() {
-                        win0.send_v_key(2)?; // Enter
-                    }
-                }
+    // Try multiple pages; between pages send VKey 82 (Page Down) to scroll
+    let mut seen_first_rows: HashSet<String> = HashSet::new();
+    loop {
+        // Detect short lists by checking the first visible row label text.
+        let mut first_row_key = String::new();
+        if let Ok(lbl0) = session.find_by_id("wnd[0]/usr/lbl[8,4]".to_string()) {
+            if let Some(label0) = lbl0.downcast::<GuiLabel>() {
+                first_row_key = label0.text().unwrap_or_default();
+            }
+        }
+        if !first_row_key.is_empty() {
+            if seen_first_rows.contains(&first_row_key) {
+                // We are seeing the same first row again; break to avoid looping
+                break;
+            }
+            seen_first_rows.insert(first_row_key);
+        } else {
+            // No first row visible; end
+            break;
+        }
 
-                std::thread::sleep(std::time::Duration::from_millis(150));
-
-                // Check for navigation vs status bar message
-                let mut went_deeper = false;
-                if let Ok(info) = session.info() {
-                    if let Ok(tx) = info.transaction() {
-                        // If transaction changed away from VT11, we navigated into shipment
-                        went_deeper = !tx.contains("VT11");
-                    }
-                }
-
-                if went_deeper {
-                    // Back out
+        // Walk down visible rows until a row is not found
+        let mut row = 4;
+        loop {
+            let lbl_path = format!("wnd[0]/usr/lbl[8,{}]", row);
+            if let Ok(lbl) = session.find_by_id(lbl_path.clone()) {
+                if let Some(label) = lbl.downcast::<GuiLabel>() {
+                    let _ = label.set_focus();
+                    let shipment_text = label.text().unwrap_or_default();
+                    let shipment_number = re_any
+                        .captures(&shipment_text)
+                        .and_then(|c| c.get(0))
+                        .map(|m| m.as_str().to_string())
+                        .unwrap_or_default();
+                    // Enter
                     if let Ok(wnd0) = session.find_by_id("wnd[0]".to_string()) {
                         if let Some(win0) = wnd0.downcast::<GuiMainWindow>() {
-                            win0.send_v_key(3)?; // Back
+                            win0.send_v_key(2)?; // Enter
                         }
                     }
-                } else {
-                    // Read status bar text
-                    if let Ok(sbar) = session.find_by_id("wnd[0]/sbar".to_string()) {
-                        if let Some(status) = sbar.downcast::<GuiStatusbar>() {
-                            let msg = status.text().unwrap_or_default();
-                            // Prefer exact phrasing if available (captures delivery and user)
-                            if let Some(caps) = re_specific.captures(&msg) {
-                                let deliv = caps
-                                    .get(1)
-                                    .map(|m| m.as_str().to_string())
-                                    .unwrap_or_default();
-                                let user = caps
-                                    .get(2)
-                                    .map(|m| m.as_str().to_string())
-                                    .unwrap_or_default();
-                                if !deliv.is_empty() {
-                                    deliveries.push(deliv.clone());
-                                    if !shipment_number.is_empty() {
-                                        rows.push((shipment_number.clone(), deliv, user));
-                                    }
-                                }
-                            } else if msg.to_lowercase().contains("process")
-                                || msg.to_lowercase().contains("lock")
-                            {
-                                // Fallback: infer delivery and user separately
-                                let mut deliv = String::new();
-                                if let Some(cap) = re_any.captures(&msg) {
-                                    if let Some(m) = cap.get(0) {
-                                        deliv = m.as_str().to_string();
-                                    }
-                                }
-                                let mut user = String::new();
-                                if let Some(ucap) = re_user.captures(&msg) {
-                                    if let Some(m) = ucap.get(1) {
-                                        let candidate = m.as_str().to_string();
-                                        if candidate != deliv {
-                                            user = candidate;
+
+                    std::thread::sleep(std::time::Duration::from_millis(150));
+
+                    // Check for navigation vs status bar message
+                    let mut went_deeper = false;
+                    if let Ok(info) = session.info() {
+                        if let Ok(tx) = info.transaction() {
+                            went_deeper = !tx.contains("VT11");
+                        }
+                    }
+
+                    if went_deeper {
+                        if let Ok(wnd0) = session.find_by_id("wnd[0]".to_string()) {
+                            if let Some(win0) = wnd0.downcast::<GuiMainWindow>() {
+                                win0.send_v_key(3)?; // Back
+                            }
+                        }
+                    } else {
+                        if let Ok(sbar) = session.find_by_id("wnd[0]/sbar".to_string()) {
+                            if let Some(status) = sbar.downcast::<GuiStatusbar>() {
+                                let msg = status.text().unwrap_or_default();
+                                if let Some(caps) = re_specific.captures(&msg) {
+                                    let deliv = caps
+                                        .get(1)
+                                        .map(|m| m.as_str().to_string())
+                                        .unwrap_or_default();
+                                    let user = caps
+                                        .get(2)
+                                        .map(|m| m.as_str().to_string())
+                                        .unwrap_or_default();
+                                    if !deliv.is_empty() {
+                                        deliveries.push(deliv.clone());
+                                        if !shipment_number.is_empty() {
+                                            rows.push((shipment_number.clone(), deliv, user));
                                         }
                                     }
-                                }
-                                if !deliv.is_empty() {
-                                    deliveries.push(deliv.clone());
-                                    if !shipment_number.is_empty() {
-                                        rows.push((shipment_number.clone(), deliv, user));
+                                } else if msg.to_lowercase().contains("process")
+                                    || msg.to_lowercase().contains("lock")
+                                {
+                                    let mut deliv = String::new();
+                                    if let Some(cap) = re_any.captures(&msg) {
+                                        if let Some(m) = cap.get(0) {
+                                            deliv = m.as_str().to_string();
+                                        }
+                                    }
+                                    let mut user = String::new();
+                                    if let Some(ucap) = re_user.captures(&msg) {
+                                        if let Some(m) = ucap.get(1) {
+                                            let candidate = m.as_str().to_string();
+                                            if candidate != deliv {
+                                                user = candidate;
+                                            }
+                                        }
+                                    }
+                                    if !deliv.is_empty() {
+                                        deliveries.push(deliv.clone());
+                                        if !shipment_number.is_empty() {
+                                            rows.push((shipment_number.clone(), deliv, user));
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
-                    // Back/Cancel any modal
-                    if let Ok(w1) = session.find_by_id("wnd[1]".to_string()) {
-                        if let Some(modal) = w1.downcast::<GuiModalWindow>() {
-                            let _ = modal.send_v_key(3);
+                        if let Ok(w1) = session.find_by_id("wnd[1]".to_string()) {
+                            if let Some(modal) = w1.downcast::<GuiModalWindow>() {
+                                let _ = modal.send_v_key(3);
+                            }
                         }
                     }
-                }
 
-                // Note: keep focus on list; do not navigate away
+                    // Next row
+                    row += 1;
+                }
+            } else {
+                // Row not found in current viewport; proceed to next page
+                break;
             }
         }
+        // Page down to scroll list
+        if let Ok(wnd0) = session.find_by_id("wnd[0]".to_string()) {
+            if let Some(win0) = wnd0.downcast::<GuiMainWindow>() {
+                let _ = win0.send_v_key(82); // Page Down
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(150));
     }
 
     // Dedup
@@ -622,26 +663,24 @@ pub fn run_listcheck(session: &GuiSession, params: &VT11Params) -> Result<Vec<St
         .collect::<Vec<_>>();
 
     // Write CSV if we captured any (shipment, delivery, user) rows
-    if !rows.is_empty() {
-        let reports_dir = get_reports_dir();
-        let subdir = format!("{}\\vt11_listcheck", reports_dir);
-        let _ = create_dir_all(&subdir);
-        let ts = Local::now().format("%Y%m%d_%H%M%S");
-        let path = format!("{}\\vt11_listcheck_{}.csv", subdir, ts);
-        if let Ok(mut f) = File::create(&path) {
-            let _ = writeln!(f, "Shipment,Delivery,User");
-            for (ship, deliv, user) in rows {
-                let ship_s = ship.trim();
-                let deliv_s = deliv.trim();
-                let user_s = user.trim();
-                if !ship_s.is_empty() && !deliv_s.is_empty() {
-                    let _ = writeln!(f, "{},{},{}", ship_s, deliv_s, user_s);
-                }
+    let reports_dir = get_reports_dir();
+    let subdir = format!("{}\\vt11_listcheck", reports_dir);
+    let _ = create_dir_all(&subdir);
+    let ts = Local::now().format("%Y%m%d_%H%M%S");
+    let path = format!("{}\\vt11_listcheck_{}.csv", subdir, ts);
+    if let Ok(mut f) = File::create(&path) {
+        let _ = writeln!(f, "Shipment,Delivery,User");
+        for (ship, deliv, user) in rows {
+            let ship_s = ship.trim();
+            let deliv_s = deliv.trim();
+            let user_s = user.trim();
+            if !ship_s.is_empty() && !deliv_s.is_empty() {
+                let _ = writeln!(f, "{},{},{}", ship_s, deliv_s, user_s);
             }
-            println!("VT11 ListCheck CSV written: {}", path);
-        } else {
-            eprintln!("Failed to create VT11 ListCheck CSV file");
         }
+        println!("VT11 ListCheck CSV written: {}", path);
+    } else {
+        eprintln!("Failed to create VT11 ListCheck CSV file");
     }
 
     println!("Found {} blocked deliveries", deliveries.len());

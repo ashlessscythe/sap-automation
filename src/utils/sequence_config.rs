@@ -9,6 +9,7 @@ use std::time::Duration;
 use crate::utils::config_types::SapConfig;
 use crate::utils::config_types::SequenceConfig as ConfigSequenceConfig;
 use crate::vl06o_delivery_module::run_vl06o_delivery_packages_auto;
+use crate::vl06o_module::run_vl06o_auto;
 use crate::y_149_module::run_149_auto;
 use crate::zmdesnr_module::run_zmdesnr_auto;
 use crate::zvt11_module::run_zvt11_auto;
@@ -24,23 +25,31 @@ pub struct MenuOption {
 pub fn get_available_menu_options() -> Vec<MenuOption> {
     vec![
         MenuOption {
-            id: "11".to_string(),
-            name: "ZMDESNR - Auto Run".to_string(),
-        },
-        MenuOption {
             id: "2".to_string(),
             name: "VT11 - Auto Run".to_string(),
         },
         MenuOption {
             id: "4".to_string(),
+            name: "VT11 - ListCheck Auto".to_string(),
+        },
+        MenuOption {
+            id: "6".to_string(),
             name: "ZVT11 - Auto Run".to_string(),
         },
         MenuOption {
-            id: "9".to_string(),
+            id: "8".to_string(),
             name: "VL06O - Auto Run".to_string(),
         },
         MenuOption {
-            id: "16".to_string(),
+            id: "11".to_string(),
+            name: "VL06O - Delivery Packages Auto Run".to_string(),
+        },
+        MenuOption {
+            id: "13".to_string(),
+            name: "ZMDESNR - Auto Run".to_string(),
+        },
+        MenuOption {
+            id: "18".to_string(),
             name: "149 Report - Auto Run".to_string(),
         },
     ]
@@ -59,29 +68,33 @@ pub fn get_menu_option_name(id: &str) -> String {
 /// Execute a menu option by ID
 pub fn execute_menu_option(session: &GuiSession, id: &str) -> Result<()> {
     match id {
-        "11" => {
-            println!("Running ZMDESNR Auto...");
-            run_zmdesnr_auto(session)?;
-        }
         "2" => {
             println!("Running VT11 Auto...");
             crate::vt11_module::run_vt11_auto(session)?;
         }
         "4" => {
+            println!("Running VT11 ListCheck Auto...");
+            crate::vt11_module::run_vt11_listcheck_auto(session)?;
+        }
+        "6" => {
             println!("Running ZVT11 Auto...");
             crate::zvt11_module::run_zvt11_auto(session)?;
         }
-        "9" => {
+        "8" => {
             println!("Running VL06O Auto...");
+            run_vl06o_auto(session)?;
+        }
+        "11" => {
+            println!("Running VL06O Delivery Packages Auto...");
             run_vl06o_delivery_packages_auto(session)?;
         }
-        "16" => {
+        "13" => {
+            println!("Running ZMDESNR Auto...");
+            run_zmdesnr_auto(session)?;
+        }
+        "18" => {
             println!("Running 149 Report Auto...");
             run_149_auto(session)?;
-        }
-        "26" => {
-            println!("Running VT11 ListCheck Auto...");
-            crate::vt11_module::run_vt11_listcheck_auto(session)?;
         }
         _ => {
             println!("Unknown option: {}", id);

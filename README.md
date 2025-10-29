@@ -105,6 +105,18 @@ The application also supports command-line operation for automation scenarios. T
 
 For detailed command-line usage information, see [COMMAND_LINE_USAGE.md](COMMAND_LINE_USAGE.md).
 
+## Sequence Menu Option IDs
+
+These IDs match the current main menu and can be used in the sequence configuration:
+
+- 2: VT11 - Auto Run
+- 4: VT11 - ListCheck Auto
+- 6: ZVT11 - Auto Run
+- 8: VL06O - Auto Run
+- 11: VL06O - Delivery Packages Auto Run
+- 13: ZMDESNR - Auto Run
+- 18: 149 Report - Auto Run
+
 ## Dependencies
 
 This project relies on the following key dependencies:

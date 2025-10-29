@@ -10,7 +10,8 @@ use std::io::{self};
 use windows::core::Result;
 
 use crate::utils::config_types::SapConfig;
-use crate::vt11::{run_export, VT11Params};
+use crate::vt11::{run_export, run_listcheck, VT11Params};
+// no direct VL06O call from VT11 listcheck; user can link via sequence
 
 pub fn run_vt11_module(session: &GuiSession) -> Result<()> {
     clear_screen();
@@ -102,6 +103,61 @@ pub fn run_vt11_auto(session: &GuiSession) -> Result<()> {
     }
 
     // no wait for user since this is auto
+    Ok(())
+}
+
+pub fn run_vt11_listcheck_module(session: &GuiSession) -> Result<()> {
+    clear_screen();
+    println!("VT11 - ListCheck (find blocked deliveries)");
+    println!("=========================================");
+
+    // Reuse interactive VT11 params (variant/layout/date)
+    let params = get_vt11_parameters()?;
+
+    // Run listcheck to collect deliveries
+    let deliveries = run_listcheck(session, &params)?;
+    if deliveries.is_empty() {
+        println!("No blocked deliveries found. CSV not created.");
+        println!("\nPress Enter to return to main menu...");
+        let mut input = String::new();
+        io::stdin().read_line(&mut input).unwrap();
+        return Ok(());
+    }
+
+    println!("\nPress Enter to return to main menu...");
+    let mut input = String::new();
+    io::stdin().read_line(&mut input).unwrap();
+    Ok(())
+}
+
+pub fn run_vt11_listcheck_auto(session: &GuiSession) -> Result<()> {
+    clear_screen();
+    println!("VT11 - ListCheck Auto (from configuration)");
+    println!("==========================================");
+
+    let config = match SapConfig::load() {
+        Ok(cfg) => cfg,
+        Err(e) => {
+            println!("Error loading configuration: {}", e);
+            return Ok(());
+        }
+    };
+
+    let tcode_config = match config.get_tcode_config("VT11", Some(true)) {
+        Some(cfg) => cfg,
+        None => {
+            println!("No configuration found for VT11.");
+            return Ok(());
+        }
+    };
+
+    let params = create_vt11_params_from_config(&tcode_config);
+    let deliveries = run_listcheck(session, &params)?;
+    if deliveries.is_empty() {
+        println!("No blocked deliveries found. CSV not created.");
+        return Ok(());
+    }
+
     Ok(())
 }
 

@@ -79,6 +79,10 @@ pub fn execute_menu_option(session: &GuiSession, id: &str) -> Result<()> {
             println!("Running 149 Report Auto...");
             run_149_auto(session)?;
         }
+        "26" => {
+            println!("Running VT11 ListCheck Auto...");
+            crate::vt11_module::run_vt11_listcheck_auto(session)?;
+        }
         _ => {
             println!("Unknown option: {}", id);
         }

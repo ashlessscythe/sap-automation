@@ -12,6 +12,10 @@ use crate::utils::sap_ctrl_utils::hit_ctrl;
 use crate::utils::sap_export_utils::export_local_file;
 use crate::utils::sap_tcode_utils::*;
 use crate::utils::sap_wnd_utils::*;
+use chrono::Local;
+use regex::Regex;
+use std::fs::{create_dir_all, File};
+use std::io::Write;
 
 /// Struct to hold VT11 export parameters
 #[derive(Debug)]
@@ -412,4 +416,234 @@ pub fn run_export(session: &GuiSession, params: &VT11Params) -> Result<bool> {
     let run_check = save_sap_file(session, &file_path, &file_name, Some(true))?;
 
     Ok(run_check)
+}
+
+/// Run VT11 and scan the shipment list to find deliveries/shipments that cannot be entered
+/// Returns a vector of delivery numbers to act on
+pub fn run_listcheck(session: &GuiSession, params: &VT11Params) -> Result<Vec<String>> {
+    println!("Running VT11 listcheck...");
+
+    // Ensure tcode is active
+    if !assert_tcode(session, "VT11", Some(0))? {
+        println!("Failed to activate VT11 transaction");
+        return Ok(Vec::new());
+    }
+
+    // Determine effective variant/layout: prefer params, fallback to config
+    let mut eff_variant = params.sap_variant_name.clone();
+    let mut eff_layout = params.layout_row.clone();
+    if eff_variant.is_none() || eff_layout.is_none() {
+        if let Ok(config) = crate::utils::config_types::SapConfig::load() {
+            if let Some(cfg) = config.get_tcode_config("VT11", Some(true)) {
+                if eff_variant.is_none() {
+                    eff_variant = cfg.get("variant").cloned();
+                }
+                if eff_layout.is_none() {
+                    eff_layout = cfg.get("layout").cloned();
+                }
+            }
+        }
+    }
+
+    // Variant (if configured)
+    if let Some(variant_name) = &eff_variant {
+        if !variant_name.is_empty() && !variant_select(session, &params.t_code, variant_name)? {
+            println!(
+                "Failed to select variant '{}' for tCode '{}'",
+                variant_name, params.t_code
+            );
+        }
+    }
+
+    // Date range (if by_date)
+    println!("DEBUG: params.by_date: {}", params.by_date);
+    if params.by_date {
+        let today = chrono::Local::now().date_naive();
+        let mut start = params.start_date;
+        let mut end = params.end_date;
+        // If no explicit high provided (same day), default to yesterday..tomorrow
+        if start == end {
+            start = today - chrono::Duration::days(1);
+            end = today + chrono::Duration::days(1);
+        }
+        let start_date_str = format!("{}*", start.format("%m/%d/%Y").to_string());
+        let end_date_str = format!("{}*", end.format("%m/%d/%Y").to_string());
+        if let Ok(txt) = session.find_by_id("wnd[0]/usr/txtK_TPBEZ-LOW".to_string()) {
+            if let Some(text_field) = txt.downcast::<GuiTextField>() {
+                text_field.set_text(start_date_str)?;
+            }
+        }
+        if let Ok(txt) = session.find_by_id("wnd[0]/usr/txtK_TPBEZ-HIGH".to_string()) {
+            if let Some(text_field) = txt.downcast::<GuiTextField>() {
+                text_field.set_text(end_date_str)?;
+            }
+        }
+    }
+
+    // Execute (F8)
+    if let Ok(wnd) = session.find_by_id("wnd[0]".to_string()) {
+        if let Some(window) = wnd.downcast::<GuiMainWindow>() {
+            window.send_v_key(8)?;
+        }
+    }
+
+    // Optional layout selection
+    if let Some(layout_row) = &eff_layout {
+        if !layout_row.is_empty() {
+            if let Ok(menu) = session.find_by_id("wnd[0]/mbar/menu[3]/menu[0]/menu[1]".to_string())
+            {
+                if let Some(menu_item) = menu.downcast::<GuiMenu>() {
+                    let _ = menu_item.select();
+                }
+            }
+            let _ = exist_ctrl(session, 1, "", true)?;
+            let _ = choose_layout(session, &params.t_code, layout_row);
+            if let Ok(window) = session.find_by_id("wnd[1]".to_string()) {
+                if let Some(modal_window) = window.downcast::<GuiFrameWindow>() {
+                    let _ = modal_window.close();
+                }
+            }
+        }
+    }
+
+    // Iterate list to collect blocked deliveries from status bar
+    let mut deliveries: Vec<String> = Vec::new();
+    let mut rows: Vec<(String, String, String)> = Vec::new(); // (shipment, delivery, user)
+    let re_specific = Regex::new(r"(?s)This delivery \((\d+)\) is currently being processed[^\(]*\(([A-Za-z][A-Za-z0-9_]+)\)").unwrap();
+    let re_any = Regex::new(r"\b\d{7,}\b").unwrap();
+    let re_user = Regex::new(r"\(([A-Za-z][A-Za-z0-9_]+)\)").unwrap();
+
+    // We will attempt a fixed range of row label positions as per VBA notes: lbl[8,n]
+    // Try a few pages (first page only for now)
+    for col in 4..=20 {
+        let lbl_path = format!("wnd[0]/usr/lbl[8,{}]", col);
+        if let Ok(lbl) = session.find_by_id(lbl_path.clone()) {
+            if let Some(label) = lbl.downcast::<GuiLabel>() {
+                let _ = label.set_focus();
+                let shipment_text = label.text().unwrap_or_default();
+                let shipment_number = re_any
+                    .captures(&shipment_text)
+                    .and_then(|c| c.get(0))
+                    .map(|m| m.as_str().to_string())
+                    .unwrap_or_default();
+                // Enter
+                if let Ok(wnd0) = session.find_by_id("wnd[0]".to_string()) {
+                    if let Some(win0) = wnd0.downcast::<GuiMainWindow>() {
+                        win0.send_v_key(2)?; // Enter
+                    }
+                }
+
+                std::thread::sleep(std::time::Duration::from_millis(150));
+
+                // Check for navigation vs status bar message
+                let mut went_deeper = false;
+                if let Ok(info) = session.info() {
+                    if let Ok(tx) = info.transaction() {
+                        // If transaction changed away from VT11, we navigated into shipment
+                        went_deeper = !tx.contains("VT11");
+                    }
+                }
+
+                if went_deeper {
+                    // Back out
+                    if let Ok(wnd0) = session.find_by_id("wnd[0]".to_string()) {
+                        if let Some(win0) = wnd0.downcast::<GuiMainWindow>() {
+                            win0.send_v_key(3)?; // Back
+                        }
+                    }
+                } else {
+                    // Read status bar text
+                    if let Ok(sbar) = session.find_by_id("wnd[0]/sbar".to_string()) {
+                        if let Some(status) = sbar.downcast::<GuiStatusbar>() {
+                            let msg = status.text().unwrap_or_default();
+                            // Prefer exact phrasing if available (captures delivery and user)
+                            if let Some(caps) = re_specific.captures(&msg) {
+                                let deliv = caps
+                                    .get(1)
+                                    .map(|m| m.as_str().to_string())
+                                    .unwrap_or_default();
+                                let user = caps
+                                    .get(2)
+                                    .map(|m| m.as_str().to_string())
+                                    .unwrap_or_default();
+                                if !deliv.is_empty() {
+                                    deliveries.push(deliv.clone());
+                                    if !shipment_number.is_empty() {
+                                        rows.push((shipment_number.clone(), deliv, user));
+                                    }
+                                }
+                            } else if msg.to_lowercase().contains("process")
+                                || msg.to_lowercase().contains("lock")
+                            {
+                                // Fallback: infer delivery and user separately
+                                let mut deliv = String::new();
+                                if let Some(cap) = re_any.captures(&msg) {
+                                    if let Some(m) = cap.get(0) {
+                                        deliv = m.as_str().to_string();
+                                    }
+                                }
+                                let mut user = String::new();
+                                if let Some(ucap) = re_user.captures(&msg) {
+                                    if let Some(m) = ucap.get(1) {
+                                        let candidate = m.as_str().to_string();
+                                        if candidate != deliv {
+                                            user = candidate;
+                                        }
+                                    }
+                                }
+                                if !deliv.is_empty() {
+                                    deliveries.push(deliv.clone());
+                                    if !shipment_number.is_empty() {
+                                        rows.push((shipment_number.clone(), deliv, user));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    // Back/Cancel any modal
+                    if let Ok(w1) = session.find_by_id("wnd[1]".to_string()) {
+                        if let Some(modal) = w1.downcast::<GuiModalWindow>() {
+                            let _ = modal.send_v_key(3);
+                        }
+                    }
+                }
+
+                // Note: keep focus on list; do not navigate away
+            }
+        }
+    }
+
+    // Dedup
+    deliveries = deliveries
+        .into_iter()
+        .filter(|s| !s.trim().is_empty())
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+
+    // Write CSV if we captured any (shipment, delivery, user) rows
+    if !rows.is_empty() {
+        let reports_dir = get_reports_dir();
+        let subdir = format!("{}\\vt11_listcheck", reports_dir);
+        let _ = create_dir_all(&subdir);
+        let ts = Local::now().format("%Y%m%d_%H%M%S");
+        let path = format!("{}\\vt11_listcheck_{}.csv", subdir, ts);
+        if let Ok(mut f) = File::create(&path) {
+            let _ = writeln!(f, "Shipment,Delivery,User");
+            for (ship, deliv, user) in rows {
+                let ship_s = ship.trim();
+                let deliv_s = deliv.trim();
+                let user_s = user.trim();
+                if !ship_s.is_empty() && !deliv_s.is_empty() {
+                    let _ = writeln!(f, "{},{},{}", ship_s, deliv_s, user_s);
+                }
+            }
+            println!("VT11 ListCheck CSV written: {}", path);
+        } else {
+            eprintln!("Failed to create VT11 ListCheck CSV file");
+        }
+    }
+
+    println!("Found {} blocked deliveries", deliveries.len());
+    Ok(deliveries)
 }

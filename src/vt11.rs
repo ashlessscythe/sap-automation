@@ -84,28 +84,50 @@ fn get_delivery_numbers_from_zmdesnr() -> Result<Vec<String>> {
 
     println!("Reading delivery numbers from: {}", newest_path);
 
-    // Read delivery numbers from the 'Delivery' column based on file type
+    // Read delivery numbers trying multiple header variants
+    let header_candidates = ["Delivery", "delivery", "delivery number", "delivery_number"];
     let delivery_numbers = if ext.eq_ignore_ascii_case("xlsx") {
-        read_excel_column(&newest_path, "Sheet1", "Delivery")?
-    } else if ext.eq_ignore_ascii_case("txt") {
-        // For text files, we need to use the tab-delimited reader
-        // Import the function from vl06o_delivery_module
-        match crate::vl06o_delivery_module::read_tab_delimited_column(&newest_path, "Delivery") {
-            Ok(nums) => nums,
-            Err(e) => {
-                println!("Error reading text file: {}", e);
-                return Ok(Vec::new());
+        let mut nums: Vec<String> = Vec::new();
+        for h in header_candidates.iter() {
+            let v = read_excel_column(&newest_path, "Sheet1", h).unwrap_or_default();
+            if !v.is_empty() {
+                nums = v;
+                break;
             }
         }
+        nums
+    } else if ext.eq_ignore_ascii_case("txt") {
+        let mut nums: Vec<String> = Vec::new();
+        for h in header_candidates.iter() {
+            match crate::vl06o_delivery_module::read_tab_delimited_column(&newest_path, h) {
+                Ok(v) => {
+                    if !v.is_empty() {
+                        nums = v;
+                        break;
+                    }
+                }
+                Err(e) => {
+                    println!("Error reading text file: {}", e);
+                    return Ok(Vec::new());
+                }
+            }
+        }
+        nums
     } else {
         // For other file types, try Excel reader as fallback
-        match read_excel_column(&newest_path, "Sheet1", "Delivery") {
-            Ok(nums) => nums,
-            Err(_) => {
-                println!("Failed to read file with extension .{}", ext);
-                Vec::new()
+        let mut nums: Vec<String> = Vec::new();
+        for h in header_candidates.iter() {
+            if let Ok(v) = read_excel_column(&newest_path, "Sheet1", h) {
+                if !v.is_empty() {
+                    nums = v;
+                    break;
+                }
             }
         }
+        if nums.is_empty() {
+            println!("Failed to read file with extension .{}", ext);
+        }
+        nums
     };
 
     if delivery_numbers.is_empty() {
@@ -115,6 +137,64 @@ fn get_delivery_numbers_from_zmdesnr() -> Result<Vec<String>> {
     }
 
     Ok(delivery_numbers)
+}
+
+/// Get delivery numbers from the newest, unused VT11 ListCheck CSV (do not mark here)
+fn get_delivery_numbers_from_listcheck() -> Result<Vec<String>> {
+    let mut results: Vec<String> = Vec::new();
+
+    let reports_dir = get_reports_dir();
+    let subdir = format!("{}\\vt11_listcheck", reports_dir);
+
+    // Find newest CSV that is NOT already marked as used (filename not ending with "_.csv")
+    let mut newest_path = String::new();
+    if let Ok(entries) = std::fs::read_dir(&subdir) {
+        let mut newest_time: Option<std::time::SystemTime> = None;
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
+                if ext.eq_ignore_ascii_case("csv") {
+                    if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
+                        // Skip files already marked as used ("_.csv" suffix)
+                        if name.ends_with("_.csv") {
+                            continue;
+                        }
+                        if let Ok(meta) = entry.metadata() {
+                            if let Ok(modified) = meta.modified() {
+                                if newest_time.map(|t| modified > t).unwrap_or(true) {
+                                    newest_time = Some(modified);
+                                    newest_path = path.to_string_lossy().to_string();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if newest_path.is_empty() {
+        println!("No unused VT11 ListCheck CSV found in {}", subdir);
+        return Ok(results);
+    }
+
+    // Read CSV and collect the Delivery column (second column)
+    if let Ok(contents) = std::fs::read_to_string(&newest_path) {
+        for (idx, line) in contents.lines().enumerate() {
+            if idx == 0 {
+                continue; // skip header
+            }
+            let cols: Vec<&str> = line.split(',').collect();
+            if let Some(deliv) = cols.get(1) {
+                let d = deliv.trim().trim_matches('"').to_string();
+                if !d.is_empty() {
+                    results.push(d);
+                }
+            }
+        }
+    }
+
+    Ok(results)
 }
 
 /// Try to open the local file export dialog for VT11
@@ -199,6 +279,16 @@ pub fn run_export(session: &GuiSession, params: &VT11Params) -> Result<bool> {
 
         // Get delivery numbers from ZMDESNR export (same source as VL06O delivery module)
         let mut delivery_numbers = get_delivery_numbers_from_zmdesnr()?;
+
+        // Also append from newest VT11 ListCheck CSV (if present). Marking is handled at sequence level.
+        let listcheck_numbers = get_delivery_numbers_from_listcheck()?;
+        if !listcheck_numbers.is_empty() {
+            println!(
+                "Appending {} deliveries from VT11 ListCheck CSV",
+                listcheck_numbers.len()
+            );
+            delivery_numbers.extend(listcheck_numbers);
+        }
 
         // dedup delivery numbers and remove empties
         delivery_numbers = delivery_numbers

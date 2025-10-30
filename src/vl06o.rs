@@ -99,6 +99,7 @@ impl Default for VL06OParams {
 #[derive(Debug)]
 pub struct VL06ODeliveryParams {
     pub sap_variant_name: Option<String>,
+    pub by_delivery: bool,
     pub layout_row: Option<String>,
     pub delivery_numbers: Vec<String>,
     pub start_date: NaiveDate,
@@ -182,6 +183,7 @@ impl Default for VL06ODeliveryParams {
         Self {
             sap_variant_name: variant,
             layout_row: layout,
+            by_delivery: false,
             delivery_numbers: Vec::new(),
             start_date: chrono::Local::now().date_naive(),
             end_date: chrono::Local::now().date_naive(),

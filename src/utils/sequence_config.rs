@@ -561,6 +561,53 @@ pub fn run_sequence(session: &GuiSession) -> Result<()> {
             }
         }
 
+        // After completing all steps in this iteration, mark newest unused VT11 ListCheck CSV as used
+        // so that subsequent iterations don't reuse the same deliveries (applies also when iterations == 0).
+        let reports_dir = crate::utils::config_ops::get_reports_dir();
+        let subdir = format!("{}\\vt11_listcheck", reports_dir);
+        if let Ok(entries) = std::fs::read_dir(&subdir) {
+            let mut newest_path = String::new();
+            let mut newest_time: Option<std::time::SystemTime> = None;
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
+                    if ext.eq_ignore_ascii_case("csv") {
+                        if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
+                            if name.ends_with("_.csv") {
+                                continue; // already used
+                            }
+                            if let Ok(meta) = entry.metadata() {
+                                if let Ok(modified) = meta.modified() {
+                                    if newest_time.map(|t| modified > t).unwrap_or(true) {
+                                        newest_time = Some(modified);
+                                        newest_path = path.to_string_lossy().to_string();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if !newest_path.is_empty() {
+                if let Some(dot) = newest_path.rfind('.') {
+                    let (prefix, suffix) = newest_path.split_at(dot);
+                    if suffix.eq_ignore_ascii_case(".csv") {
+                        let new_path = format!("{}_.csv", prefix);
+                        if let Err(e) = std::fs::rename(&newest_path, &new_path) {
+                            eprintln!("Failed to mark VT11 ListCheck as used: {}", e);
+                        } else {
+                            println!(
+                                "Marked VT11 ListCheck as used after sequence iteration: {} -> {}",
+                                newest_path, new_path
+                            );
+                        }
+                    }
+                }
+            } else {
+                println!("No unused VT11 ListCheck CSV to mark after sequence iteration.");
+            }
+        }
+
         // Check if we should continue the loop
         if config.iterations > 0 && iteration >= config.iterations {
             break;

@@ -16,6 +16,65 @@ use crate::utils::excel_path_utils::{get_excel_file_path, get_newest_file};
 use crate::utils::{config_ops::get_reports_dir, excel_path_utils::resolve_path};
 use crate::vl06o::{run_export_delivery_packages, VL06ODeliveryParams};
 
+/// Get delivery numbers from newest, unused VT11 ListCheck CSV (do not mark here)
+fn get_listcheck_deliveries_for_vl06o() -> std::io::Result<(Vec<String>, Option<String>)> {
+    let mut results: Vec<String> = Vec::new();
+    let reports_dir = get_reports_dir();
+    let subdir = format!("{}\\vt11_listcheck", reports_dir);
+
+    // Find newest CSV that is not marked used (no "_.csv" suffix)
+    let mut newest_path = String::new();
+    if let Ok(entries) = std::fs::read_dir(&subdir) {
+        let mut newest_time: Option<std::time::SystemTime> = None;
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
+                if ext.eq_ignore_ascii_case("csv") {
+                    if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
+                        if name.ends_with("_.csv") {
+                            continue;
+                        }
+                        if let Ok(meta) = entry.metadata() {
+                            if let Ok(modified) = meta.modified() {
+                                if newest_time.map(|t| modified > t).unwrap_or(true) {
+                                    newest_time = Some(modified);
+                                    newest_path = path.to_string_lossy().to_string();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if newest_path.is_empty() {
+        println!("No unused VT11 ListCheck CSV found in {}", subdir);
+        return Ok((results, None));
+    }
+
+    if let Ok(contents) = std::fs::read_to_string(&newest_path) {
+        for (idx, line) in contents.lines().enumerate() {
+            if idx == 0 {
+                continue; // skip header
+            }
+            let cols: Vec<&str> = line.split(',').collect();
+            if let Some(deliv) = cols.get(1) {
+                let d = deliv.trim().trim_matches('"').to_string();
+                if !d.is_empty() {
+                    results.push(d);
+                }
+            }
+        }
+        println!(
+            "Read {} delivery numbers from VT11 ListCheck CSV",
+            results.len()
+        );
+    }
+
+    Ok((results, Some(newest_path)))
+}
+
 /// Run VL06O export with delivery numbers to get package counts
 pub fn run_vl06o_delivery_packages_module(session: &GuiSession) -> Result<()> {
     clear_screen();
@@ -134,13 +193,16 @@ pub fn run_vl06o_delivery_packages_auto(session: &GuiSession) -> Result<()> {
     let mut params = VL06ODeliveryParams::default();
 
     // Get VL06O specific configuration
-    if let Some(tcode_config) = config.get_tcode_config("VL06O", Some(true)) {
+    if let Some(tcode_config) = config.get_tcode_config("VL06O", Some(false)) {
         // Override with config if available
         if let Some(variant) = tcode_config.get("variant") {
             params.sap_variant_name = Some(variant.clone());
         }
         if let Some(layout) = tcode_config.get("layout") {
             params.layout_row = Some(layout.clone());
+        }
+        if let Some(by_delivery) = tcode_config.get("by_delivery") {
+            params.by_delivery = by_delivery.to_lowercase() == "true";
         }
         if let Some(subdir) = tcode_config.get("subdir") {
             params.subdir = Some(subdir.clone());
@@ -149,9 +211,6 @@ pub fn run_vl06o_delivery_packages_auto(session: &GuiSession) -> Result<()> {
         println!("No configuration found for VL06O.");
         println!("Using default parameters.");
     }
-
-    // Set column name to "Delivery" as specified
-    params.column_name = Some("Delivery".to_string());
 
     // Get the reports directory
     let reports_dir = get_reports_dir();
@@ -250,6 +309,33 @@ pub fn run_vl06o_delivery_packages_auto(session: &GuiSession) -> Result<()> {
         params.delivery_numbers = delivery_numbers;
     }
 
+    // If configured, append newest unused VT11 ListCheck deliveries
+    let mut listcheck_path_opt: Option<String> = None;
+    if params.by_delivery {
+        if let Ok((mut listcheck_nums, path_opt)) = get_listcheck_deliveries_for_vl06o() {
+            listcheck_path_opt = path_opt;
+            if let Some(ref p) = listcheck_path_opt {
+                println!("Using VT11 ListCheck deliveries from: {}", p);
+            }
+            if !listcheck_nums.is_empty() {
+                println!(
+                    "Appending {} deliveries from VT11 ListCheck CSV",
+                    listcheck_nums.len()
+                );
+                params.delivery_numbers.append(&mut listcheck_nums);
+                // Deduplicate
+                let mut set = std::collections::HashSet::new();
+                params.delivery_numbers.retain(|d| set.insert(d.clone()));
+                println!(
+                    "Total delivery numbers after append: {}",
+                    params.delivery_numbers.len()
+                );
+            } else {
+                println!("No VT11 ListCheck deliveries to append.");
+            }
+        }
+    }
+
     println!("Running VL06O delivery packages with the following parameters:");
     println!("--------------------------------------------");
     println!("Variant: {:?}", params.sap_variant_name);
@@ -262,6 +348,23 @@ pub fn run_vl06o_delivery_packages_auto(session: &GuiSession) -> Result<()> {
     match run_export_delivery_packages(session, &params) {
         Ok(true) => {
             println!("VL06O delivery packages export completed successfully!");
+            // If a ListCheck file was used, mark it as used now
+            if let Some(path) = listcheck_path_opt {
+                if let Some(dot) = path.rfind('.') {
+                    let (prefix, suffix) = path.split_at(dot);
+                    if suffix.eq_ignore_ascii_case(".csv") {
+                        let new_path = format!("{}_.csv", prefix);
+                        match std::fs::rename(&path, &new_path) {
+                            Ok(_) => {
+                                println!("Marked VT11 ListCheck as used: {} -> {}", path, new_path)
+                            }
+                            Err(e) => {
+                                eprintln!("Failed to mark VT11 ListCheck as used ({}): {}", path, e)
+                            }
+                        }
+                    }
+                }
+            }
         }
         Ok(false) => {
             println!("VL06O delivery packages export failed or was cancelled.");
@@ -640,6 +743,41 @@ fn get_vl06o_delivery_parameters() -> Result<VL06ODeliveryParams> {
                 println!("Press Enter to continue...");
                 let mut input = String::new();
                 io::stdin().read_line(&mut input).unwrap();
+            }
+        }
+    }
+
+    // Optionally append VT11 ListCheck deliveries if configured by_delivery=true for VL06O
+    if let Ok(cfg) = SapConfig::load() {
+        if let Some(tcode_cfg) = cfg.get_tcode_config("VL06O", Some(false)) {
+            let by_delivery = tcode_cfg
+                .get("by_delivery")
+                .map(|v| v.to_lowercase() == "true")
+                .unwrap_or(false);
+            if by_delivery {
+                if let Ok((mut listcheck_nums, listcheck_path_opt)) =
+                    get_listcheck_deliveries_for_vl06o()
+                {
+                    if let Some(p) = listcheck_path_opt {
+                        println!("Using VT11 ListCheck deliveries from: {}", p);
+                    }
+                    if !listcheck_nums.is_empty() {
+                        println!(
+                            "Appending {} deliveries from VT11 ListCheck CSV",
+                            listcheck_nums.len()
+                        );
+                        params.delivery_numbers.append(&mut listcheck_nums);
+                        // Deduplicate to avoid duplicates from manual input + listcheck
+                        let mut set = std::collections::HashSet::new();
+                        params.delivery_numbers.retain(|d| set.insert(d.clone()));
+                        println!(
+                            "Total delivery numbers after append: {}",
+                            params.delivery_numbers.len()
+                        );
+                    } else {
+                        println!("No VT11 ListCheck deliveries to append.");
+                    }
+                }
             }
         }
     }

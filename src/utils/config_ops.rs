@@ -777,6 +777,9 @@ impl SapConfig {
                         serde_json::to_string(layout_columns).ok()?,
                     );
                 }
+                if let Some(by_delivery) = &tcode_config.by_delivery {
+                    config.insert("by_delivery".to_string(), by_delivery.clone());
+                }
 
                 // Add additional parameters
                 for (key, value) in &tcode_config.additional_params {

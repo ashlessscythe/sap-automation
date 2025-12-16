@@ -8,12 +8,12 @@ use crate::utils::config_ops::get_reports_dir;
 use crate::utils::excel_file_ops::read_excel_column;
 use crate::utils::excel_path_utils::get_newest_file;
 use crate::utils::sap_ctrl_utils::exist_ctrl;
-use crate::utils::sap_ctrl_utils::hit_ctrl;
 use crate::utils::sap_export_utils::export_local_file;
 use crate::utils::sap_tcode_utils::*;
 use crate::utils::sap_wnd_utils::*;
 use chrono::Local;
 use regex::Regex;
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs::{create_dir_all, File};
 use std::io::Write;
@@ -612,6 +612,8 @@ pub fn run_listcheck(session: &GuiSession, params: &VT11Params) -> Result<Vec<St
     // Iterate list to collect blocked deliveries from status bar
     let mut deliveries: Vec<String> = Vec::new();
     let mut rows: Vec<(String, String, String)> = Vec::new(); // (shipment, delivery, user)
+    let mut total_attempted: u32 = 0;
+    let mut blocked_count: u32 = 0;
     let re_specific = Regex::new(r"(?s)This delivery \((\d+)\) is currently being processed[^\(]*\(([A-Za-z][A-Za-z0-9_]+)\)").unwrap();
     let re_any = Regex::new(r"\b\d{7,}\b").unwrap();
     let re_user = Regex::new(r"\(([A-Za-z][A-Za-z0-9_]+)\)").unwrap();
@@ -651,7 +653,8 @@ pub fn run_listcheck(session: &GuiSession, params: &VT11Params) -> Result<Vec<St
                         .and_then(|c| c.get(0))
                         .map(|m| m.as_str().to_string())
                         .unwrap_or_default();
-                    // Enter
+                    // Enter - count this as an attempt to go deeper
+                    total_attempted += 1;
                     if let Ok(wnd0) = session.find_by_id("wnd[0]".to_string()) {
                         if let Some(win0) = wnd0.downcast::<GuiMainWindow>() {
                             win0.send_v_key(2)?; // Enter
@@ -675,10 +678,12 @@ pub fn run_listcheck(session: &GuiSession, params: &VT11Params) -> Result<Vec<St
                             }
                         }
                     } else {
+                        // Check for blocked status
                         if let Ok(sbar) = session.find_by_id("wnd[0]/sbar".to_string()) {
                             if let Some(status) = sbar.downcast::<GuiStatusbar>() {
                                 let msg = status.text().unwrap_or_default();
                                 if let Some(caps) = re_specific.captures(&msg) {
+                                    blocked_count += 1;
                                     let deliv = caps
                                         .get(1)
                                         .map(|m| m.as_str().to_string())
@@ -696,6 +701,7 @@ pub fn run_listcheck(session: &GuiSession, params: &VT11Params) -> Result<Vec<St
                                 } else if msg.to_lowercase().contains("process")
                                     || msg.to_lowercase().contains("lock")
                                 {
+                                    blocked_count += 1;
                                     let mut deliv = String::new();
                                     if let Some(cap) = re_any.captures(&msg) {
                                         if let Some(m) = cap.get(0) {
@@ -757,8 +763,8 @@ pub fn run_listcheck(session: &GuiSession, params: &VT11Params) -> Result<Vec<St
     let subdir = format!("{}\\vt11_listcheck", reports_dir);
     let _ = create_dir_all(&subdir);
     let ts = Local::now().format("%Y%m%d_%H%M%S");
-    let path = format!("{}\\vt11_listcheck_{}.csv", subdir, ts);
-    if let Ok(mut f) = File::create(&path) {
+    let csv_path = format!("{}\\vt11_listcheck_{}.csv", subdir, ts);
+    if let Ok(mut f) = File::create(&csv_path) {
         let _ = writeln!(f, "Shipment,Delivery,User");
         for (ship, deliv, user) in rows {
             let ship_s = ship.trim();
@@ -768,11 +774,46 @@ pub fn run_listcheck(session: &GuiSession, params: &VT11Params) -> Result<Vec<St
                 let _ = writeln!(f, "{},{},{}", ship_s, deliv_s, user_s);
             }
         }
-        println!("VT11 ListCheck CSV written: {}", path);
+        println!("VT11 ListCheck CSV written: {}", csv_path);
     } else {
         eprintln!("Failed to create VT11 ListCheck CSV file");
     }
 
+    // Write statistics to JSON file
+    #[derive(Serialize, Deserialize)]
+    struct ListCheckStats {
+        total_attempted: u32,
+        blocked_count: u32,
+        blocked_deliveries: Vec<String>,
+        timestamp: String,
+    }
+
+    let stats = ListCheckStats {
+        total_attempted,
+        blocked_count,
+        blocked_deliveries: deliveries.clone(),
+        timestamp: Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+    };
+
+    let json_path = format!("{}\\vt11_listcheck_{}.json", subdir, ts);
+    if let Ok(json_content) = serde_json::to_string_pretty(&stats) {
+        if let Ok(mut f) = File::create(&json_path) {
+            if writeln!(f, "{}", json_content).is_ok() {
+                println!("VT11 ListCheck stats written: {}", json_path);
+            } else {
+                eprintln!("Failed to write VT11 ListCheck stats JSON file");
+            }
+        } else {
+            eprintln!("Failed to create VT11 ListCheck stats JSON file");
+        }
+    } else {
+        eprintln!("Failed to serialize VT11 ListCheck stats");
+    }
+
+    println!(
+        "Found {} blocked shipments out of {} total attempted",
+        blocked_count, total_attempted
+    );
     println!("Found {} blocked deliveries", deliveries.len());
     Ok(deliveries)
 }

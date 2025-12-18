@@ -609,9 +609,11 @@ pub fn run_listcheck(session: &GuiSession, params: &VT11Params) -> Result<Vec<St
         }
     }
 
-    // Iterate list to collect blocked deliveries from status bar
+    // Iterate list to collect blocked and unblocked deliveries from status bar
+    // Structure: (shipment, delivery, user, timestamp, is_blocked)
+    let mut shipments_data: Vec<(String, String, String, String, bool)> = Vec::new();
     let mut deliveries: Vec<String> = Vec::new();
-    let mut rows: Vec<(String, String, String)> = Vec::new(); // (shipment, delivery, user)
+    let mut rows: Vec<(String, String, String)> = Vec::new(); // (shipment, delivery, user) - blocked only
     let mut total_attempted: u32 = 0;
     let mut blocked_count: u32 = 0;
     let re_specific = Regex::new(r"(?s)This delivery \((\d+)\) is currently being processed[^\(]*\(([A-Za-z][A-Za-z0-9_]+)\)").unwrap();
@@ -657,11 +659,79 @@ pub fn run_listcheck(session: &GuiSession, params: &VT11Params) -> Result<Vec<St
                     total_attempted += 1;
                     if let Ok(wnd0) = session.find_by_id("wnd[0]".to_string()) {
                         if let Some(win0) = wnd0.downcast::<GuiMainWindow>() {
-                            win0.send_v_key(2)?; // Enter
+                            win0.send_v_key(2)?; // F2 (not ENTER)
                         }
                     }
 
-                    std::thread::sleep(std::time::Duration::from_millis(150));
+                    std::thread::sleep(std::time::Duration::from_millis(250));
+
+                    let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+
+                    // Extract delivery and user from status bar (available for both blocked and unblocked)
+                    // The status bar shows delivery and userid when pressing ENTER on shipment
+                    let mut delivery = String::new();
+                    let mut user = String::new();
+                    let mut is_blocked = false;
+
+                    if let Ok(sbar) = session.find_by_id("wnd[0]/sbar".to_string()) {
+                        if let Some(status) = sbar.downcast::<GuiStatusbar>() {
+                            let msg = status.text().unwrap_or_default();
+
+                            // Try to extract delivery and user from status bar message
+                            if let Some(caps) = re_specific.captures(&msg) {
+                                // Specific pattern: "This delivery (1234567) is currently being processed... (USERID)"
+                                delivery = caps
+                                    .get(1)
+                                    .map(|m| m.as_str().to_string())
+                                    .unwrap_or_default();
+                                user = caps
+                                    .get(2)
+                                    .map(|m| m.as_str().to_string())
+                                    .unwrap_or_default();
+                                is_blocked = true;
+                            } else if msg.to_lowercase().contains("process")
+                                || msg.to_lowercase().contains("lock")
+                            {
+                                // Generic blocked message - try to extract delivery and user
+                                if let Some(cap) = re_any.captures(&msg) {
+                                    if let Some(m) = cap.get(0) {
+                                        delivery = m.as_str().to_string();
+                                    }
+                                }
+                                if let Some(ucap) = re_user.captures(&msg) {
+                                    if let Some(m) = ucap.get(1) {
+                                        let candidate = m.as_str().to_string();
+                                        if candidate != delivery {
+                                            user = candidate;
+                                        }
+                                    }
+                                }
+                                is_blocked = true;
+                            } else {
+                                // No error message - shipment is unblocked
+                                // Try to extract delivery/user if they're shown in status bar
+                                // (delivery and userid are shown when pressing ENTER, even for unblocked)
+                                if let Some(cap) = re_any.captures(&msg) {
+                                    if let Some(m) = cap.get(0) {
+                                        let candidate = m.as_str().to_string();
+                                        // Check if it looks like a delivery number (7+ digits)
+                                        if candidate.len() >= 7 {
+                                            delivery = candidate;
+                                        }
+                                    }
+                                }
+                                if let Some(ucap) = re_user.captures(&msg) {
+                                    if let Some(m) = ucap.get(1) {
+                                        let candidate = m.as_str().to_string();
+                                        if candidate != delivery {
+                                            user = candidate;
+                                        }
+                                    }
+                                }
+                                is_blocked = false;
+                            }
+                        }
+                    }
 
                     // Check for navigation vs status bar message
                     let mut went_deeper = false;
@@ -672,58 +742,51 @@ pub fn run_listcheck(session: &GuiSession, params: &VT11Params) -> Result<Vec<St
                     }
 
                     if went_deeper {
+                        // Successfully entered - this shipment is unblocked
+                        // We already extracted delivery/user from status bar above
+                        if !shipment_number.is_empty() {
+                            shipments_data.push((
+                                shipment_number.clone(),
+                                delivery.clone(),
+                                user.clone(),
+                                timestamp.clone(),
+                                false,
+                            ));
+                        }
                         if let Ok(wnd0) = session.find_by_id("wnd[0]".to_string()) {
                             if let Some(win0) = wnd0.downcast::<GuiMainWindow>() {
                                 win0.send_v_key(3)?; // Back
                             }
                         }
                     } else {
-                        // Check for blocked status
-                        if let Ok(sbar) = session.find_by_id("wnd[0]/sbar".to_string()) {
-                            if let Some(status) = sbar.downcast::<GuiStatusbar>() {
-                                let msg = status.text().unwrap_or_default();
-                                if let Some(caps) = re_specific.captures(&msg) {
-                                    blocked_count += 1;
-                                    let deliv = caps
-                                        .get(1)
-                                        .map(|m| m.as_str().to_string())
-                                        .unwrap_or_default();
-                                    let user = caps
-                                        .get(2)
-                                        .map(|m| m.as_str().to_string())
-                                        .unwrap_or_default();
-                                    if !deliv.is_empty() {
-                                        deliveries.push(deliv.clone());
-                                        if !shipment_number.is_empty() {
-                                            rows.push((shipment_number.clone(), deliv, user));
-                                        }
-                                    }
-                                } else if msg.to_lowercase().contains("process")
-                                    || msg.to_lowercase().contains("lock")
-                                {
-                                    blocked_count += 1;
-                                    let mut deliv = String::new();
-                                    if let Some(cap) = re_any.captures(&msg) {
-                                        if let Some(m) = cap.get(0) {
-                                            deliv = m.as_str().to_string();
-                                        }
-                                    }
-                                    let mut user = String::new();
-                                    if let Some(ucap) = re_user.captures(&msg) {
-                                        if let Some(m) = ucap.get(1) {
-                                            let candidate = m.as_str().to_string();
-                                            if candidate != deliv {
-                                                user = candidate;
-                                            }
-                                        }
-                                    }
-                                    if !deliv.is_empty() {
-                                        deliveries.push(deliv.clone());
-                                        if !shipment_number.is_empty() {
-                                            rows.push((shipment_number.clone(), deliv, user));
-                                        }
-                                    }
+                        // Check if blocked
+                        if is_blocked {
+                            blocked_count += 1;
+                            if !delivery.is_empty() {
+                                deliveries.push(delivery.clone());
+                            }
+                            if !shipment_number.is_empty() {
+                                shipments_data.push((
+                                    shipment_number.clone(),
+                                    delivery.clone(),
+                                    user.clone(),
+                                    timestamp.clone(),
+                                    true,
+                                ));
+                                if !delivery.is_empty() {
+                                    rows.push((shipment_number.clone(), delivery, user));
                                 }
+                            }
+                        } else {
+                            // Not blocked - shipment is unblocked
+                            if !shipment_number.is_empty() {
+                                shipments_data.push((
+                                    shipment_number.clone(),
+                                    delivery.clone(),
+                                    user.clone(),
+                                    timestamp.clone(),
+                                    false,
+                                ));
                             }
                         }
                         if let Ok(w1) = session.find_by_id("wnd[1]".to_string()) {
@@ -781,17 +844,59 @@ pub fn run_listcheck(session: &GuiSession, params: &VT11Params) -> Result<Vec<St
 
     // Write statistics to JSON file
     #[derive(Serialize, Deserialize)]
+    struct ShipmentInfo {
+        shipment: String,
+        delivery: String,
+        user: String,
+        timestamp: String,
+    }
+
+    #[derive(Serialize, Deserialize)]
     struct ListCheckStats {
         total_attempted: u32,
         blocked_count: u32,
-        blocked_deliveries: Vec<String>,
+        unblocked_count: u32,
+        blocked_shipments: Vec<ShipmentInfo>,
+        unblocked_shipments: Vec<ShipmentInfo>,
         timestamp: String,
+    }
+
+    // Separate blocked and unblocked shipments, deduplicating by shipment number
+    let mut blocked_shipments_dedup: Vec<ShipmentInfo> = Vec::new();
+    let mut unblocked_shipments_dedup: Vec<ShipmentInfo> = Vec::new();
+    let mut seen_blocked: HashSet<String> = HashSet::new();
+    let mut seen_unblocked: HashSet<String> = HashSet::new();
+
+    for (shipment, delivery, user, timestamp, is_blocked) in shipments_data {
+        if is_blocked {
+            if !seen_blocked.contains(&shipment) {
+                seen_blocked.insert(shipment.clone());
+                blocked_shipments_dedup.push(ShipmentInfo {
+                    shipment: shipment.clone(),
+                    delivery: delivery.clone(),
+                    user: user.clone(),
+                    timestamp: timestamp.clone(),
+                });
+            }
+        } else {
+            if !seen_unblocked.contains(&shipment) {
+                seen_unblocked.insert(shipment.clone());
+                unblocked_shipments_dedup.push(ShipmentInfo {
+                    shipment: shipment.clone(),
+                    delivery: delivery.clone(),
+                    user: user.clone(),
+                    timestamp: timestamp.clone(),
+                });
+            }
+        }
     }
 
     let stats = ListCheckStats {
         total_attempted,
         blocked_count,
-        blocked_deliveries: deliveries.clone(),
+        unblocked_count: unblocked_shipments_dedup.len() as u32,
+        blocked_shipments: blocked_shipments_dedup,
+        unblocked_shipments: unblocked_shipments_dedup,
         timestamp: Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
     };
 

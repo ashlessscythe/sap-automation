@@ -4,7 +4,7 @@ use crossterm::{
     terminal::{Clear, ClearType},
 };
 use dialoguer::{Input, Select};
-use std::io::{self, Write};
+use std::io;
 use std::thread;
 use std::time::Duration;
 use windows::core;

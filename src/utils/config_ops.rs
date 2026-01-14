@@ -34,6 +34,7 @@ impl Default for SapConfig {
 
 impl SapConfig {
     /// Create a new configuration with default values
+    #[allow(dead_code)]
     pub fn new() -> Self {
         Self::default()
     }
@@ -344,6 +345,7 @@ impl SapConfig {
     }
 
     /// Load configuration from legacy format
+    #[allow(dead_code)]
     fn load_legacy_format(parsed: toml::Value, mut config: SapConfig) -> Result<SapConfig> {
         // Extract sap_config section
         if let Some(sap_config) = parsed.get("sap_config").and_then(|v| v.as_table()) {
@@ -1016,7 +1018,7 @@ pub fn handle_configure_reports_dir() -> Result<()> {
         .interact()
         .unwrap();
 
-    let mut new_dir = String::new();
+    let mut new_dir;
 
     match selection {
         0 => {

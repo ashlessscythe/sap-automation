@@ -665,6 +665,37 @@ pub fn run_listcheck(session: &GuiSession, params: &VT11Params) -> Result<Vec<St
 
                     std::thread::sleep(std::time::Duration::from_millis(250));
 
+                    // Handle popups that might appear after pressing F2
+                    // There might be up to 3 popups, check and send vkey 0 if they exist
+                    for _ in 0..3 {
+                        if let Ok(popup_check) = exist_ctrl(session, 1, "", true) {
+                            if popup_check.cband {
+                                // Try to send vkey 0 to the popup window
+                                if let Ok(popup_window) = session.find_by_id("wnd[1]".to_string()) {
+                                    if let Some(modal_window) =
+                                        popup_window.downcast::<GuiModalWindow>()
+                                    {
+                                        let _ = modal_window.send_v_key(0);
+                                    }
+                                }
+                                // // Also try sending vkey 0 via main window as fallback
+                                // if let Ok(wnd0) = session.find_by_id("wnd[0]".to_string()) {
+                                //     if let Some(win0) = wnd0.downcast::<GuiMainWindow>() {
+                                //         let _ = win0.send_v_key(0);
+                                //     }
+                                // }
+                                // Small delay to allow popup to process
+                                std::thread::sleep(std::time::Duration::from_millis(100));
+                            } else {
+                                // No popup found, break early
+                                break;
+                            }
+                        } else {
+                            // Error checking for popup, break
+                            break;
+                        }
+                    }
+
                     let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
                     // Extract delivery and user from status bar (available for both blocked and unblocked)

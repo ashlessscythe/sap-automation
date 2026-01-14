@@ -943,7 +943,8 @@ fn get_vl06o_date_update_parameters() -> Result<VL06ODateUpdateParams> {
         .default(
             chrono::Local::now()
                 .date_naive()
-                .succ()
+                .succ_opt()
+                .unwrap()
                 .format(format_str)
                 .to_string(),
         )
@@ -951,7 +952,7 @@ fn get_vl06o_date_update_parameters() -> Result<VL06ODateUpdateParams> {
         .unwrap();
 
     params.target_date =
-        parse_date(&target_date_str).unwrap_or_else(|_| chrono::Local::now().date_naive().succ());
+        parse_date(&target_date_str).unwrap_or_else(|_| chrono::Local::now().date_naive().succ_opt().unwrap());
 
     // Get variant name
     let variant_value = params

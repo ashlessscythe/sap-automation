@@ -111,7 +111,7 @@ pub fn read_tab_delimited_column(
     header_name: &str,
 ) -> std::io::Result<Vec<String>> {
     use std::fs::File;
-    use std::io::{BufRead, BufReader, Read};
+    use std::io::{BufRead, BufReader};
 
     let file = File::open(file_path)?;
     let mut reader = BufReader::new(file);

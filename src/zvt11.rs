@@ -8,7 +8,6 @@ use crate::utils::config_ops::get_reports_dir;
 use crate::utils::excel_file_ops::read_excel_column;
 use crate::utils::excel_path_utils::get_newest_file;
 use crate::utils::sap_ctrl_utils::exist_ctrl;
-use crate::utils::sap_ctrl_utils::hit_ctrl;
 use crate::utils::sap_export_utils::export_local_file;
 use crate::utils::sap_tcode_utils::*;
 use crate::utils::sap_wnd_utils::*;

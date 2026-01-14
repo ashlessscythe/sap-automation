@@ -187,8 +187,7 @@ pub fn layout_popup(session: &GuiSession, tcode: &str) -> windows::core::Result<
         }
         "vl06o" => {
             // Choose Layout Button for VL06O
-            if let Ok(button) = session.find_by_id("wnd[0]/tbar[1]/btn[33]".to_string())
-            {
+            if let Ok(button) = session.find_by_id("wnd[0]/tbar[1]/btn[33]".to_string()) {
                 if let Some(btn) = button.downcast::<GuiButton>() {
                     btn.press()?;
                 }
@@ -611,7 +610,7 @@ pub fn check_select_layout(
 }
 
 /// Helper function for goto_setup
-fn goto_setup(session: &GuiSession, tcode: &str, layout_row: &str) -> windows::core::Result<()> {
+fn goto_setup(_session: &GuiSession, tcode: &str, layout_row: &str) -> windows::core::Result<()> {
     // Implementation would go here
     println!(
         "Going to setup for tcode: {}, layout: {}",
@@ -621,7 +620,7 @@ fn goto_setup(session: &GuiSession, tcode: &str, layout_row: &str) -> windows::c
 }
 
 /// Helper function for goto_choose
-fn goto_choose(session: &GuiSession, tcode: &str, layout_row: &str) -> windows::core::Result<()> {
+fn goto_choose(_session: &GuiSession, tcode: &str, layout_row: &str) -> windows::core::Result<()> {
     // Implementation would go here
     println!(
         "Going to choose for tcode: {}, layout: {}",
@@ -635,7 +634,7 @@ fn goto_choose(session: &GuiSession, tcode: &str, layout_row: &str) -> windows::
 /// This function checks if the export window is present and has the expected title
 fn check_export_window(
     session: &GuiSession,
-    tcode: &str,
+    _tcode: &str,
     expected_title: &str,
 ) -> windows::core::Result<bool> {
     // Check if window exists

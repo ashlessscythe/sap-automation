@@ -40,7 +40,7 @@ impl Default for VL06OParams {
 
         // Debug the config loading result
         match &config {
-            Ok(cfg) => println!("Config loaded successfully"),
+            Ok(_cfg) => println!("Config loaded successfully"),
             Err(e) => println!("Failed to load config: {}", e),
         }
 
@@ -118,7 +118,7 @@ impl Default for VL06ODeliveryParams {
 
         // Debug the config loading result
         match &config {
-            Ok(cfg) => println!("Config loaded successfully"),
+            Ok(_cfg) => println!("Config loaded successfully"),
             Err(e) => println!("Failed to load config: {}", e),
         }
 
@@ -213,7 +213,7 @@ impl Default for VL06ODateUpdateParams {
 
         // Debug the config loading result
         match &config {
-            Ok(cfg) => println!("Config loaded successfully"),
+            Ok(_cfg) => println!("Config loaded successfully"),
             Err(e) => println!("Failed to load config: {}", e),
         }
 
@@ -251,7 +251,7 @@ impl Default for VL06ODateUpdateParams {
 
         Self {
             entries: Vec::new(),
-            target_date: chrono::Local::now().date_naive().succ(), // Default to tomorrow
+            target_date: chrono::Local::now().date_naive().succ_opt().unwrap(), // Default to tomorrow
             sap_variant_name: variant,
             t_code: "VL06O".to_string(),
             is_shipment: false,

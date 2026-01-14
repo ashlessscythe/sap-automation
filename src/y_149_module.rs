@@ -2,9 +2,8 @@ use crossterm::{
     execute,
     terminal::{Clear, ClearType},
 };
-use dialoguer::{Input, Select};
+use dialoguer::Input;
 use sap_scripting::*;
-use std::collections::HashMap;
 use std::io::{self, Write};
 use windows::core::Result;
 
@@ -58,8 +57,8 @@ pub fn run_149_auto(session: &GuiSession) -> Result<()> {
     };
 
     // Get 149 specific configuration
-    let tcode_config = match config.get_tcode_config("y_dn3_47000149", Some(true)) {
-        Some(cfg) => cfg,
+    let _tcode_config = match config.get_tcode_config("y_dn3_47000149", Some(true)) {
+        Some(_cfg) => _cfg,
         None => {
             println!("No configuration found for y_dn3_47000149.");
             println!("Please configure 149 report parameters first.");

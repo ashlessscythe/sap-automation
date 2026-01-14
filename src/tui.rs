@@ -389,6 +389,7 @@ fn ui(f: &mut Frame, app: &App) {
 }
 
 /// Display a grid-based selection menu (alternative to list view)
+#[allow(dead_code)]
 pub fn show_grid_menu(
     title: &str,
     items: Vec<String>,
@@ -421,6 +422,7 @@ pub fn show_grid_menu(
     res
 }
 
+#[allow(dead_code)]
 fn run_grid_app<B: Backend>(
     terminal: &mut Terminal<B>,
     app: &mut App,
@@ -464,6 +466,7 @@ fn run_grid_app<B: Backend>(
     }
 }
 
+#[allow(dead_code)]
 fn grid_ui(f: &mut Frame, app: &App) {
     // Create the main layout
     let chunks = Layout::default()
@@ -641,7 +644,8 @@ fn run_input_app<B: Backend>(
     }
 }
 
-fn input_ui(f: &mut Frame, prompt: &str, input: &str, cursor_pos: usize) {
+#[allow(dead_code)]
+fn input_ui(f: &mut Frame, prompt: &str, input: &str, _cursor_pos: usize) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .margin(2)

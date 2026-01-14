@@ -12,7 +12,6 @@ use crate::vl06o_delivery_module::run_vl06o_delivery_packages_auto;
 use crate::vl06o_module::run_vl06o_auto;
 use crate::y_149_module::run_149_auto;
 use crate::zmdesnr_module::run_zmdesnr_auto;
-use crate::zvt11_module::run_zvt11_auto;
 
 /// Structure to map menu options to their names and functions
 #[derive(Debug, Clone)]

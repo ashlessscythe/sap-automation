@@ -7,6 +7,22 @@ use clap::{Parser, Subcommand};
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Commands>,
+
+    /// Run the loop configuration unattended (alias for the `run-loop` subcommand)
+    #[arg(long = "run-loop", conflicts_with = "run_sequence")]
+    pub run_loop: bool,
+
+    /// Run the sequence configuration unattended (alias for the `run-sequence` subcommand)
+    #[arg(long = "run-sequence", conflicts_with = "run_loop")]
+    pub run_sequence: bool,
+
+    /// Skip SAP connection check (for testing). Used together with --run-loop or --run-sequence.
+    #[arg(long, default_value = "false")]
+    pub skip_sap_check: bool,
+
+    /// Keep the system awake during execution. Used together with --run-loop or --run-sequence.
+    #[arg(long, default_value = "false")]
+    pub keep_awake: bool,
 }
 
 #[derive(Subcommand)]
@@ -21,7 +37,7 @@ pub enum Commands {
         #[arg(long, default_value = "false")]
         keep_awake: bool,
     },
-    
+
     /// Run the sequence configuration unattended
     #[command(name = "run-sequence")]
     RunSequence {

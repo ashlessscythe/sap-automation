@@ -18,7 +18,7 @@ use chrono::NaiveDate;
 use sap_automation::utils::cli_overrides::CliOverrides;
 use sap_automation::utils::config_types::SapConfig;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 
 /// Write `content` into `<tmp>/config.toml` and return both the TempDir
@@ -30,7 +30,7 @@ fn write_temp_config(content: &str) -> (TempDir, PathBuf) {
     (dir, path)
 }
 
-fn load(path: &PathBuf) -> SapConfig {
+fn load(path: &Path) -> SapConfig {
     SapConfig::load_from_path(path.to_str().unwrap()).expect("load_from_path")
 }
 
@@ -159,7 +159,10 @@ export_type = 0
     cfg.apply_overrides_with(&overrides);
 
     let merged = cfg.get_tcode_config("VT11", Some(true)).unwrap();
-    assert_eq!(merged.get("variant").map(String::as_str), Some("CLI_VARIANT"));
+    assert_eq!(
+        merged.get("variant").map(String::as_str),
+        Some("CLI_VARIANT")
+    );
     assert_eq!(merged.get("layout").map(String::as_str), Some("CLI_LAYOUT"));
     assert_eq!(merged.get("export_type").map(String::as_str), Some("2"));
 }
@@ -273,7 +276,10 @@ fn by_shipment_true_on_vl06o_autofills_column_name() {
     let entry = cfg.tcode.as_ref().unwrap().get("VL06O").unwrap();
     assert_eq!(entry.column_name.as_deref(), Some("Shipment Number"));
     assert_eq!(
-        entry.additional_params.get("by_shipment").map(String::as_str),
+        entry
+            .additional_params
+            .get("by_shipment")
+            .map(String::as_str),
         Some("true")
     );
 }
@@ -362,7 +368,7 @@ fn pre_export_back_ignored_when_tcode_not_zmdesnr() {
     cfg.apply_overrides_with(&overrides);
 
     let entry = cfg.tcode.as_ref().unwrap().get("VT11").unwrap();
-    assert!(entry.additional_params.get("pre_export_back").is_none());
+    assert!(!entry.additional_params.contains_key("pre_export_back"));
 }
 
 #[test]

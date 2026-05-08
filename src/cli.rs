@@ -202,7 +202,14 @@ fn parse_iso_date_opt(flag: &str, raw: Option<&str>) -> Result<Option<NaiveDate>
     match raw {
         Some(s) => NaiveDate::parse_from_str(s, "%Y-%m-%d")
             .map(Some)
-            .map_err(|e| anyhow!("Invalid {} value '{}': expected ISO YYYY-MM-DD ({})", flag, s, e)),
+            .map_err(|e| {
+                anyhow!(
+                    "Invalid {} value '{}': expected ISO YYYY-MM-DD ({})",
+                    flag,
+                    s,
+                    e
+                )
+            }),
         None => Ok(None),
     }
 }

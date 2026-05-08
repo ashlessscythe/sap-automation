@@ -1,3 +1,6 @@
+//! Shared crypto/timestamp helpers; the lib target does not reference every `pub` item.
+#![allow(dead_code)]
+
 use aes_gcm::{
     aead::{Aead, KeyInit},
     Aes256Gcm, Nonce,
@@ -108,24 +111,24 @@ pub fn generate_timestamp() -> String {
             } else {
                 "UTC".to_string()
             }
-        },
+        }
         Err(_) => "UTC".to_string(),
     };
-    
+
     // Get current UTC time
     let now = Utc::now();
     println!("Now is: {} UTC", now);
     println!("Using timezone: {}", timezone_str);
-    
+
     // Format the timestamp with the appropriate timezone offset
     let timestamp = apply_timezone(now, &timezone_str);
     println!("Generated timestamp: {}", timestamp);
-    
+
     timestamp
 }
 
 /// Apply timezone to a UTC datetime and return a formatted timestamp string
-/// 
+///
 /// Supports:
 /// - Standard timezone names like "UTC", "MST", "MDT", "EST", etc.
 /// - IANA timezone database names like "America/Denver", "Europe/London", etc.
@@ -138,7 +141,7 @@ pub fn apply_timezone(utc_time: DateTime<Utc>, timezone_str: &str) -> String {
         println!("Adjusted time: {}", adjusted_time);
         return adjusted_time.format("%Y%m%d%H%M%S").to_string();
     }
-    
+
     // Try to parse as a chrono-tz timezone
     if let Ok(tz) = Tz::from_str(timezone_str) {
         println!("Using timezone database entry: {}", tz);
@@ -147,36 +150,39 @@ pub fn apply_timezone(utc_time: DateTime<Utc>, timezone_str: &str) -> String {
         println!("Local time in {}: {}", tz, local_time);
         return local_time.format("%Y%m%d%H%M%S").to_string();
     }
-    
+
     // Handle common abbreviations not directly supported by chrono-tz
     let tz_string = match timezone_str.to_uppercase().as_str() {
         "UTC" | "GMT" => {
             println!("Using UTC/GMT timezone");
             "UTC"
-        },
+        }
         "EST" | "EDT" => {
             println!("Converting {} to America/New_York", timezone_str);
             "America/New_York"
-        },
+        }
         "CST" | "CDT" => {
             println!("Converting {} to America/Chicago", timezone_str);
             "America/Chicago"
-        },
+        }
         "MST" | "MDT" => {
             println!("Converting {} to America/Denver", timezone_str);
             "America/Denver"
-        },
+        }
         "PST" | "PDT" => {
             println!("Converting {} to America/Los_Angeles", timezone_str);
             "America/Los_Angeles"
-        },
+        }
         _ => {
             // If we can't parse the timezone, fall back to UTC
-            println!("Warning: Unknown timezone '{}', falling back to UTC", timezone_str);
+            println!(
+                "Warning: Unknown timezone '{}', falling back to UTC",
+                timezone_str
+            );
             return utc_time.format("%Y%m%d%H%M%S").to_string();
         }
     };
-    
+
     // Parse the timezone and apply it
     if let Ok(tz) = Tz::from_str(tz_string) {
         println!("Using mapped timezone: {}", tz);
@@ -184,7 +190,7 @@ pub fn apply_timezone(utc_time: DateTime<Utc>, timezone_str: &str) -> String {
         println!("Local time in {}: {}", tz, local_time);
         return local_time.format("%Y%m%d%H%M%S").to_string();
     }
-    
+
     // Final fallback to UTC
     println!("Final fallback to UTC");
     utc_time.format("%Y%m%d%H%M%S").to_string()

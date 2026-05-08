@@ -1,6 +1,6 @@
+use sap_automation::utils::keep_awake;
 use std::thread;
 use std::time::Duration;
-use sap_automation::utils::keep_awake;
 
 fn main() {
     println!("Keep-Awake Demo");

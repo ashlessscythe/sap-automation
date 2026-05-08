@@ -1,3 +1,6 @@
+//! Constants and structs shared with VBA-era helpers; many are only referenced from select modules.
+#![allow(dead_code)]
+
 // Constants from VBA
 pub const TIME_FORMAT: &str = "mm-dd-yy hh:mm:ss";
 pub const STR_FORM: &str =

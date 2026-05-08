@@ -15,7 +15,7 @@ use chrono::NaiveDate;
 use sap_automation::utils::config_types::SapConfig;
 use std::collections::HashMap;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 
 // ----- helpers -----
@@ -27,7 +27,7 @@ fn write_temp_config(content: &str) -> (TempDir, PathBuf) {
     (dir, path)
 }
 
-fn load(path: &PathBuf) -> SapConfig {
+fn load(path: &Path) -> SapConfig {
     SapConfig::load_from_path(path.to_str().unwrap()).expect("load_from_path")
 }
 
@@ -274,15 +274,24 @@ serial_number = "123456789"
 
     // VL06O sees its own values, not VT11 / ZMDESNR fields.
     let vl_map = cfg.get_tcode_config("VL06O", None).unwrap();
-    assert_eq!(vl_map.get("variant").map(String::as_str), Some("VL06O_VARIANT"));
+    assert_eq!(
+        vl_map.get("variant").map(String::as_str),
+        Some("VL06O_VARIANT")
+    );
     assert_eq!(vl_map.get("by_date").map(String::as_str), Some("true"));
-    assert!(vl_map.get("serial_number").is_none());
+    assert!(!vl_map.contains_key("serial_number"));
 
     let vt_map = cfg.get_tcode_config("VT11", None).unwrap();
-    assert_eq!(vt_map.get("column_name").map(String::as_str), Some("VT11 Column"));
-    assert!(vt_map.get("by_date").is_none());
+    assert_eq!(
+        vt_map.get("column_name").map(String::as_str),
+        Some("VT11 Column")
+    );
+    assert!(!vt_map.contains_key("by_date"));
 
     let zm_map = cfg.get_tcode_config("ZMDESNR", None).unwrap();
-    assert_eq!(zm_map.get("serial_number").map(String::as_str), Some("123456789"));
-    assert!(zm_map.get("by_date").is_none());
+    assert_eq!(
+        zm_map.get("serial_number").map(String::as_str),
+        Some("123456789")
+    );
+    assert!(!zm_map.contains_key("by_date"));
 }

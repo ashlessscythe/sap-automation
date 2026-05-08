@@ -2,14 +2,14 @@ use crate::utils::config_ops::get_reports_dir;
 use crate::utils::sap_ctrl_utils::exist_ctrl;
 use crate::utils::utils::generate_timestamp;
 use sap_scripting::*;
+use std::ffi::OsString;
 use std::fs;
+use std::os::windows::ffi::OsStringExt;
 use std::path::Path;
 use std::thread;
 use std::time::Duration;
-use std::ffi::OsString;
-use std::os::windows::ffi::OsStringExt;
-use windows::core::{PCWSTR, Result, HSTRING};
-use windows::Win32::Foundation::{HWND, LPARAM, WPARAM, BOOL};
+use windows::core::{Result, HSTRING, PCWSTR};
+use windows::Win32::Foundation::{BOOL, HWND, LPARAM, WPARAM};
 use windows::Win32::UI::WindowsAndMessaging::{
     EnumWindows, FindWindowW, GetWindowTextW, SendMessageW, WM_CLOSE,
 };
@@ -54,24 +54,27 @@ pub fn get_tcode_file_path(tcode: &str, ext: &str) -> (String, String) {
 ///
 /// # Returns
 ///
-/// * `Result<bool>` - Ok(true) if at least one window was closed, Ok(false) if no matching windows were found
-///                    or if the specified file was not found
+/// * `Result<bool>` - Ok(true) if at least one window was closed, Ok(false) if no matching
+///   windows were found or if the specified file was not found
 pub fn close_excel_windows(file_name: Option<&str>) -> Result<bool> {
     println!("Attempting to close Excel windows...");
-    
+
     // If no filename is provided, close all Excel windows
     if file_name.is_none() {
         return close_all_excel_windows();
     }
-    
+
     // If a filename is provided, first check if it exists
     let file_exists = check_excel_file_exists(file_name.unwrap())?;
-    
+
     // Only close the file if it was found
     if file_exists {
         close_specific_excel_window(file_name.unwrap())
     } else {
-        println!("Excel file '{}' not found, not closing any windows", file_name.unwrap());
+        println!(
+            "Excel file '{}' not found, not closing any windows",
+            file_name.unwrap()
+        );
         Ok(false)
     }
 }
@@ -83,47 +86,47 @@ fn check_excel_file_exists(file_name: &str) -> Result<bool> {
         file_name: String,
         file_exists: bool,
     }
-    
+
     // Create data for the callback
     let mut data = EnumWindowsData {
         file_name: file_name.to_string(),
         file_exists: false,
     };
-    
+
     // Define the callback function for EnumWindows
     unsafe extern "system" fn enum_windows_callback(hwnd: HWND, lparam: LPARAM) -> BOOL {
         let data = &mut *(lparam.0 as *mut EnumWindowsData);
-        
+
         // Check if this is an Excel window
         let class_name = HSTRING::from("XLMAIN");
         let excel_hwnd = FindWindowW(PCWSTR::from_raw(class_name.as_ptr()), PCWSTR::null());
-        
+
         if excel_hwnd != HWND(0) {
             // Get the window title
             let mut title_buffer = [0u16; 512];
             let title_len = GetWindowTextW(hwnd, &mut title_buffer);
-            
+
             if title_len > 0 {
                 let window_title = OsString::from_wide(&title_buffer[..title_len as usize]);
                 let window_title = window_title.to_string_lossy().to_string();
-                
+
                 // Check if the window title contains the file name
                 if window_title.contains(&data.file_name) {
                     data.file_exists = true;
                 }
             }
         }
-        
+
         // Continue enumeration
         BOOL(1)
     }
-    
+
     // Enumerate all top-level windows
     unsafe {
         let lparam = LPARAM(&mut data as *mut _ as isize);
         EnumWindows(Some(enum_windows_callback), lparam)?;
     }
-    
+
     Ok(data.file_exists)
 }
 
@@ -134,30 +137,30 @@ fn close_specific_excel_window(file_name: &str) -> Result<bool> {
         file_name: String,
         windows_closed: bool,
     }
-    
+
     // Create data for the callback
     let mut data = EnumWindowsData {
         file_name: file_name.to_string(),
         windows_closed: false,
     };
-    
+
     // Define the callback function for EnumWindows
     unsafe extern "system" fn enum_windows_callback(hwnd: HWND, lparam: LPARAM) -> BOOL {
         let data = &mut *(lparam.0 as *mut EnumWindowsData);
-        
+
         // Check if this is an Excel window
         let class_name = HSTRING::from("XLMAIN");
         let excel_hwnd = FindWindowW(PCWSTR::from_raw(class_name.as_ptr()), PCWSTR::null());
-        
+
         if excel_hwnd != HWND(0) {
             // Get the window title
             let mut title_buffer = [0u16; 512];
             let title_len = GetWindowTextW(hwnd, &mut title_buffer);
-            
+
             if title_len > 0 {
                 let window_title = OsString::from_wide(&title_buffer[..title_len as usize]);
                 let window_title = window_title.to_string_lossy().to_string();
-                
+
                 // Check if the window title contains the file name
                 if window_title.contains(&data.file_name) {
                     println!("Closing Excel window: {}", window_title);
@@ -166,17 +169,17 @@ fn close_specific_excel_window(file_name: &str) -> Result<bool> {
                 }
             }
         }
-        
+
         // Continue enumeration
         BOOL(1)
     }
-    
+
     // Enumerate all top-level windows
     unsafe {
         let lparam = LPARAM(&mut data as *mut _ as isize);
         EnumWindows(Some(enum_windows_callback), lparam)?;
     }
-    
+
     if data.windows_closed {
         println!("Excel window with file '{}' closed successfully", file_name);
         Ok(true)
@@ -192,45 +195,45 @@ fn close_all_excel_windows() -> Result<bool> {
     struct EnumWindowsData {
         windows_closed: bool,
     }
-    
+
     // Create data for the callback
     let mut data = EnumWindowsData {
         windows_closed: false,
     };
-    
+
     // Define the callback function for EnumWindows
     unsafe extern "system" fn enum_windows_callback(hwnd: HWND, lparam: LPARAM) -> BOOL {
         let data = &mut *(lparam.0 as *mut EnumWindowsData);
-        
+
         // Check if this is an Excel window
         let class_name = HSTRING::from("XLMAIN");
         let excel_hwnd = FindWindowW(PCWSTR::from_raw(class_name.as_ptr()), PCWSTR::null());
-        
+
         if excel_hwnd != HWND(0) {
             // Get the window title
             let mut title_buffer = [0u16; 512];
             let title_len = GetWindowTextW(hwnd, &mut title_buffer);
-            
+
             if title_len > 0 {
                 let window_title = OsString::from_wide(&title_buffer[..title_len as usize]);
                 let window_title = window_title.to_string_lossy().to_string();
-                
+
                 println!("Closing Excel window: {}", window_title);
                 SendMessageW(hwnd, WM_CLOSE, WPARAM(0), LPARAM(0));
                 data.windows_closed = true;
             }
         }
-        
+
         // Continue enumeration
         BOOL(1)
     }
-    
+
     // Enumerate all top-level windows
     unsafe {
         let lparam = LPARAM(&mut data as *mut _ as isize);
         EnumWindows(Some(enum_windows_callback), lparam)?;
     }
-    
+
     if data.windows_closed {
         println!("All Excel windows closed successfully");
         Ok(true)
@@ -255,7 +258,12 @@ fn close_all_excel_windows() -> Result<bool> {
 /// # Returns
 ///
 /// * `Result<bool>` - Ok(true) if the file was successfully saved, Ok(false) otherwise
-pub fn save_sap_file(session: &GuiSession, file_path: &str, file_name: &str, close_export_file: Option<bool>) -> Result<bool> {
+pub fn save_sap_file(
+    session: &GuiSession,
+    file_path: &str,
+    file_name: &str,
+    close_export_file: Option<bool>,
+) -> Result<bool> {
     let close_export = close_export_file.unwrap_or(false);
     println!("Exporting data from SAP....");
     if close_export {
@@ -309,12 +317,12 @@ pub fn save_sap_file(session: &GuiSession, file_path: &str, file_name: &str, clo
         thread::sleep(Duration::from_millis(3000));
 
         println!("File saved successfully");
-        
+
         // If Excel is allowed to open and we want to close it after saving
         if close_export {
             // Wait a moment for Excel to open
             thread::sleep(Duration::from_millis(5000));
-            
+
             // Close Excel windows with the specified file name
             match close_excel_windows(Some(file_name)) {
                 Ok(true) => println!("Excel closed successfully"),
@@ -322,7 +330,7 @@ pub fn save_sap_file(session: &GuiSession, file_path: &str, file_name: &str, clo
                 Err(e) => println!("Error closing Excel: {:?}", e),
             }
         }
-        
+
         Ok(true)
     } else {
         println!("Error: Save dialog window not found");

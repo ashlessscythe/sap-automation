@@ -3,8 +3,7 @@ use sap_automation::utils::cli_overrides::{cli_overrides, set_cli_overrides};
 use sap_automation::utils::config_types::SapConfig;
 use sap_automation::utils::keep_awake;
 use sap_automation::utils::unattended_runner::{
-    init_sap_connection, run_loop_unattended, run_sequence_unattended,
-    run_single_tcode_unattended,
+    init_sap_connection, run_loop_unattended, run_sequence_unattended, run_single_tcode_unattended,
 };
 use sap_scripting::*;
 use std::thread;
@@ -30,7 +29,6 @@ mod zvt11;
 mod zvt11_module;
 
 use app::*;
-use utils::config_ops::handle_configure_reports_dir;
 use utils::config_types::get_default_menu_option;
 use utils::excel_file_ops::handle_read_excel_file;
 use utils::loop_config::{handle_configure_loop, run_loop};
@@ -67,11 +65,7 @@ fn main() -> anyhow::Result<()> {
         // by_shipment is VL06O-only (in code today). `--tcode` may be omitted in
         // single-shot mode if the user wired up `--run-loop` instead, but in
         // either case the target tcode at run time must be VL06O.
-        let target = overrides
-            .tcode
-            .clone()
-            .unwrap_or_default()
-            .to_uppercase();
+        let target = overrides.tcode.clone().unwrap_or_default().to_uppercase();
         if !target.is_empty() && target != "VL06O" {
             return Err(anyhow::anyhow!(
                 "--by-shipment is only supported for VL06O (got --tcode={})",
@@ -84,11 +78,7 @@ fn main() -> anyhow::Result<()> {
     // when paired with any other --tcode so the user doesn't think it's silently
     // applied to (say) VT11.
     if overrides.pre_export_back.is_some() {
-        let target = overrides
-            .tcode
-            .clone()
-            .unwrap_or_default()
-            .to_uppercase();
+        let target = overrides.tcode.clone().unwrap_or_default().to_uppercase();
         if !target.is_empty() && target != "ZMDESNR" {
             return Err(anyhow::anyhow!(
                 "--pre-export-back is only supported for ZMDESNR (got --tcode={})",
@@ -100,11 +90,7 @@ fn main() -> anyhow::Result<()> {
     // --tab-number selects a ZMDESNR results tab. Other report flows have no
     // matching tab strip and would silently ignore it, so reject early.
     if overrides.tab_number.is_some() {
-        let target = overrides
-            .tcode
-            .clone()
-            .unwrap_or_default()
-            .to_uppercase();
+        let target = overrides.tcode.clone().unwrap_or_default().to_uppercase();
         if !target.is_empty() && target != "ZMDESNR" {
             return Err(anyhow::anyhow!(
                 "--tab-number is only supported for ZMDESNR (got --tcode={})",
@@ -234,76 +220,84 @@ fn run_unattended_single_tcode(
     Ok(())
 }
 
+/// COM + SAP GUI handles for interactive mode. Keeps partial progress on failure
+/// so COM objects stay alive when scripting fails at a later step.
+#[allow(clippy::type_complexity)]
+fn connect_interactive_sap() -> (
+    Option<SAPComInstance>,
+    Option<SAPWrapper>,
+    Option<GuiApplication>,
+    Option<GuiConnection>,
+    Option<GuiSession>,
+    bool,
+) {
+    match SAPComInstance::new() {
+        Err(e) => {
+            eprintln!("Warning: Couldn't initialize COM environment: {}", e);
+            (None, None, None, None, None, false)
+        }
+        Ok(instance) => {
+            let com_instance = Some(instance);
+            match com_instance.as_ref().unwrap().sap_wrapper() {
+                Err(e) => {
+                    eprintln!("Warning: Error getting SAP wrapper: {}", e);
+                    eprintln!("Make sure SAP GUI is installed and properly configured.");
+                    (com_instance, None, None, None, None, false)
+                }
+                Ok(w) => {
+                    let wrapper = Some(w);
+                    match wrapper.as_ref().unwrap().scripting_engine() {
+                        Err(e) => {
+                            eprintln!("Warning: Error getting SAP scripting engine: {}", e);
+                            eprintln!("Make sure SAP GUI is running and scripting is enabled.");
+                            (com_instance, wrapper, None, None, None, false)
+                        }
+                        Ok(engine) => {
+                            let engine = Some(engine);
+                            match get_or_create_connection(engine.as_ref().unwrap()) {
+                                Err(e) => {
+                                    eprintln!("Warning: Error getting SAP connection: {}", e);
+                                    (com_instance, wrapper, engine, None, None, false)
+                                }
+                                Ok(conn) => {
+                                    let connection = Some(conn);
+                                    match GuiConnectionExt::children(connection.as_ref().unwrap()) {
+                                        Err(e) => {
+                                            eprintln!("Warning: Failed to get SAP session: {}", e);
+                                            (com_instance, wrapper, engine, connection, None, false)
+                                        }
+                                        Ok(children) => {
+                                            let session = match children.element_at(0) {
+                                                Ok(element) => element.downcast(),
+                                                Err(_) => None,
+                                            };
+                                            let sap_connected = session.is_some();
+                                            (
+                                                com_instance,
+                                                wrapper,
+                                                engine,
+                                                connection,
+                                                session,
+                                                sap_connected,
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn run_interactive_mode() -> anyhow::Result<()> {
     // Initialize logging if needed
     // pretty_env_logger::init();
 
-    // Flag to track if SAP is connected
-    let mut sap_connected = false;
-
-    // Optional variables to hold SAP components if connection is successful
-    let mut com_instance: Option<SAPComInstance> = None;
-    let mut wrapper: Option<SAPWrapper> = None;
-    let mut engine: Option<GuiApplication> = None;
-    let mut connection: Option<GuiConnection> = None;
-    let mut session: Option<GuiSession> = None;
-
-    // Try to initialize COM environment
-    match SAPComInstance::new() {
-        Ok(instance) => {
-            com_instance = Some(instance);
-
-            // Try to get SAP wrapper
-            match com_instance.as_ref().unwrap().sap_wrapper() {
-                Ok(w) => {
-                    wrapper = Some(w);
-
-                    // Try to get the scripting engine
-                    match wrapper.as_ref().unwrap().scripting_engine() {
-                        Ok(e) => {
-                            engine = Some(e);
-
-                            // Try to get connection or create a new one
-                            match get_or_create_connection(engine.as_ref().unwrap()) {
-                                Ok(conn) => {
-                                    connection = Some(conn);
-
-                                    // Try to get the first session
-                                    match GuiConnectionExt::children(connection.as_ref().unwrap()) {
-                                        Ok(children) => {
-                                            if let Ok(element) = children.element_at(0) {
-                                                if let Some(s) = element.downcast() {
-                                                    session = Some(s);
-                                                    sap_connected = true;
-                                                }
-                                            }
-                                        }
-                                        Err(e) => {
-                                            eprintln!("Warning: Failed to get SAP session: {}", e);
-                                        }
-                                    }
-                                }
-                                Err(e) => {
-                                    eprintln!("Warning: Error getting SAP connection: {}", e);
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            eprintln!("Warning: Error getting SAP scripting engine: {}", e);
-                            eprintln!("Make sure SAP GUI is running and scripting is enabled.");
-                        }
-                    }
-                }
-                Err(e) => {
-                    eprintln!("Warning: Error getting SAP wrapper: {}", e);
-                    eprintln!("Make sure SAP GUI is installed and properly configured.");
-                }
-            }
-        }
-        Err(e) => {
-            eprintln!("Warning: Couldn't initialize COM environment: {}", e);
-        }
-    }
+    let (_com_instance, _wrapper, _engine, _connection, session, sap_connected) =
+        connect_interactive_sap();
 
     if !sap_connected {
         println!("SAP connection not available. Some features will be disabled.");

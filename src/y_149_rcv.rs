@@ -47,8 +47,8 @@ pub fn run_export(session: &GuiSession, params: &Report149RcvParams) -> Result<b
     if let Some(ref variant) = params.variant {
         if !variant_select(session, "y_dn3_47000149", variant.as_str())? {
             println!(
-                "Failed to select variant '{}' for tCode '{}'",
-                variant, "y_dn3_47000149"
+                "Failed to select variant '{}' for tCode 'y_dn3_47000149'",
+                variant
             );
             return Ok(false);
         }
@@ -183,7 +183,7 @@ pub fn run_export(session: &GuiSession, params: &Report149RcvParams) -> Result<b
     if let Ok(cfg) = SapConfig::load() {
         if let Some(tcode_config) = cfg.get_tcode_config("y_dn3_47000149", Some(false)) {
             if let Some(layout) = tcode_config.get("rcv_layout") {
-                if let Err(e) = choose_layout_149(&session, layout) {
+                if let Err(e) = choose_layout_149(session, layout) {
                     println!("Error choosing layout: {}", e);
                 }
             }

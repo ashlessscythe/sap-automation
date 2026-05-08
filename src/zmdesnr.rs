@@ -210,10 +210,10 @@ pub fn run_export(session: &GuiSession, params: &ZMDESNRParams) -> Result<bool> 
             if let Ok(menu) = session.find_by_id("wnd[0]/mbar/menu[0]/menu[3]/menu[2]".to_string())
             {
                 if let Some(menu_item) = menu.downcast::<GuiMenu>() {
-                    if menu_item.select().is_ok() {
-                        if export_local_file(session, "ZMDESNR", exp_type, None).is_ok() {
-                            return Ok(true);
-                        }
+                    if menu_item.select().is_ok()
+                        && export_local_file(session, "ZMDESNR", exp_type, None).is_ok()
+                    {
+                        return Ok(true);
                     }
                 }
             }

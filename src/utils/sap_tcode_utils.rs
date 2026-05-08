@@ -59,13 +59,13 @@ pub fn check_tcode(
         thread::sleep(Duration::from_millis(500)); // Time_Event equivalent
 
         // Recursive call to check again
-        return check_tcode(session, tcode, Some(false), Some(false));
+        check_tcode(session, tcode, Some(false), Some(false))
     } else {
         println!(
             "tCode mismatch. Current tCode is ({}), need ({})",
             current, tcode
         );
-        return Ok(false);
+        Ok(false)
     }
 }
 

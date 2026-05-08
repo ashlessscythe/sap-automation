@@ -1,3 +1,6 @@
+//! LI layout setup (VBA port); entry points are not all called from the binary.
+#![allow(dead_code)]
+
 use sap_scripting::*;
 use std::thread;
 use std::time::Duration;
@@ -17,6 +20,7 @@ pub struct LayoutParams {
 /// Setup a layout with list items
 ///
 /// This function is a port of the VBA function SetupLayout_li
+#[allow(clippy::too_many_arguments)]
 pub fn setup_layout_li(
     session: &GuiSession,
     tcode: &str,
@@ -117,9 +121,8 @@ pub fn setup_layout_li(
                     && !contains(&item.to_uppercase(), "_LAYOUT", Some(false))
                 {
                     let mut counter = 1;
-                    let mut found = false;
 
-                    while counter < limit {
+                    'layout_item: while counter < limit {
                         counter += 1;
 
                         for i in 0..12 {
@@ -150,8 +153,7 @@ pub fn setup_layout_li(
                                         // Reset scrollbar to top - Alternative to vertical_scrollbar
                                         grid_right.set_first_visible_row(0)?;
 
-                                        found = true;
-                                        break;
+                                        break 'layout_item;
                                     }
                                 }
                             } else {
@@ -161,13 +163,8 @@ pub fn setup_layout_li(
                                 // Reset scrollbar to top - Alternative to vertical_scrollbar
                                 grid_right.set_first_visible_row(0)?;
 
-                                found = true;
-                                break;
+                                break 'layout_item;
                             }
-                        }
-
-                        if found {
-                            break;
                         }
 
                         // Scroll down - Alternative to vertical_scrollbar
@@ -187,8 +184,7 @@ pub fn setup_layout_li(
                                 // Reset scrollbar to top - Alternative to vertical_scrollbar
                                 grid_right.set_first_visible_row(0)?;
 
-                                found = true;
-                                break;
+                                break 'layout_item;
                             }
                         }
                     }

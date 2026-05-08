@@ -1,3 +1,6 @@
+//! Large TOML merge paths use incremental field assignment; Clippy's struct-literal style would obscure the flow.
+#![allow(clippy::field_reassign_with_default)]
+
 use anyhow::{anyhow, Result};
 use dialoguer::{Input, Select};
 use std::collections::HashMap;
@@ -47,8 +50,10 @@ impl SapConfig {
 
     /// Load configuration from a specific path
     pub fn load_from_path(path: &str) -> Result<Self> {
-        let mut config = Self::default();
-        config.config_path = path.to_string();
+        let mut config = SapConfig {
+            config_path: path.to_string(),
+            ..Default::default()
+        };
 
         // Try to read from config file
         if let Ok(content) = fs::read_to_string(path) {
@@ -375,9 +380,8 @@ impl SapConfig {
     /// [`apply_cli_overrides`], which reads the installed overrides.
     pub fn apply_overrides_with(&mut self, o: &CliOverrides) {
         // ----- [global] overrides -----
-        let touches_global = o.reports_dir.is_some()
-            || o.date_format.is_some()
-            || o.timezone.is_some();
+        let touches_global =
+            o.reports_dir.is_some() || o.date_format.is_some() || o.timezone.is_some();
 
         if touches_global {
             let global = self.global.get_or_insert_with(|| GlobalConfig {
@@ -407,7 +411,7 @@ impl SapConfig {
         if let Some(tc_name) = &o.tcode {
             let key = tc_name.to_uppercase();
             let map = self.tcode.get_or_insert_with(HashMap::new);
-            let entry = map.entry(key.clone()).or_insert_with(TcodeConfig::default);
+            let entry = map.entry(key.clone()).or_default();
 
             if let Some(layout) = &o.layout {
                 entry.layout = Some(layout.clone());
@@ -956,21 +960,21 @@ impl SapConfig {
         }
 
         // If we're in a loop run, add loop parameters
-        if is_loop_run && self.loop_config.is_some() {
-            let loop_config = self.loop_config.as_ref().unwrap();
-
-            // Add loop parameters with tcode-specific prefix
-            for (key, value) in &loop_config.params {
-                if key.starts_with(&format!("{}_", tcode)) {
-                    let param_name = key.replacen(&format!("{}_", tcode), "", 1);
-                    config.insert(param_name, value.clone());
-                } else {
-                    config.insert(key.clone(), value.clone());
+        if is_loop_run {
+            if let Some(loop_config) = self.loop_config.as_ref() {
+                // Add loop parameters with tcode-specific prefix
+                for (key, value) in &loop_config.params {
+                    if key.starts_with(&format!("{}_", tcode)) {
+                        let param_name = key.replacen(&format!("{}_", tcode), "", 1);
+                        config.insert(param_name, value.clone());
+                    } else {
+                        config.insert(key.clone(), value.clone());
+                    }
                 }
-            }
 
-            if !config.is_empty() {
-                return Some(config);
+                if !config.is_empty() {
+                    return Some(config);
+                }
             }
         }
 
@@ -1100,52 +1104,6 @@ pub fn get_sap_expected_date_format(status_text: &str) -> Option<String> {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_is_date_format_error() {
-        assert!(is_date_format_error("Enter date in the format __-__-__"));
-        assert!(is_date_format_error("Date format error"));
-        assert!(is_date_format_error("Invalid date"));
-        assert!(is_date_format_error("Date not valid"));
-        assert!(is_date_format_error("Incorrect date format"));
-        assert!(is_date_format_error("Wrong date format"));
-        assert!(!is_date_format_error("No data found"));
-        assert!(!is_date_format_error("Success"));
-    }
-
-    #[test]
-    fn test_get_sap_expected_date_format() {
-        assert_eq!(
-            get_sap_expected_date_format("Enter date in the format __-__-__"),
-            Some("DD-MM-YY".to_string())
-        );
-        assert_eq!(
-            get_sap_expected_date_format("Date format: dd-mm-yy"),
-            Some("DD-MM-YY".to_string())
-        );
-        assert_eq!(
-            get_sap_expected_date_format("Enter date in the format __/__/__"),
-            Some("MM/DD/YYYY".to_string())
-        );
-        assert_eq!(
-            get_sap_expected_date_format("Date format: mm/dd/yyyy"),
-            Some("MM/DD/YYYY".to_string())
-        );
-        assert_eq!(
-            get_sap_expected_date_format("Enter date in the format ____-__-__"),
-            Some("YYYY-MM-DD".to_string())
-        );
-        assert_eq!(
-            get_sap_expected_date_format("Date format: yyyy-mm-dd"),
-            Some("YYYY-MM-DD".to_string())
-        );
-        assert_eq!(get_sap_expected_date_format("Some other error"), None);
-    }
-}
-
 /// Gets the configured reports directory or returns the default
 pub fn get_reports_dir() -> String {
     // Try to read from config file first
@@ -1204,12 +1162,10 @@ pub fn handle_configure_reports_dir() -> Result<()> {
             if new_dir.starts_with("../") || new_dir.starts_with("..\\") {
                 let current_path = Path::new(&current_dir);
                 if let Some(parent) = current_path.parent() {
-                    let rest_of_path = if new_dir.starts_with("../") {
-                        &new_dir[3..]
-                    } else {
-                        // starts_with("..\\")
-                        &new_dir[3..]
-                    };
+                    let rest_of_path = new_dir
+                        .strip_prefix("../")
+                        .or_else(|| new_dir.strip_prefix("..\\"))
+                        .unwrap_or("");
 
                     new_dir = format!("{}\\{}", parent.to_string_lossy(), rest_of_path);
                     println!("Using parent directory path: {}", new_dir);
@@ -1269,4 +1225,50 @@ pub fn handle_configure_reports_dir() -> Result<()> {
     thread::sleep(Duration::from_secs(2));
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_date_format_error() {
+        assert!(is_date_format_error("Enter date in the format __-__-__"));
+        assert!(is_date_format_error("Date format error"));
+        assert!(is_date_format_error("Invalid date"));
+        assert!(is_date_format_error("Date not valid"));
+        assert!(is_date_format_error("Incorrect date format"));
+        assert!(is_date_format_error("Wrong date format"));
+        assert!(!is_date_format_error("No data found"));
+        assert!(!is_date_format_error("Success"));
+    }
+
+    #[test]
+    fn test_get_sap_expected_date_format() {
+        assert_eq!(
+            get_sap_expected_date_format("Enter date in the format __-__-__"),
+            Some("DD-MM-YY".to_string())
+        );
+        assert_eq!(
+            get_sap_expected_date_format("Date format: dd-mm-yy"),
+            Some("DD-MM-YY".to_string())
+        );
+        assert_eq!(
+            get_sap_expected_date_format("Enter date in the format __/__/__"),
+            Some("MM/DD/YYYY".to_string())
+        );
+        assert_eq!(
+            get_sap_expected_date_format("Date format: mm/dd/yyyy"),
+            Some("MM/DD/YYYY".to_string())
+        );
+        assert_eq!(
+            get_sap_expected_date_format("Enter date in the format ____-__-__"),
+            Some("YYYY-MM-DD".to_string())
+        );
+        assert_eq!(
+            get_sap_expected_date_format("Date format: yyyy-mm-dd"),
+            Some("YYYY-MM-DD".to_string())
+        );
+        assert_eq!(get_sap_expected_date_format("Some other error"), None);
+    }
 }

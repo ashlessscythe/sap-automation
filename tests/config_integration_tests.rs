@@ -8,7 +8,7 @@
 use sap_automation::utils::config_types::{SapConfig, TcodeConfig};
 use std::collections::HashMap;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 
 fn write_temp_config(content: &str) -> (TempDir, PathBuf) {
@@ -18,7 +18,7 @@ fn write_temp_config(content: &str) -> (TempDir, PathBuf) {
     (dir, path)
 }
 
-fn load(path: &PathBuf) -> SapConfig {
+fn load(path: &Path) -> SapConfig {
     SapConfig::load_from_path(path.to_str().unwrap()).expect("load")
 }
 
@@ -63,13 +63,15 @@ fn get_tcode_config_returns_full_map_for_vl06o() {
         cfg.tcode = Some(HashMap::new());
     }
 
-    let mut vl = TcodeConfig::default();
-    vl.variant = Some("V".into());
-    vl.layout = Some("L".into());
-    vl.column_name = Some("Col".into());
-    vl.date_range_start = Some("04/01/2025".into());
-    vl.date_range_end = Some("04/15/2025".into());
-    vl.by_date = Some("true".into());
+    let vl = TcodeConfig {
+        variant: Some("V".into()),
+        layout: Some("L".into()),
+        column_name: Some("Col".into()),
+        date_range_start: Some("04/01/2025".into()),
+        date_range_end: Some("04/15/2025".into()),
+        by_date: Some("true".into()),
+        ..Default::default()
+    };
     cfg.tcode.as_mut().unwrap().insert("VL06O".into(), vl);
 
     let mut vt = TcodeConfig::default();
@@ -81,13 +83,22 @@ fn get_tcode_config_returns_full_map_for_vl06o() {
     assert_eq!(vl_map.get("variant").map(String::as_str), Some("V"));
     assert_eq!(vl_map.get("layout").map(String::as_str), Some("L"));
     assert_eq!(vl_map.get("column_name").map(String::as_str), Some("Col"));
-    assert_eq!(vl_map.get("date_range_start").map(String::as_str), Some("04/01/2025"));
-    assert_eq!(vl_map.get("date_range_end").map(String::as_str), Some("04/15/2025"));
+    assert_eq!(
+        vl_map.get("date_range_start").map(String::as_str),
+        Some("04/01/2025")
+    );
+    assert_eq!(
+        vl_map.get("date_range_end").map(String::as_str),
+        Some("04/15/2025")
+    );
     assert_eq!(vl_map.get("by_date").map(String::as_str), Some("true"));
 
     let vt_map = cfg.get_tcode_config("VT11", None).unwrap();
-    assert_eq!(vt_map.get("custom_param").map(String::as_str), Some("custom_value"));
-    assert!(vt_map.get("by_date").is_none());
+    assert_eq!(
+        vt_map.get("custom_param").map(String::as_str),
+        Some("custom_value")
+    );
+    assert!(!vt_map.contains_key("by_date"));
 }
 
 #[test]

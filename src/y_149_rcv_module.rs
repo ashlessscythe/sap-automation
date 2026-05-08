@@ -197,7 +197,7 @@ fn get_export_type_description(export_type: u8) -> &'static str {
 fn config_has_export_type() -> bool {
     if let Ok(config) = SapConfig::load() {
         if let Some(tcode_config) = config.get_tcode_config("y_dn3_47000149", Some(true)) {
-            return tcode_config.get("export_type").is_some();
+            return tcode_config.contains_key("export_type");
         }
     }
     false

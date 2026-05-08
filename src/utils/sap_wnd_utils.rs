@@ -1,3 +1,6 @@
+//! Window/popup helpers; not every helper is on the default interactive menu path.
+#![allow(dead_code)]
+
 use crate::utils::sap_constants::{ErrorCheck, ParamsStruct, TIME_FORMAT};
 use crate::utils::sap_ctrl_utils::{exist_ctrl, hit_ctrl};
 use crate::utils::sap_tcode_utils::check_tcode;

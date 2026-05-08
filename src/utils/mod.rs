@@ -6,6 +6,7 @@ pub use self::sap_wnd_utils::*;
 
 // Declare and re-export submodules
 pub mod choose_layout_utils;
+pub mod cli_overrides;
 pub mod config_handlers;
 pub mod config_ops;
 pub mod config_types;

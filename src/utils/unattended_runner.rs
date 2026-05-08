@@ -1,10 +1,16 @@
 use crate::app::get_or_create_connection;
+use crate::utils::cli_overrides::cli_overrides;
 use crate::utils::loop_config::LoopConfig;
 use crate::utils::sequence_config::{execute_menu_option, get_menu_option_name, SequenceConfig};
 use anyhow::Result;
 use sap_scripting::*;
 use std::thread;
 use std::time::Duration;
+
+/// Returns true when `tcode` matches the 149 report (case-insensitive).
+fn is_149_tcode(tcode: &str) -> bool {
+    tcode.eq_ignore_ascii_case("y_dn3_47000149")
+}
 
 /// Run the loop configuration unattended
 pub fn run_loop_unattended(session: &GuiSession, skip_sap_check: bool) -> Result<()> {
@@ -30,7 +36,7 @@ fn run_loop_unattended_internal(session: &GuiSession) -> Result<()> {
     println!("Run Loop from Configuration (Unattended Mode)");
     println!("============================================");
 
-    // Load loop configuration
+    // Load loop configuration (CLI overrides already merged in by LoopConfig::load)
     let config = match LoopConfig::load() {
         Ok(cfg) => cfg,
         Err(e) => {
@@ -38,11 +44,21 @@ fn run_loop_unattended_internal(session: &GuiSession) -> Result<()> {
         }
     };
 
-    // Check if TCode is configured
+    // Required-field validation (no sane default → must come from flag or config)
     if config.tcode.is_empty() {
         return Err(anyhow::anyhow!(
-            "No TCode configured for loop execution. Please configure loop parameters first."
+            "Missing flag for tcode, enter with --tcode (or set [loop].tcode in config.toml)"
         ));
+    }
+    if is_149_tcode(&config.tcode) && config.tcode_run_type.as_deref().unwrap_or("").is_empty() {
+        return Err(anyhow::anyhow!(
+            "Missing flag for tcode-run-type, enter with --tcode-run-type=rcv|mat|tsp \
+             (or set [loop].tcode_run_type in config.toml; required for 149 reports)"
+        ));
+    }
+
+    if let Some(line) = cli_overrides().summary_line() {
+        println!("CLI overrides applied (these win over config.toml): {}", line);
     }
 
     println!(
@@ -176,7 +192,7 @@ fn run_sequence_unattended_internal(session: &GuiSession) -> Result<()> {
     println!("Run Sequence from Configuration (Unattended Mode)");
     println!("================================================");
 
-    // Load sequence configuration
+    // Load sequence configuration (CLI sequence-level overrides already merged in)
     let config = match SequenceConfig::load() {
         Ok(cfg) => cfg,
         Err(e) => {
@@ -187,11 +203,18 @@ fn run_sequence_unattended_internal(session: &GuiSession) -> Result<()> {
         }
     };
 
-    // Check if sequence options are configured
+    // Required: sequence options. There is no sane default — the user must
+    // pick which menu items run (via the interactive `Configure Sequence`).
     if config.options.is_empty() {
         return Err(anyhow::anyhow!(
-            "No sequence options configured. Please configure sequence parameters first."
+            "No sequence options configured. Sequence uses config.toml — \
+             create and set up [sequence].options (run interactively and pick \
+             `Configure Sequence`, or hand-edit config.toml)."
         ));
+    }
+
+    if let Some(line) = cli_overrides().summary_line() {
+        println!("CLI overrides applied (these win over config.toml): {}", line);
     }
 
     println!("Running sequence with the following configuration:");
@@ -280,6 +303,80 @@ fn run_sequence_unattended_internal(session: &GuiSession) -> Result<()> {
     }
 
     println!("Sequence execution completed.");
+    Ok(())
+}
+
+/// Run a single TCode auto-flow once (single-shot mode, used when `--tcode=...`
+/// is passed without `--run-loop` or `--run-sequence`).
+///
+/// `tcode` should be the resolved (already uppercased) TCode name from CLI
+/// overrides. `tcode_run_type` is required for 149 reports.
+pub fn run_single_tcode_unattended(
+    session: &GuiSession,
+    tcode: &str,
+    tcode_run_type: Option<&str>,
+    skip_sap_check: bool,
+) -> Result<()> {
+    println!("Starting single-shot TCode execution...");
+
+    if !skip_sap_check {
+        let transaction = session.info()?.transaction()?;
+        if transaction.contains("S000") {
+            return Err(anyhow::anyhow!("Not logged into SAP. Please log in first."));
+        }
+    }
+
+    if is_149_tcode(tcode) && tcode_run_type.unwrap_or("").is_empty() {
+        return Err(anyhow::anyhow!(
+            "Missing flag for tcode-run-type, enter with --tcode-run-type=rcv|mat|tsp \
+             (required for 149 reports)"
+        ));
+    }
+
+    if let Some(line) = cli_overrides().summary_line() {
+        println!("CLI overrides applied (these win over config.toml): {}", line);
+    }
+
+    println!("Running TCode '{}' once...", tcode);
+
+    // Activate the TCode (start_at_main=true, exit_existing=true) just like the
+    // loop runner does so we don't pile up sessions.
+    if !crate::utils::sap_tcode_utils::check_tcode(session, tcode, Some(true), Some(true))? {
+        return Err(anyhow::anyhow!("Failed to activate TCode '{}'", tcode));
+    }
+
+    match tcode {
+        "VL06O" => crate::vl06o_module::run_vl06o_auto(session)?,
+        "VT11" => crate::vt11_module::run_vt11_auto(session)?,
+        "ZVT11" => crate::zvt11_module::run_zvt11_auto(session)?,
+        "ZMDESNR" => crate::zmdesnr_module::run_zmdesnr_auto(session)?,
+        "Y_DN3_47000149" => match tcode_run_type {
+            Some("rcv") => {
+                println!("Running 149 RCV auto...");
+                crate::y_149_rcv_module::run_149_rcv_auto(session)?;
+            }
+            Some("mat") | Some("tsp") => {
+                println!("Running 149 Material Not TSP auto...");
+                crate::y_149_material_module::run_149_material_auto(session)?;
+            }
+            Some(other) => {
+                return Err(anyhow::anyhow!(
+                    "Unknown --tcode-run-type='{}'. Use rcv | mat | tsp.",
+                    other
+                ));
+            }
+            None => unreachable!("validated above"),
+        },
+        other => {
+            return Err(anyhow::anyhow!(
+                "Single-shot mode does not support TCode '{}'. Supported: \
+                 VT11, ZVT11, VL06O, ZMDESNR, Y_DN3_47000149.",
+                other
+            ));
+        }
+    }
+
+    println!("Single-shot TCode execution completed.");
     Ok(())
 }
 

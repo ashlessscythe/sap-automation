@@ -170,6 +170,18 @@ impl SequenceConfig {
             }
         }
 
+        // CLI flag overrides win over [sequence] values.
+        let o = crate::utils::cli_overrides::cli_overrides();
+        if let Some(iter) = o.iterations {
+            config.iterations = iter;
+        }
+        if let Some(delay) = o.delay_seconds {
+            config.delay_seconds = delay;
+        }
+        if let Some(intvl) = o.interval_seconds {
+            config.interval_seconds = intvl;
+        }
+
         Ok(config)
     }
 

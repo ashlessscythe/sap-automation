@@ -39,8 +39,8 @@ pub fn run_export(session: &GuiSession, params: &Report149Params) -> Result<bool
     // Use the standard variant_select utility
     if !variant_select(session, "y_dn3_47000149", &params.variant)? {
         println!(
-            "Failed to select variant '{}' for tCode '{}'",
-            &params.variant, "y_dn3_47000149"
+            "Failed to select variant '{}' for tCode 'y_dn3_47000149'",
+            &params.variant
         );
         return Ok(false);
     }
@@ -100,8 +100,8 @@ pub fn run_export(session: &GuiSession, params: &Report149Params) -> Result<bool
             // Use the standard variant_select utility
             if !variant_select(session, "y_dn3_47000149", &params.variant)? {
                 println!(
-                    "Failed to select variant '{}' for tCode '{}'",
-                    &params.variant, "y_dn3_47000149"
+                    "Failed to select variant '{}' for tCode 'y_dn3_47000149'",
+                    &params.variant
                 );
                 continue;
             }

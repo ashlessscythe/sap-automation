@@ -124,7 +124,9 @@ impl SapComponent for MockSapComponent {
     }
 
     fn set_focus(&self) -> Result<()> {
-        self.events.borrow_mut().push(MockEvent::SetFocus(self.id()));
+        self.events
+            .borrow_mut()
+            .push(MockEvent::SetFocus(self.id()));
         Ok(())
     }
 

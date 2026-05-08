@@ -1,3 +1,6 @@
+//! Ratatui menus; some widgets (e.g. input dialog) are kept for future UX paths.
+#![allow(dead_code)]
+
 use crossterm::{
     cursor::{Hide, Show},
     event::{self, Event, KeyCode, KeyEventKind},
@@ -91,11 +94,7 @@ impl App {
         let i = match self.state.selected() {
             Some(i) => {
                 let page_size = 10; // Jump by 10 items
-                if i < page_size {
-                    0
-                } else {
-                    i - page_size
-                }
+                i.saturating_sub(page_size)
             }
             None => 0,
         };
@@ -240,11 +239,7 @@ fn ui(f: &mut Frame, app: &App) {
     let selected_index = app.state.selected().unwrap_or(0);
 
     // Calculate scroll offset to keep selected item in the middle
-    let mut adjusted_scroll_offset = if selected_index > visible_height as usize / 2 {
-        selected_index - visible_height as usize / 2
-    } else {
-        0
-    };
+    let mut adjusted_scroll_offset = selected_index.saturating_sub(visible_height as usize / 2);
 
     // Ensure we don't scroll past the end
     let max_scroll = app.items.len().saturating_sub(visible_height as usize);
@@ -612,26 +607,18 @@ fn run_input_app<B: Backend>(
                             input.insert(*cursor_pos, c);
                             *cursor_pos += 1;
                         }
-                        KeyCode::Backspace => {
-                            if *cursor_pos > 0 {
-                                input.remove(*cursor_pos - 1);
-                                *cursor_pos -= 1;
-                            }
+                        KeyCode::Backspace if *cursor_pos > 0 => {
+                            input.remove(*cursor_pos - 1);
+                            *cursor_pos -= 1;
                         }
-                        KeyCode::Delete => {
-                            if *cursor_pos < input.len() {
-                                input.remove(*cursor_pos);
-                            }
+                        KeyCode::Delete if *cursor_pos < input.len() => {
+                            input.remove(*cursor_pos);
                         }
-                        KeyCode::Left => {
-                            if *cursor_pos > 0 {
-                                *cursor_pos -= 1;
-                            }
+                        KeyCode::Left if *cursor_pos > 0 => {
+                            *cursor_pos -= 1;
                         }
-                        KeyCode::Right => {
-                            if *cursor_pos < input.len() {
-                                *cursor_pos += 1;
-                            }
+                        KeyCode::Right if *cursor_pos < input.len() => {
+                            *cursor_pos += 1;
                         }
                         KeyCode::Enter => {
                             return Ok(Some(input.clone()));

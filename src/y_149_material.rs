@@ -50,8 +50,8 @@ pub fn run_export(session: &GuiSession, params: &Report149MaterialParams) -> Res
     if let Some(ref variant) = params.variant {
         if !variant_select(session, "y_dn3_47000149", variant.as_str())? {
             println!(
-                "Failed to select variant '{}' for tCode '{}'",
-                variant, "y_dn3_47000149"
+                "Failed to select variant '{}' for tCode 'y_dn3_47000149'",
+                variant
             );
             return Ok(false);
         }

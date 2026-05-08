@@ -1,3 +1,6 @@
+//! Column-oriented Excel helpers; kept for tooling/tests, not always called from `main`.
+#![allow(dead_code)]
+
 use anyhow::{Context, Result};
 use calamine::{open_workbook, DataType, Range, Reader, Xlsx};
 use std::io::{self, ErrorKind};
@@ -30,6 +33,8 @@ impl From<&DataType> for ExcelValue {
     }
 }
 
+// Prefer `Display` long-term; kept as `ToString` for minimal churn with existing callers.
+#[allow(clippy::to_string_trait_impl)]
 impl ToString for ExcelValue {
     fn to_string(&self) -> String {
         match self {

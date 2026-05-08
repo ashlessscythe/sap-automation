@@ -268,7 +268,9 @@ fn summary_line_includes_set_flags() {
     ])
     .unwrap();
     let o = cli.to_overrides().unwrap();
-    let line = o.summary_line().expect("non-empty CliOverrides has summary");
+    let line = o
+        .summary_line()
+        .expect("non-empty CliOverrides has summary");
     assert!(line.contains("--tcode=VT11"));
     assert!(line.contains("--variant=v1"));
     assert!(line.contains("--by-delivery=false"));

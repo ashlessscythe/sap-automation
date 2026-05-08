@@ -244,12 +244,10 @@ pub fn resolve_path(path_str: &str) -> String {
         // Get the parent directory of the reports directory
         if let Some(parent_dir) = reports_path.parent() {
             // Remove the "../" prefix and append the rest to the parent directory
-            let rest_of_path = if path_str.starts_with("../") {
-                &path_str[3..]
-            } else {
-                // starts_with("..\\")
-                &path_str[3..]
-            };
+            let rest_of_path = path_str
+                .strip_prefix("../")
+                .or_else(|| path_str.strip_prefix("..\\"))
+                .unwrap_or("");
 
             let resolved_path = format!("{}\\{}", parent_dir.to_string_lossy(), rest_of_path);
             println!("Attempting to use parent directory path: {}", resolved_path);

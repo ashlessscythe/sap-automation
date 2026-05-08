@@ -1,3 +1,6 @@
+//! Layout chooser ported from VBA; binary does not construct every helper type.
+#![allow(dead_code)]
+
 use sap_scripting::*;
 use std::thread;
 use std::time::Duration;
@@ -445,7 +448,7 @@ pub fn choose_layout_149(session: &GuiSession, layout_name: &str) -> windows::co
                 grid.click_current_cell()?;
 
                 eprintln!("DEBUG: 149 layout selection completed successfully");
-                return Ok("Layout selected successfully".to_string());
+                Ok("Layout selected successfully".to_string())
             } else {
                 eprintln!("DEBUG: Layout '{}' not found in grid", layout_name);
 
@@ -479,20 +482,20 @@ pub fn choose_layout_149(session: &GuiSession, layout_name: &str) -> windows::co
                     close_popups(session, None, None)?;
 
                     // Recursively call the function with the new layout name
-                    return choose_layout_149(session, &new_layout);
+                    choose_layout_149(session, &new_layout)
                 } else {
                     // User wants to exit
                     close_popups(session, None, None)?;
-                    return Ok("Layout selection cancelled".to_string());
+                    Ok("Layout selection cancelled".to_string())
                 }
             }
         } else {
             eprintln!("DEBUG: Grid object found but downcast failed");
-            return Ok("Failed to access grid object".to_string());
+            Ok("Failed to access grid object".to_string())
         }
     } else {
         eprintln!("DEBUG: Grid not found at: {}", grid_id);
-        return Ok("Failed to find layout grid".to_string());
+        Ok("Failed to find layout grid".to_string())
     }
 }
 
@@ -575,7 +578,10 @@ pub fn choose_layout_zvt11(
                 // Step 4: Set current cell to the found row
                 eprintln!("DEBUG: Setting current cell to row {}", layout_row);
                 // Try to set current cell with the first available column
-                if let Ok(_) = grid.set_current_cell(layout_row, "TEXT".to_string()) {
+                if grid
+                    .set_current_cell(layout_row, "TEXT".to_string())
+                    .is_ok()
+                {
                     eprintln!("DEBUG: Current cell set successfully");
                 }
 
@@ -588,7 +594,7 @@ pub fn choose_layout_zvt11(
                 grid.click_current_cell()?;
 
                 eprintln!("DEBUG: ZVT11 layout selection completed successfully");
-                return Ok("Layout selected successfully".to_string());
+                Ok("Layout selected successfully".to_string())
             } else {
                 eprintln!("DEBUG: Layout '{}' not found in ZVT11 grid", layout_name);
 
@@ -622,20 +628,20 @@ pub fn choose_layout_zvt11(
                     close_popups(session, None, None)?;
 
                     // Recursively call the function with the new layout name
-                    return choose_layout_zvt11(session, &new_layout);
+                    choose_layout_zvt11(session, &new_layout)
                 } else {
                     // User wants to exit
                     close_popups(session, None, None)?;
-                    return Ok("Layout selection cancelled".to_string());
+                    Ok("Layout selection cancelled".to_string())
                 }
             }
         } else {
             eprintln!("DEBUG: ZVT11 grid object found but downcast failed");
-            return Ok("Failed to access ZVT11 grid object".to_string());
+            Ok("Failed to access ZVT11 grid object".to_string())
         }
     } else {
         eprintln!("DEBUG: ZVT11 grid not found at: {}", grid_id);
-        return Ok("Failed to find ZVT11 layout grid".to_string());
+        Ok("Failed to find ZVT11 layout grid".to_string())
     }
 }
 

@@ -103,7 +103,9 @@ fn rejects_run_loop_and_run_sequence_together() {
         .args(["--run-loop", "--run-sequence"])
         .assert()
         .failure()
-        .stderr(predicate::str::contains("--run-loop").or(predicate::str::contains("--run-sequence")));
+        .stderr(
+            predicate::str::contains("--run-loop").or(predicate::str::contains("--run-sequence")),
+        );
 }
 
 // ---------- smoke: --help and --version still work ----------

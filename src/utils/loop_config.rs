@@ -1,3 +1,6 @@
+//! Loop runner and config UI; `new()` and other entry points are not all used from the bin.
+#![allow(dead_code)]
+
 use anyhow::Result;
 use dialoguer::{Input, Select};
 use sap_scripting::*;

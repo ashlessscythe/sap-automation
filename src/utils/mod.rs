@@ -31,4 +31,5 @@ pub mod setup_layout_li_utils;
 pub mod setup_layout_utils;
 pub mod source_overrides;
 pub mod unattended_runner;
+#[allow(clippy::module_inception)]
 pub mod utils;

@@ -201,6 +201,8 @@ pub struct VL06ODateUpdateParams {
     pub entries: Vec<String>,
     pub target_date: NaiveDate,
     pub sap_variant_name: Option<String>,
+    /// Carried for symmetry with other param structs; `run_date_update` hard-codes VL06O today.
+    #[allow(dead_code)]
     pub t_code: String,
     pub is_shipment: bool,
 }
@@ -431,10 +433,10 @@ pub fn run_export(session: &GuiSession, params: &VL06OParams) -> Result<bool> {
     // Export preference: try local file export if configured; otherwise Excel
     if let Ok(config) = SapConfig::load() {
         if let Some(exp_type) = config.get_effective_export_type("VL06O") {
-            if try_open_local_file_export(session) {
-                if export_local_file(session, "VL06O", exp_type, None).is_ok() {
-                    return Ok(true);
-                }
+            if try_open_local_file_export(session)
+                && export_local_file(session, "VL06O", exp_type, None).is_ok()
+            {
+                return Ok(true);
             }
             println!("Local file export path not available; falling back to Excel export...");
         }
@@ -613,10 +615,10 @@ pub fn run_export_delivery_packages(
     // Export preference: try local file export if configured; otherwise Excel
     if let Ok(config) = SapConfig::load() {
         if let Some(exp_type) = config.get_effective_export_type("VL06O") {
-            if try_open_local_file_export(session) {
-                if export_local_file(session, "VL06O", exp_type, None).is_ok() {
-                    return Ok(true);
-                }
+            if try_open_local_file_export(session)
+                && export_local_file(session, "VL06O", exp_type, None).is_ok()
+            {
+                return Ok(true);
             }
             println!("Local file export path not available; falling back to Excel export...");
         }

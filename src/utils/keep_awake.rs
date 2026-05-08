@@ -1,3 +1,6 @@
+//! Keep-awake helpers; interactive/unattended paths use different subsets of this module.
+#![allow(dead_code)]
+
 use std::thread;
 use std::time::Duration;
 use windows_sys::Win32::System::Power::{

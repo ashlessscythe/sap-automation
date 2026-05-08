@@ -88,7 +88,9 @@ fn checkbox_round_trip_and_records_set_selected() {
     let mut session = MockSapSession::new("s");
     session.add_checkbox("wnd[0]/usr/chkFlag", false);
 
-    let comp = session.find_by_id("wnd[0]/usr/chkFlag".to_string()).unwrap();
+    let comp = session
+        .find_by_id("wnd[0]/usr/chkFlag".to_string())
+        .unwrap();
     assert!(!comp.selected().unwrap());
     comp.set_selected(true).unwrap();
     assert!(comp.selected().unwrap());

@@ -345,7 +345,10 @@ pub fn run_vl06o_delivery_packages_auto(session: &GuiSession) -> Result<()> {
                 }
             }
             Err(e) => {
-                println!("CLI delivery-source error: {}; keeping default delivery numbers", e);
+                println!(
+                    "CLI delivery-source error: {}; keeping default delivery numbers",
+                    e
+                );
             }
         }
     }

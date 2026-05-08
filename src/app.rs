@@ -60,12 +60,9 @@ pub fn handle_login(session: &GuiSession) -> anyhow::Result<()> {
             .default(0)
             .interact()
             .unwrap();
-        match choice {
-            0 => {
-                close_popups(session, None, None)?;
-                session.start_transaction("SESSION_MANAGER".into())?;
-            }
-            _ => {} // no-op
+        if choice == 0 {
+            close_popups(session, None, None)?;
+            session.start_transaction("SESSION_MANAGER".into())?;
         }
         return Ok(());
     }
@@ -158,7 +155,10 @@ pub fn get_login_parameters() -> windows::core::Result<LoginParams> {
 
     // Use instance_id from params (which was updated from config)
     let auth_file = format!("{}sap_auto_{}.txt", auth_path, params.instance_id);
-    let key_file = format!("{}sap_auto_{}{}", auth_path, params.instance_id, KEY_FILE_SUFFIX);
+    let key_file = format!(
+        "{}sap_auto_{}{}",
+        auth_path, params.instance_id, KEY_FILE_SUFFIX
+    );
 
     // Try to read credentials from file
     let mut ask_for_credentials = true;

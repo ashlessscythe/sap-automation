@@ -1,3 +1,6 @@
+//! Layout setup helpers (VBA port); kept for parity with legacy flows.
+#![allow(dead_code)]
+
 use sap_scripting::*;
 use std::thread;
 use std::time::Duration;

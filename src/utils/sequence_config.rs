@@ -1,3 +1,6 @@
+//! Sequence runner and config UI; same dead_code story as `loop_config`.
+#![allow(dead_code)]
+
 use anyhow::Result;
 use dialoguer::{Input, Select};
 use sap_scripting::*;

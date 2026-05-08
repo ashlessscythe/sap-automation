@@ -1,3 +1,6 @@
+//! Trait abstraction for mocks/real SAP; methods are exercised from tests and impl crates.
+#![allow(dead_code)]
+
 use crate::utils::sap_constants::CtrlCheck;
 use windows::core::Result;
 

@@ -122,10 +122,7 @@ fn read_column_from_file(path: &str, column: &str) -> std::io::Result<Vec<String
         "tsv" | "txt" | "rtf" | "html" => read_tab_delimited_column(path, column),
         "xlsx" | "xls" => match read_excel_column(path, "Sheet1", column) {
             Ok(v) => Ok(v),
-            Err(e) => Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("Excel read error: {}", e),
-            )),
+            Err(e) => Err(std::io::Error::other(format!("Excel read error: {}", e))),
         },
         other => {
             println!(

@@ -1,3 +1,6 @@
+//! SAP control probes; large API used from different T-code modules and tests.
+#![allow(dead_code)]
+
 use sap_scripting::*;
 use windows::core::Result;
 
@@ -92,13 +95,13 @@ pub fn hit_ctrl(
                     if let Some(text_field) = ctrl.downcast::<GuiTextField>() {
                         text_field.text()
                     } else if let Some(text_field) = ctrl.downcast::<GuiCTextField>() {
-                        return text_field.text();
+                        text_field.text()
                     } else if let Some(label) = ctrl.downcast::<GuiLabel>() {
-                        return label.text();
+                        label.text()
                     } else if let Some(statusbar) = ctrl.downcast::<GuiStatusbar>() {
-                        return statusbar.text();
+                        statusbar.text()
                     } else {
-                        return Ok("".to_string());
+                        Ok("".to_string())
                     }
                 } else {
                     Ok("".to_string())
@@ -111,9 +114,9 @@ pub fn hit_ctrl(
                         text_field.set_text(value.to_string())?;
                     }
                 }
-                return Ok("".to_string());
+                Ok("".to_string())
             } else {
-                return Ok("".to_string());
+                Ok("".to_string())
             }
         }
         Err(_) => {

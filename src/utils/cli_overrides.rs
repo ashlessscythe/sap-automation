@@ -4,6 +4,10 @@
 //! it via [`set_cli_overrides`] before any config is loaded. The various
 //! `*Config::load` paths then call [`cli_overrides`] and merge in any values that
 //! were set on the command line (CLI wins over `config.toml`).
+//!
+//! Some helpers are only used from tests or future CLI plumbing; the library build
+//! linked from the binary does not see every `pub` use (policy 4.A).
+#![allow(dead_code)]
 
 use chrono::NaiveDate;
 use std::sync::OnceLock;

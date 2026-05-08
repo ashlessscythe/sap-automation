@@ -100,17 +100,20 @@ pub fn run_vl06o_auto(session: &GuiSession) -> Result<()> {
         // CLI override (--delivery-file / --delivery-col) wins over legacy merge.
         // When CLI source is in play we skip the VT11 ListCheck "_.csv" mark step
         // (`listcheck_path_opt`) since we never consumed those files.
-        let cli_override_nums = match crate::utils::source_overrides::cli_delivery_numbers_override()
-        {
-            Ok(Some(nums)) => Some(nums),
-            Ok(None) => None,
-            Err(e) => {
-                println!("CLI delivery-source error: {}; falling back to legacy merge", e);
-                None
-            }
-        };
+        let cli_override_nums =
+            match crate::utils::source_overrides::cli_delivery_numbers_override() {
+                Ok(Some(nums)) => Some(nums),
+                Ok(None) => None,
+                Err(e) => {
+                    println!(
+                        "CLI delivery-source error: {}; falling back to legacy merge",
+                        e
+                    );
+                    None
+                }
+            };
 
-        let (mut delivery_numbers, listcheck_path_opt): (Vec<String>, Option<String>) =
+        let (delivery_numbers, listcheck_path_opt): (Vec<String>, Option<String>) =
             if let Some(nums) = cli_override_nums {
                 (nums, None)
             } else {
@@ -199,7 +202,10 @@ pub fn run_vl06o_auto(session: &GuiSession) -> Result<()> {
         Ok(Some(nums)) => Some(nums),
         Ok(None) => None,
         Err(e) => {
-            println!("CLI shipment-source error: {}; falling back to default lookup", e);
+            println!(
+                "CLI shipment-source error: {}; falling back to default lookup",
+                e
+            );
             None
         }
     };
@@ -979,8 +985,8 @@ fn get_vl06o_date_update_parameters() -> Result<VL06ODateUpdateParams> {
         .interact_text()
         .unwrap();
 
-    params.target_date =
-        parse_date(&target_date_str).unwrap_or_else(|_| chrono::Local::now().date_naive().succ_opt().unwrap());
+    params.target_date = parse_date(&target_date_str)
+        .unwrap_or_else(|_| chrono::Local::now().date_naive().succ_opt().unwrap());
 
     // Get variant name
     let variant_value = params

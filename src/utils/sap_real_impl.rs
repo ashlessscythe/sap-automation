@@ -1,3 +1,6 @@
+//! Real SAP GUI `SapSession` implementation; production uses raw `GuiSession` today.
+#![allow(dead_code)]
+
 use crate::utils::sap_interfaces::{SapComponent, SapComponentFactory, SapSession, SapSessionInfo};
 use sap_scripting::*;
 use windows::core::{Error, Result, HRESULT};

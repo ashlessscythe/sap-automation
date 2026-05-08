@@ -144,7 +144,10 @@ pub fn run_zmdesnr_auto(session: &GuiSession) -> Result<()> {
     }
     if let Some(add_layout_columns) = &params.additional_params.add_layout_columns {
         if !add_layout_columns.is_empty() {
-            println!("Additional param: add_layout_columns: {:?}", add_layout_columns);
+            println!(
+                "Additional param: add_layout_columns: {:?}",
+                add_layout_columns
+            );
         }
     }
     println!("--------------------------------------------");

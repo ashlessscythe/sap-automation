@@ -2,7 +2,7 @@ use chrono::NaiveDate;
 use sap_scripting::*;
 use windows::core::Result;
 
-use crate::utils::{choose_layout, cli_overrides, sap_file_utils::*};
+use crate::utils::{choose_layout, sap_file_utils::*};
 // Import specific functions to avoid ambiguity
 use crate::utils::cli_overrides::cli_overrides;
 use crate::utils::config_ops::get_reports_dir;
@@ -497,10 +497,10 @@ pub fn run_export(session: &GuiSession, params: &VT11Params) -> Result<bool> {
     // Export preference: try local file export if configured; otherwise Excel
     if let Ok(config) = crate::utils::config_types::SapConfig::load() {
         if let Some(exp_type) = config.get_effective_export_type("VT11") {
-            if try_open_local_file_export(session) {
-                if export_local_file(session, "VT11", exp_type, None).is_ok() {
-                    return Ok(true);
-                }
+            if try_open_local_file_export(session)
+                && export_local_file(session, "VT11", exp_type, None).is_ok()
+            {
+                return Ok(true);
             }
             println!("Local file export path not available; falling back to Excel export...");
         }
@@ -595,8 +595,8 @@ pub fn run_listcheck(session: &GuiSession, params: &VT11Params) -> Result<Vec<St
             start = today - chrono::Duration::days(1);
             end = today + chrono::Duration::days(1);
         }
-        let start_date_str = format!("{}*", start.format("%m/%d/%Y").to_string());
-        let end_date_str = format!("{}*", end.format("%m/%d/%Y").to_string());
+        let start_date_str = format!("{}*", start.format("%m/%d/%Y"));
+        let end_date_str = format!("{}*", end.format("%m/%d/%Y"));
         if let Ok(txt) = session.find_by_id("wnd[0]/usr/txtK_TPBEZ-LOW".to_string()) {
             if let Some(text_field) = txt.downcast::<GuiTextField>() {
                 text_field.set_text(start_date_str)?;

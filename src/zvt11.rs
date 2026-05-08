@@ -279,33 +279,36 @@ pub fn run_export(session: &GuiSession, params: &ZVT11Params) -> Result<bool> {
         println!("Filtering by delivery numbers...");
 
         // CLI override (--delivery-file / --delivery-col) wins over legacy merge.
-        let mut delivery_numbers = match crate::utils::source_overrides::cli_delivery_numbers_override()
-        {
-            Ok(Some(nums)) => nums,
-            Ok(None) => {
-                let mut delivery_numbers = get_delivery_numbers_from_zmdesnr()?;
-                let listcheck_numbers = get_delivery_numbers_from_listcheck()?;
-                if !listcheck_numbers.is_empty() {
+        let mut delivery_numbers =
+            match crate::utils::source_overrides::cli_delivery_numbers_override() {
+                Ok(Some(nums)) => nums,
+                Ok(None) => {
+                    let mut delivery_numbers = get_delivery_numbers_from_zmdesnr()?;
+                    let listcheck_numbers = get_delivery_numbers_from_listcheck()?;
+                    if !listcheck_numbers.is_empty() {
+                        println!(
+                            "Appending {} deliveries from VT11 ListCheck CSV",
+                            listcheck_numbers.len()
+                        );
+                        delivery_numbers.extend(listcheck_numbers);
+                    } else {
+                        println!("No VT11 ListCheck deliveries to append.");
+                    }
+                    delivery_numbers
+                }
+                Err(e) => {
                     println!(
-                        "Appending {} deliveries from VT11 ListCheck CSV",
-                        listcheck_numbers.len()
+                        "CLI delivery-source error: {}; falling back to legacy merge",
+                        e
                     );
-                    delivery_numbers.extend(listcheck_numbers);
-                } else {
-                    println!("No VT11 ListCheck deliveries to append.");
+                    let mut delivery_numbers = get_delivery_numbers_from_zmdesnr()?;
+                    let listcheck_numbers = get_delivery_numbers_from_listcheck()?;
+                    if !listcheck_numbers.is_empty() {
+                        delivery_numbers.extend(listcheck_numbers);
+                    }
+                    delivery_numbers
                 }
-                delivery_numbers
-            }
-            Err(e) => {
-                println!("CLI delivery-source error: {}; falling back to legacy merge", e);
-                let mut delivery_numbers = get_delivery_numbers_from_zmdesnr()?;
-                let listcheck_numbers = get_delivery_numbers_from_listcheck()?;
-                if !listcheck_numbers.is_empty() {
-                    delivery_numbers.extend(listcheck_numbers);
-                }
-                delivery_numbers
-            }
-        };
+            };
 
         delivery_numbers = delivery_numbers
             .into_iter()
@@ -459,10 +462,10 @@ pub fn run_export(session: &GuiSession, params: &ZVT11Params) -> Result<bool> {
     // Export preference: try local file export if configured; otherwise Excel
     if let Ok(config) = crate::utils::config_types::SapConfig::load() {
         if let Some(exp_type) = config.get_effective_export_type("ZVT11") {
-            if try_open_local_file_export(session) {
-                if export_local_file(session, "ZVT11", exp_type, None).is_ok() {
-                    return Ok(true);
-                }
+            if try_open_local_file_export(session)
+                && export_local_file(session, "ZVT11", exp_type, None).is_ok()
+            {
+                return Ok(true);
             }
             println!("Local file export path not available; falling back to Excel export...");
         }

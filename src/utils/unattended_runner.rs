@@ -1,3 +1,7 @@
+//! Unattended / headless-style flows; symbols are used from the `sap_automation` binary crate,
+//! which does not count toward the library crate's `dead_code` reachability (policy 4.A).
+#![allow(dead_code)]
+
 use crate::app::get_or_create_connection;
 use crate::utils::cli_overrides::cli_overrides;
 use crate::utils::loop_config::LoopConfig;
@@ -58,7 +62,10 @@ fn run_loop_unattended_internal(session: &GuiSession) -> Result<()> {
     }
 
     if let Some(line) = cli_overrides().summary_line() {
-        println!("CLI overrides applied (these win over config.toml): {}", line);
+        println!(
+            "CLI overrides applied (these win over config.toml): {}",
+            line
+        );
     }
 
     println!(
@@ -214,7 +221,10 @@ fn run_sequence_unattended_internal(session: &GuiSession) -> Result<()> {
     }
 
     if let Some(line) = cli_overrides().summary_line() {
-        println!("CLI overrides applied (these win over config.toml): {}", line);
+        println!(
+            "CLI overrides applied (these win over config.toml): {}",
+            line
+        );
     }
 
     println!("Running sequence with the following configuration:");
@@ -334,7 +344,10 @@ pub fn run_single_tcode_unattended(
     }
 
     if let Some(line) = cli_overrides().summary_line() {
-        println!("CLI overrides applied (these win over config.toml): {}", line);
+        println!(
+            "CLI overrides applied (these win over config.toml): {}",
+            line
+        );
     }
 
     println!("Running TCode '{}' once...", tcode);

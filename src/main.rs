@@ -46,7 +46,15 @@ fn main() -> anyhow::Result<()> {
     // Parse command line arguments
     let cli = Cli::parse();
 
-    // If command-line arguments are provided, run in unattended mode
+    // Handle top-level --run-loop / --run-sequence flag aliases for the subcommands
+    if cli.run_loop {
+        return run_unattended_loop(cli.skip_sap_check, cli.keep_awake);
+    }
+    if cli.run_sequence {
+        return run_unattended_sequence(cli.skip_sap_check, cli.keep_awake);
+    }
+
+    // If a subcommand was provided, run in unattended mode
     if let Some(command) = cli.command {
         return match command {
             Commands::RunLoop {

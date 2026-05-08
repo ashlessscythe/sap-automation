@@ -341,7 +341,65 @@ impl SapConfig {
             }
         }
 
+        // Apply CLI flag overrides last so they always win over file values
+        // and so they take effect even when config.toml is missing.
+        config.apply_cli_overrides();
+
         Ok(config)
+    }
+
+    /// Merge CLI flag overrides (installed via `cli_overrides::set_cli_overrides`)
+    /// into this config. Called at the end of every load path so every consumer
+    /// sees a merged view.
+    fn apply_cli_overrides(&mut self) {
+        let o = crate::utils::cli_overrides::cli_overrides();
+
+        // ----- [global] overrides -----
+        let touches_global = o.reports_dir.is_some()
+            || o.date_format.is_some()
+            || o.timezone.is_some();
+
+        if touches_global {
+            let global = self.global.get_or_insert_with(|| GlobalConfig {
+                instance_id: default_instance_id(),
+                reports_dir: get_default_reports_dir(),
+                default_tcode: None,
+                default_menu_option: Some(get_default_menu_option()),
+                date_format: default_date_format(),
+                timezone: default_timezone(),
+                default_export_type: None,
+                additional_params: HashMap::new(),
+            });
+
+            if let Some(dir) = &o.reports_dir {
+                // Match the file-load path which doubles backslashes for SAP paths.
+                global.reports_dir = dir.replace("\\", "\\\\");
+            }
+            if let Some(fmt) = &o.date_format {
+                global.date_format = fmt.clone();
+            }
+            if let Some(tz) = &o.timezone {
+                global.timezone = tz.clone();
+            }
+        }
+
+        // ----- [tcode.X] overrides (per --tcode <X>) -----
+        if let Some(tc_name) = &o.tcode {
+            // CliOverrides stores tcode pre-uppercased, but be defensive.
+            let key = tc_name.to_uppercase();
+            let map = self.tcode.get_or_insert_with(HashMap::new);
+            let entry = map.entry(key).or_insert_with(TcodeConfig::default);
+
+            if let Some(layout) = &o.layout {
+                entry.layout = Some(layout.clone());
+            }
+            if let Some(variant) = &o.variant {
+                entry.variant = Some(variant.clone());
+            }
+            if let Some(et) = o.export_type {
+                entry.export_type = Some(et);
+            }
+        }
     }
 
     /// Load configuration from legacy format

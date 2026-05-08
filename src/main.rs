@@ -1,8 +1,10 @@
 use sap_automation::cli::{Cli, Commands};
+use sap_automation::utils::cli_overrides::{cli_overrides, set_cli_overrides};
 use sap_automation::utils::config_types::SapConfig;
 use sap_automation::utils::keep_awake;
 use sap_automation::utils::unattended_runner::{
     init_sap_connection, run_loop_unattended, run_sequence_unattended,
+    run_single_tcode_unattended,
 };
 use sap_scripting::*;
 use std::thread;
@@ -46,6 +48,22 @@ fn main() -> anyhow::Result<()> {
     // Parse command line arguments
     let cli = Cli::parse();
 
+    // Install CLI overrides into the process-wide slot BEFORE any config load,
+    // so every `*Config::load()` call site sees the merged view.
+    set_cli_overrides(cli.to_overrides());
+
+    // --run-sequence is config-driven: per-tcode flags are not allowed.
+    if cli.run_sequence || matches!(cli.command, Some(Commands::RunSequence { .. })) {
+        let bad = cli_overrides().per_tcode_flag_names();
+        if !bad.is_empty() {
+            return Err(anyhow::anyhow!(
+                "{} can't be used with --run-sequence; sequence uses config.toml — \
+                 create and set up [sequence] / [tcode.X] (configure interactively or hand-edit).",
+                bad.join(", ")
+            ));
+        }
+    }
+
     // Handle top-level --run-loop / --run-sequence flag aliases for the subcommands
     if cli.run_loop {
         return run_unattended_loop(cli.skip_sap_check, cli.keep_awake);
@@ -66,6 +84,17 @@ fn main() -> anyhow::Result<()> {
                 keep_awake,
             } => run_unattended_sequence(skip_sap_check, keep_awake),
         };
+    }
+
+    // Single-shot mode: --tcode without --run-loop/--run-sequence runs the
+    // tcode auto flow once.
+    if let Some(tcode) = cli_overrides().tcode.clone() {
+        return run_unattended_single_tcode(
+            &tcode,
+            cli_overrides().tcode_run_type.clone(),
+            cli.skip_sap_check,
+            cli.keep_awake,
+        );
     }
 
     // Otherwise, run in interactive mode
@@ -113,6 +142,30 @@ fn run_unattended_sequence(skip_sap_check: bool, keep_awake: bool) -> anyhow::Re
     run_sequence_unattended(&session, skip_sap_check)?;
 
     println!("Unattended sequence execution completed successfully.");
+    Ok(())
+}
+
+fn run_unattended_single_tcode(
+    tcode: &str,
+    tcode_run_type: Option<String>,
+    skip_sap_check: bool,
+    keep_awake: bool,
+) -> anyhow::Result<()> {
+    println!("SAP Automation - Unattended Single-Shot Mode");
+    println!("===========================================");
+
+    if keep_awake {
+        match keep_awake::enable_keep_awake(true) {
+            Ok(_) => println!("Keep-awake enabled - system will stay awake during execution"),
+            Err(e) => eprintln!("Warning: Failed to enable keep-awake: {}", e),
+        }
+    }
+
+    let (_com_instance, _wrapper, _engine, _connection, session) = init_sap_connection()?;
+
+    run_single_tcode_unattended(&session, tcode, tcode_run_type.as_deref(), skip_sap_check)?;
+
+    println!("Unattended single-shot execution completed successfully.");
     Ok(())
 }
 

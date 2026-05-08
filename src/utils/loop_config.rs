@@ -119,6 +119,22 @@ impl LoopConfig {
             }
         }
 
+        // CLI flag overrides win over both [loop] and legacy values, and they
+        // take effect even when config.toml is absent.
+        let o = crate::utils::cli_overrides::cli_overrides();
+        if let Some(tc) = &o.tcode {
+            config.tcode = tc.to_uppercase();
+        }
+        if let Some(rt) = &o.tcode_run_type {
+            config.tcode_run_type = Some(rt.clone());
+        }
+        if let Some(iter) = o.iterations {
+            config.iterations = iter;
+        }
+        if let Some(delay) = o.delay_seconds {
+            config.delay_seconds = delay;
+        }
+
         Ok(config)
     }
 

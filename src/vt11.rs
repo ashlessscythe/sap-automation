@@ -2,8 +2,9 @@ use chrono::NaiveDate;
 use sap_scripting::*;
 use windows::core::Result;
 
-use crate::utils::{choose_layout, sap_file_utils::*};
+use crate::utils::{choose_layout, cli_overrides, sap_file_utils::*};
 // Import specific functions to avoid ambiguity
+use crate::utils::cli_overrides::cli_overrides;
 use crate::utils::config_ops::get_reports_dir;
 use crate::utils::excel_file_ops::read_excel_column;
 use crate::utils::excel_path_utils::get_newest_file;
@@ -11,6 +12,7 @@ use crate::utils::sap_ctrl_utils::exist_ctrl;
 use crate::utils::sap_export_utils::export_local_file;
 use crate::utils::sap_tcode_utils::*;
 use crate::utils::sap_wnd_utils::*;
+use crate::utils::source_overrides::*;
 use chrono::Local;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -38,7 +40,7 @@ impl Default for VT11Params {
             end_date: chrono::Local::now().date_naive(),
             sap_variant_name: None,
             layout_row: None,
-            by_date: true,
+            by_date: false,
             by_delivery: false,
             limiter: None,
             t_code: "VT11".to_string(),
@@ -237,9 +239,12 @@ pub fn run_export(session: &GuiSession, params: &VT11Params) -> Result<bool> {
         return Ok(false);
     }
 
+    // get override format if exists
+    let date_fmt = cli_overrides().date_format.as_deref().unwrap_or("%m/%d/%Y");
+
     // Format dates for SAP
-    let start_date_str = params.start_date.format("%m/%d/%Y").to_string();
-    let end_date_str = params.end_date.format("%m/%d/%Y").to_string();
+    let start_date_str = params.start_date.format(date_fmt).to_string();
+    let end_date_str = params.end_date.format(date_fmt).to_string();
 
     // Apply variant if provided
     if let Some(variant_name) = &params.sap_variant_name {
@@ -255,15 +260,21 @@ pub fn run_export(session: &GuiSession, params: &VT11Params) -> Result<bool> {
     // Set date fields based on by_date parameter
     if params.by_date {
         // Set start date
+        println!("Setting start date to {:?}", start_date_str.clone());
         if let Ok(txt) = session.find_by_id("wnd[0]/usr/ctxtK_DATEN-LOW".to_string()) {
-            if let Some(text_field) = txt.downcast::<GuiTextField>() {
+            if let Some(text_field) = txt.downcast::<GuiCTextField>() {
+                println!("start date set to {:?}", start_date_str.clone());
                 text_field.set_text(start_date_str.clone())?;
+            } else {
+                println!("Error with txt.downcast");
             }
+        } else {
+            println!("Error with find_by_id");
         }
 
         // Set end date (leave blank if same as start date)
         if let Ok(txt) = session.find_by_id("wnd[0]/usr/ctxtK_DATEN-HIGH".to_string()) {
-            if let Some(text_field) = txt.downcast::<GuiTextField>() {
+            if let Some(text_field) = txt.downcast::<GuiCTextField>() {
                 if params.start_date == params.end_date {
                     text_field.set_text("".to_string())?;
                 } else {
@@ -277,27 +288,42 @@ pub fn run_export(session: &GuiSession, params: &VT11Params) -> Result<bool> {
     if params.by_delivery {
         println!("Filtering by delivery numbers...");
 
-        // Get delivery numbers from ZMDESNR export (same source as VL06O delivery module)
-        let mut delivery_numbers = get_delivery_numbers_from_zmdesnr()?;
+        // CLI override (--delivery-file / --delivery-col) wins over legacy merge.
+        let mut delivery_numbers = match cli_delivery_numbers_override() {
+            Ok(Some(nums)) => nums,
+            Ok(None) => {
+                let mut delivery_numbers = get_delivery_numbers_from_zmdesnr()?;
+                let listcheck_numbers = get_delivery_numbers_from_listcheck()?;
+                if !listcheck_numbers.is_empty() {
+                    println!(
+                        "Appending {} deliveries from VT11 ListCheck CSV",
+                        listcheck_numbers.len()
+                    );
+                    delivery_numbers.extend(listcheck_numbers);
+                }
+                delivery_numbers
+            }
+            Err(e) => {
+                println!(
+                    "CLI delivery-source error: {}; falling back to legacy merge",
+                    e
+                );
+                let mut delivery_numbers = get_delivery_numbers_from_zmdesnr()?;
+                let listcheck_numbers = get_delivery_numbers_from_listcheck()?;
+                if !listcheck_numbers.is_empty() {
+                    delivery_numbers.extend(listcheck_numbers);
+                }
+                delivery_numbers
+            }
+        };
 
-        // Also append from newest VT11 ListCheck CSV (if present). Marking is handled at sequence level.
-        let listcheck_numbers = get_delivery_numbers_from_listcheck()?;
-        if !listcheck_numbers.is_empty() {
-            println!(
-                "Appending {} deliveries from VT11 ListCheck CSV",
-                listcheck_numbers.len()
-            );
-            delivery_numbers.extend(listcheck_numbers);
-        }
-
-        // dedup delivery numbers and remove empties
         delivery_numbers = delivery_numbers
             .into_iter()
             .filter(|s| !s.trim().is_empty())
             .collect::<std::collections::HashSet<_>>()
             .into_iter()
             .collect::<Vec<_>>();
-        delivery_numbers.sort(); // Optional: sort for consistency
+        delivery_numbers.sort();
         println!("Sanitized delivery numbers: {}", delivery_numbers.len());
 
         if !delivery_numbers.is_empty() {

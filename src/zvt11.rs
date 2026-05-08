@@ -278,29 +278,42 @@ pub fn run_export(session: &GuiSession, params: &ZVT11Params) -> Result<bool> {
     if params.by_delivery {
         println!("Filtering by delivery numbers...");
 
-        // Get delivery numbers from ZMDESNR export (same source as VT11 delivery module)
-        let mut delivery_numbers = get_delivery_numbers_from_zmdesnr()?;
+        // CLI override (--delivery-file / --delivery-col) wins over legacy merge.
+        let mut delivery_numbers = match crate::utils::source_overrides::cli_delivery_numbers_override()
+        {
+            Ok(Some(nums)) => nums,
+            Ok(None) => {
+                let mut delivery_numbers = get_delivery_numbers_from_zmdesnr()?;
+                let listcheck_numbers = get_delivery_numbers_from_listcheck()?;
+                if !listcheck_numbers.is_empty() {
+                    println!(
+                        "Appending {} deliveries from VT11 ListCheck CSV",
+                        listcheck_numbers.len()
+                    );
+                    delivery_numbers.extend(listcheck_numbers);
+                } else {
+                    println!("No VT11 ListCheck deliveries to append.");
+                }
+                delivery_numbers
+            }
+            Err(e) => {
+                println!("CLI delivery-source error: {}; falling back to legacy merge", e);
+                let mut delivery_numbers = get_delivery_numbers_from_zmdesnr()?;
+                let listcheck_numbers = get_delivery_numbers_from_listcheck()?;
+                if !listcheck_numbers.is_empty() {
+                    delivery_numbers.extend(listcheck_numbers);
+                }
+                delivery_numbers
+            }
+        };
 
-        // Also append from newest VT11 ListCheck CSV (if present). Marking is handled at sequence level.
-        let listcheck_numbers = get_delivery_numbers_from_listcheck()?;
-        if !listcheck_numbers.is_empty() {
-            println!(
-                "Appending {} deliveries from VT11 ListCheck CSV",
-                listcheck_numbers.len()
-            );
-            delivery_numbers.extend(listcheck_numbers);
-        } else {
-            println!("No VT11 ListCheck deliveries to append.");
-        }
-
-        // dedup delivery numbers and remove empties
         delivery_numbers = delivery_numbers
             .into_iter()
             .filter(|s| !s.trim().is_empty())
             .collect::<std::collections::HashSet<_>>()
             .into_iter()
             .collect::<Vec<_>>();
-        delivery_numbers.sort(); // Optional: sort for consistency
+        delivery_numbers.sort();
         println!("Sanitized delivery numbers: {}", delivery_numbers.len());
 
         // pause for 2 seconds

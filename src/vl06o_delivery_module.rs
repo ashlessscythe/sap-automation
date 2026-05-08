@@ -309,29 +309,43 @@ pub fn run_vl06o_delivery_packages_auto(session: &GuiSession) -> Result<()> {
         params.delivery_numbers = delivery_numbers;
     }
 
-    // If configured, append newest unused VT11 ListCheck deliveries
+    // CLI override (--delivery-file) replaces the legacy ListCheck append; if no
+    // CLI source is set, keep the existing append-from-VT11-ListCheck behavior.
     let mut listcheck_path_opt: Option<String> = None;
     if params.by_delivery {
-        if let Ok((mut listcheck_nums, path_opt)) = get_listcheck_deliveries_for_vl06o() {
-            listcheck_path_opt = path_opt;
-            if let Some(ref p) = listcheck_path_opt {
-                println!("Using VT11 ListCheck deliveries from: {}", p);
+        match crate::utils::source_overrides::cli_delivery_numbers_override() {
+            Ok(Some(cli_nums)) => {
+                println!(
+                    "Replacing default delivery numbers with {} from CLI source",
+                    cli_nums.len()
+                );
+                params.delivery_numbers = cli_nums;
             }
-            if !listcheck_nums.is_empty() {
-                println!(
-                    "Appending {} deliveries from VT11 ListCheck CSV",
-                    listcheck_nums.len()
-                );
-                params.delivery_numbers.append(&mut listcheck_nums);
-                // Deduplicate
-                let mut set = std::collections::HashSet::new();
-                params.delivery_numbers.retain(|d| set.insert(d.clone()));
-                println!(
-                    "Total delivery numbers after append: {}",
-                    params.delivery_numbers.len()
-                );
-            } else {
-                println!("No VT11 ListCheck deliveries to append.");
+            Ok(None) => {
+                if let Ok((mut listcheck_nums, path_opt)) = get_listcheck_deliveries_for_vl06o() {
+                    listcheck_path_opt = path_opt;
+                    if let Some(ref p) = listcheck_path_opt {
+                        println!("Using VT11 ListCheck deliveries from: {}", p);
+                    }
+                    if !listcheck_nums.is_empty() {
+                        println!(
+                            "Appending {} deliveries from VT11 ListCheck CSV",
+                            listcheck_nums.len()
+                        );
+                        params.delivery_numbers.append(&mut listcheck_nums);
+                        let mut set = std::collections::HashSet::new();
+                        params.delivery_numbers.retain(|d| set.insert(d.clone()));
+                        println!(
+                            "Total delivery numbers after append: {}",
+                            params.delivery_numbers.len()
+                        );
+                    } else {
+                        println!("No VT11 ListCheck deliveries to append.");
+                    }
+                }
+            }
+            Err(e) => {
+                println!("CLI delivery-source error: {}; keeping default delivery numbers", e);
             }
         }
     }
@@ -747,7 +761,8 @@ fn get_vl06o_delivery_parameters() -> Result<VL06ODeliveryParams> {
         }
     }
 
-    // Optionally append VT11 ListCheck deliveries if configured by_delivery=true for VL06O
+    // Optionally append VT11 ListCheck deliveries if configured by_delivery=true
+    // for VL06O. CLI --delivery-file (when set) replaces this append step.
     if let Ok(cfg) = SapConfig::load() {
         if let Some(tcode_cfg) = cfg.get_tcode_config("VL06O", Some(false)) {
             let by_delivery = tcode_cfg
@@ -755,27 +770,43 @@ fn get_vl06o_delivery_parameters() -> Result<VL06ODeliveryParams> {
                 .map(|v| v.to_lowercase() == "true")
                 .unwrap_or(false);
             if by_delivery {
-                if let Ok((mut listcheck_nums, listcheck_path_opt)) =
-                    get_listcheck_deliveries_for_vl06o()
-                {
-                    if let Some(p) = listcheck_path_opt {
-                        println!("Using VT11 ListCheck deliveries from: {}", p);
+                match crate::utils::source_overrides::cli_delivery_numbers_override() {
+                    Ok(Some(cli_nums)) => {
+                        println!(
+                            "Replacing delivery numbers with {} from CLI source",
+                            cli_nums.len()
+                        );
+                        params.delivery_numbers = cli_nums;
                     }
-                    if !listcheck_nums.is_empty() {
+                    Ok(None) => {
+                        if let Ok((mut listcheck_nums, listcheck_path_opt)) =
+                            get_listcheck_deliveries_for_vl06o()
+                        {
+                            if let Some(p) = listcheck_path_opt {
+                                println!("Using VT11 ListCheck deliveries from: {}", p);
+                            }
+                            if !listcheck_nums.is_empty() {
+                                println!(
+                                    "Appending {} deliveries from VT11 ListCheck CSV",
+                                    listcheck_nums.len()
+                                );
+                                params.delivery_numbers.append(&mut listcheck_nums);
+                                let mut set = std::collections::HashSet::new();
+                                params.delivery_numbers.retain(|d| set.insert(d.clone()));
+                                println!(
+                                    "Total delivery numbers after append: {}",
+                                    params.delivery_numbers.len()
+                                );
+                            } else {
+                                println!("No VT11 ListCheck deliveries to append.");
+                            }
+                        }
+                    }
+                    Err(e) => {
                         println!(
-                            "Appending {} deliveries from VT11 ListCheck CSV",
-                            listcheck_nums.len()
+                            "CLI delivery-source error: {}; keeping current delivery numbers",
+                            e
                         );
-                        params.delivery_numbers.append(&mut listcheck_nums);
-                        // Deduplicate to avoid duplicates from manual input + listcheck
-                        let mut set = std::collections::HashSet::new();
-                        params.delivery_numbers.retain(|d| set.insert(d.clone()));
-                        println!(
-                            "Total delivery numbers after append: {}",
-                            params.delivery_numbers.len()
-                        );
-                    } else {
-                        println!("No VT11 ListCheck deliveries to append.");
                     }
                 }
             }

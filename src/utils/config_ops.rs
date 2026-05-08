@@ -190,6 +190,14 @@ impl SapConfig {
                                         .and_then(|v| v.as_str())
                                         .map(|s| s.to_string());
 
+                                    // First-class so CLI `--by-delivery=<bool>` overrides
+                                    // are not clobbered by the additional_params catch-all
+                                    // below when [tcode.X] also sets by_delivery.
+                                    tcode_config.by_delivery = tcode_table
+                                        .get("by_delivery")
+                                        .and_then(|v| v.as_str())
+                                        .map(|s| s.to_string());
+
                                     tcode_config.serial_number = tcode_table
                                         .get("serial_number")
                                         .and_then(|v| v.as_str())
@@ -229,6 +237,7 @@ impl SapConfig {
                                             "date_range_start",
                                             "date_range_end",
                                             "by_date",
+                                            "by_delivery",
                                             "serial_number",
                                             "tab_number",
                                             "export_type",
@@ -385,10 +394,9 @@ impl SapConfig {
 
         // ----- [tcode.X] overrides (per --tcode <X>) -----
         if let Some(tc_name) = &o.tcode {
-            // CliOverrides stores tcode pre-uppercased, but be defensive.
             let key = tc_name.to_uppercase();
             let map = self.tcode.get_or_insert_with(HashMap::new);
-            let entry = map.entry(key).or_insert_with(TcodeConfig::default);
+            let entry = map.entry(key.clone()).or_insert_with(TcodeConfig::default);
 
             if let Some(layout) = &o.layout {
                 entry.layout = Some(layout.clone());
@@ -398,6 +406,92 @@ impl SapConfig {
             }
             if let Some(et) = o.export_type {
                 entry.export_type = Some(et);
+            }
+
+            // Filter toggles. Stored as `"true"`/`"false"` strings to match the
+            // existing on-disk + downstream-string representation.
+            if let Some(b) = o.by_date {
+                entry.by_date = Some(b.to_string());
+            }
+            if let Some(b) = o.by_delivery {
+                entry.by_delivery = Some(b.to_string());
+            }
+            if let Some(b) = o.by_shipment {
+                // No first-class field for `by_shipment`, lives in additional_params.
+                entry
+                    .additional_params
+                    .insert("by_shipment".to_string(), b.to_string());
+
+                // VL06O activates the shipment path when `column_name` is set, so
+                // pre-fill it with a sensible default when --by-shipment=true and
+                // no explicit --shipment-col was provided.
+                if b && key == "VL06O" && entry.column_name.is_none() {
+                    let default_col = o
+                        .shipment_col
+                        .clone()
+                        .unwrap_or_else(|| "Shipment Number".to_string());
+                    entry.column_name = Some(default_col);
+                }
+            }
+
+            // VT11 / ZVT11 limiter. No first-class field on TcodeConfig.
+            if let Some(lim) = &o.limiter {
+                entry
+                    .additional_params
+                    .insert("limiter".to_string(), lim.clone());
+            }
+
+            // Date range. parse_date() in the report modules already accepts ISO,
+            // so write through as ISO YYYY-MM-DD.
+            if let Some(d) = o.date_start {
+                entry.date_range_start = Some(d.format("%Y-%m-%d").to_string());
+            }
+            if let Some(d) = o.date_end {
+                entry.date_range_end = Some(d.format("%Y-%m-%d").to_string());
+            }
+
+            // Delivery / shipment source overrides — consumed by
+            // utils::source_overrides at delivery/shipment load time.
+            if let Some(v) = &o.delivery_file {
+                entry
+                    .additional_params
+                    .insert("cli_delivery_file".to_string(), v.clone());
+            }
+            if let Some(v) = &o.delivery_col {
+                entry
+                    .additional_params
+                    .insert("cli_delivery_col".to_string(), v.clone());
+            }
+            if let Some(v) = &o.shipment_file {
+                entry
+                    .additional_params
+                    .insert("cli_shipment_file".to_string(), v.clone());
+            }
+            if let Some(v) = &o.shipment_col {
+                // shipment_col also feeds VL06O's existing column_name path so
+                // the legacy shipment-from-Excel branch picks it up directly.
+                entry.column_name = Some(v.clone());
+                entry
+                    .additional_params
+                    .insert("cli_shipment_col".to_string(), v.clone());
+            }
+
+            // ZMDESNR-only knobs.
+            if key == "ZMDESNR" {
+                // pre_export_back: read by `create_zmdesnr_params_from_config`
+                // as a string and compared to "true"; mirror the on-disk format.
+                if let Some(b) = o.pre_export_back {
+                    entry
+                        .additional_params
+                        .insert("pre_export_back".to_string(), b.to_string());
+                }
+
+                // tab_number: stored as String on TcodeConfig (parsed back to i32
+                // by the consumer). When neither config nor CLI sets it, the
+                // ZMDESNR module falls back to 2 via `unwrap_or(2)`.
+                if let Some(n) = o.tab_number {
+                    entry.tab_number = Some(n.to_string());
+                }
             }
         }
     }

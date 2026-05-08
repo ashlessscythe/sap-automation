@@ -48,9 +48,74 @@ fn main() -> anyhow::Result<()> {
     // Parse command line arguments
     let cli = Cli::parse();
 
+    // Project the CLI surface into the override struct (this also validates ISO
+    // dates and other parseable fields up-front).
+    let overrides = cli.to_overrides()?;
+
+    // Cross-flag validation BEFORE installing the overrides so we don't pollute
+    // the process slot with something we'll reject anyway.
+    let by_delivery_true = matches!(overrides.by_delivery, Some(true));
+    let by_shipment_true = matches!(overrides.by_shipment, Some(true));
+    if by_delivery_true && by_shipment_true {
+        return Err(anyhow::anyhow!(
+            "--by-delivery=true and --by-shipment=true cannot both be set; \
+             the SAP flow handles them as separate branches (one filters by \
+             deliveries, the other by shipments)."
+        ));
+    }
+    if overrides.by_shipment.is_some() {
+        // by_shipment is VL06O-only (in code today). `--tcode` may be omitted in
+        // single-shot mode if the user wired up `--run-loop` instead, but in
+        // either case the target tcode at run time must be VL06O.
+        let target = overrides
+            .tcode
+            .clone()
+            .unwrap_or_default()
+            .to_uppercase();
+        if !target.is_empty() && target != "VL06O" {
+            return Err(anyhow::anyhow!(
+                "--by-shipment is only supported for VL06O (got --tcode={})",
+                target
+            ));
+        }
+    }
+
+    // --pre-export-back is wired into the ZMDESNR export flow only. Reject early
+    // when paired with any other --tcode so the user doesn't think it's silently
+    // applied to (say) VT11.
+    if overrides.pre_export_back.is_some() {
+        let target = overrides
+            .tcode
+            .clone()
+            .unwrap_or_default()
+            .to_uppercase();
+        if !target.is_empty() && target != "ZMDESNR" {
+            return Err(anyhow::anyhow!(
+                "--pre-export-back is only supported for ZMDESNR (got --tcode={})",
+                target
+            ));
+        }
+    }
+
+    // --tab-number selects a ZMDESNR results tab. Other report flows have no
+    // matching tab strip and would silently ignore it, so reject early.
+    if overrides.tab_number.is_some() {
+        let target = overrides
+            .tcode
+            .clone()
+            .unwrap_or_default()
+            .to_uppercase();
+        if !target.is_empty() && target != "ZMDESNR" {
+            return Err(anyhow::anyhow!(
+                "--tab-number is only supported for ZMDESNR (got --tcode={})",
+                target
+            ));
+        }
+    }
+
     // Install CLI overrides into the process-wide slot BEFORE any config load,
     // so every `*Config::load()` call site sees the merged view.
-    set_cli_overrides(cli.to_overrides());
+    set_cli_overrides(overrides);
 
     // --run-sequence is config-driven: per-tcode flags are not allowed.
     if cli.run_sequence || matches!(cli.command, Some(Commands::RunSequence { .. })) {

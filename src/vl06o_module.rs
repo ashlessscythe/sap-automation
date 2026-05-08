@@ -97,23 +97,40 @@ pub fn run_vl06o_auto(session: &GuiSession) -> Result<()> {
             dparams.layout_row = Some(layout.clone());
         }
 
-        // Get delivery numbers from ZMDESNR
-        let mut delivery_numbers = get_delivery_numbers_from_zmdesnr_for_vl06o()?;
-        // Append from newest VT11 ListCheck CSV (if present); do not mark here
-        let (listcheck_numbers, listcheck_path_opt) =
-            get_delivery_numbers_from_listcheck_for_vl06o()?;
-        if let Some(ref p) = listcheck_path_opt {
-            println!("Using VT11 ListCheck deliveries from: {}", p);
-        }
-        if !listcheck_numbers.is_empty() {
-            println!(
-                "Appending {} deliveries from VT11 ListCheck CSV",
-                listcheck_numbers.len()
-            );
-            delivery_numbers.extend(listcheck_numbers);
-        } else {
-            println!("No VT11 ListCheck deliveries to append.");
-        }
+        // CLI override (--delivery-file / --delivery-col) wins over legacy merge.
+        // When CLI source is in play we skip the VT11 ListCheck "_.csv" mark step
+        // (`listcheck_path_opt`) since we never consumed those files.
+        let cli_override_nums = match crate::utils::source_overrides::cli_delivery_numbers_override()
+        {
+            Ok(Some(nums)) => Some(nums),
+            Ok(None) => None,
+            Err(e) => {
+                println!("CLI delivery-source error: {}; falling back to legacy merge", e);
+                None
+            }
+        };
+
+        let (mut delivery_numbers, listcheck_path_opt): (Vec<String>, Option<String>) =
+            if let Some(nums) = cli_override_nums {
+                (nums, None)
+            } else {
+                let mut delivery_numbers = get_delivery_numbers_from_zmdesnr_for_vl06o()?;
+                let (listcheck_numbers, listcheck_path_opt) =
+                    get_delivery_numbers_from_listcheck_for_vl06o()?;
+                if let Some(ref p) = listcheck_path_opt {
+                    println!("Using VT11 ListCheck deliveries from: {}", p);
+                }
+                if !listcheck_numbers.is_empty() {
+                    println!(
+                        "Appending {} deliveries from VT11 ListCheck CSV",
+                        listcheck_numbers.len()
+                    );
+                    delivery_numbers.extend(listcheck_numbers);
+                } else {
+                    println!("No VT11 ListCheck deliveries to append.");
+                }
+                (delivery_numbers, listcheck_path_opt)
+            };
 
         // Dedup, sanitize
         let mut delivery_numbers = delivery_numbers
@@ -176,20 +193,33 @@ pub fn run_vl06o_auto(session: &GuiSession) -> Result<()> {
     println!("Getting vl06o params from config");
     let mut params = create_vl06o_params_from_config(&tcode_config);
 
-    // Check if we need to get shipment numbers from Excel
-    if let Some(column_name) = &params.column_name {
+    // CLI override (--shipment-file / --shipment-col) wins over the default
+    // <reports_dir>\vt11\*.xlsx lookup.
+    let cli_shipment_nums = match crate::utils::source_overrides::cli_shipment_numbers_override() {
+        Ok(Some(nums)) => Some(nums),
+        Ok(None) => None,
+        Err(e) => {
+            println!("CLI shipment-source error: {}; falling back to default lookup", e);
+            None
+        }
+    };
+
+    if let Some(nums) = cli_shipment_nums {
+        if nums.is_empty() {
+            println!("CLI shipment source produced 0 numbers; nothing to filter on.");
+        } else {
+            println!("Using {} shipment numbers from CLI source", nums.len());
+        }
+        params.shipment_numbers = nums;
+    } else if let Some(column_name) = &params.column_name {
         println!(
             "Reading shipment numbers from Excel column: {}",
             column_name
         );
 
-        // Get the reports directory
         let reports_dir = get_reports_dir();
-
-        // Create the VL06O subdirectory path
         let vl06o_dir = format!("{}\\vl06o", reports_dir);
 
-        // Check if the VL06O directory exists
         let vl06o_path = Path::new(&vl06o_dir);
         if !vl06o_path.exists() {
             println!("VL06O directory not found: {}", vl06o_dir);
@@ -199,7 +229,6 @@ pub fn run_vl06o_auto(session: &GuiSession) -> Result<()> {
             }
         }
 
-        // Get the newest Excel file in the VL06O directory
         let vt11_dir = format!("{}\\vt11", get_reports_dir());
         let excel_path = get_newest_file(&vt11_dir, "xlsx")?;
 
@@ -209,7 +238,6 @@ pub fn run_vl06o_auto(session: &GuiSession) -> Result<()> {
         } else {
             println!("Using newest Excel file: {}", excel_path);
 
-            // Read the shipment numbers from the Excel file
             match read_excel_column(&excel_path, "Sheet1", column_name) {
                 Ok(shipment_numbers) => {
                     if shipment_numbers.is_empty() {

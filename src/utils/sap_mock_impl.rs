@@ -1,10 +1,49 @@
+//! In-process mock of the [`SapSession`] / [`SapComponent`] traits.
+//!
+//! The mock has two responsibilities:
+//!
+//! 1. Provide enough state for tests to drive simple flows that only depend on
+//!    `SapSession::find_by_id`, `start_transaction`, `end_transaction`,
+//!    component text, selection state, and the like.
+//! 2. Record every interesting interaction in [`MockEvent`] order so tests can
+//!    assert "the date field was set to X then the run button was pressed".
+//!
+//! The trait API takes `&self`, so all internal state goes through
+//! `Rc<RefCell<...>>` and is shared between the session and the components
+//! it hands out. Components push events through a clone of the session's
+//! recorder.
+//!
+//! Production code never imports this module, so the lib-level build flags
+//! everything as dead. The integration tests in `tests/mock_session_tests.rs`
+//! exercise the surface; suppress the dead-code warnings here to keep the
+//! lib build clean.
+
+#![allow(dead_code)]
+
 use crate::utils::sap_interfaces::{SapComponent, SapComponentFactory, SapSession, SapSessionInfo};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 use windows::core::{Error, Result, HRESULT};
 
-/// Mock component for testing
+/// One observable interaction with the mock. The variants intentionally cover
+/// only the trait surface; if a test needs something more exotic (e.g. a
+/// `find_by_id` for a control that doesn't exist) it can read the events.
+#[derive(Debug, Clone, PartialEq)]
+pub enum MockEvent {
+    FindById(String),
+    SetText { id: String, value: String },
+    Press(String),
+    Select(String),
+    SetSelected { id: String, value: bool },
+    SetFocus(String),
+    StartTransaction(String),
+    EndTransaction,
+}
+
+/// Mock component for testing. Backed by `Rc<RefCell<MockComponent>>` so the
+/// session and any components it has handed out share the same underlying
+/// state.
 #[derive(Debug, Clone)]
 pub struct MockComponent {
     pub id: String,
@@ -32,14 +71,33 @@ impl MockComponent {
     }
 }
 
-/// Implementation of SapComponent for mock components
+/// Implementation of [`SapComponent`] for mock components. Mutating calls are
+/// recorded in the shared [`MockEvent`] log so tests can assert ordering.
 pub struct MockSapComponent {
     component: Rc<RefCell<MockComponent>>,
+    events: Rc<RefCell<Vec<MockEvent>>>,
 }
 
 impl MockSapComponent {
     pub fn new(component: Rc<RefCell<MockComponent>>) -> Self {
-        Self { component }
+        Self {
+            component,
+            events: Rc::new(RefCell::new(Vec::new())),
+        }
+    }
+
+    /// Construct a component that pushes events into the supplied recorder.
+    /// Used by [`MockSapSession::find_by_id`] so component events flow into
+    /// the same log as session events.
+    pub fn with_events(
+        component: Rc<RefCell<MockComponent>>,
+        events: Rc<RefCell<Vec<MockEvent>>>,
+    ) -> Self {
+        Self { component, events }
+    }
+
+    fn id(&self) -> String {
+        self.component.borrow().id.clone()
     }
 }
 
@@ -57,27 +115,30 @@ impl SapComponent for MockSapComponent {
     }
 
     fn set_text(&self, text: String) -> Result<()> {
+        self.events.borrow_mut().push(MockEvent::SetText {
+            id: self.id(),
+            value: text.clone(),
+        });
         self.component.borrow_mut().text = text;
         Ok(())
     }
 
     fn set_focus(&self) -> Result<()> {
-        // In a mock, we don't need to do anything for set_focus
+        self.events.borrow_mut().push(MockEvent::SetFocus(self.id()));
         Ok(())
     }
 
     fn press(&self) -> Result<()> {
-        // In a mock, we don't need to do anything for press
+        self.events.borrow_mut().push(MockEvent::Press(self.id()));
         Ok(())
     }
 
     fn select(&self) -> Result<()> {
-        // In a mock, we don't need to do anything for select
+        self.events.borrow_mut().push(MockEvent::Select(self.id()));
         Ok(())
     }
 
     fn selected(&self) -> Result<bool> {
-        // Get the selected state from properties
         let selected = self
             .component
             .borrow()
@@ -89,7 +150,10 @@ impl SapComponent for MockSapComponent {
     }
 
     fn set_selected(&self, selected: bool) -> Result<()> {
-        // Set the selected state in properties
+        self.events.borrow_mut().push(MockEvent::SetSelected {
+            id: self.id(),
+            value: selected,
+        });
         self.component
             .borrow_mut()
             .properties
@@ -98,35 +162,38 @@ impl SapComponent for MockSapComponent {
     }
 
     fn maximize(&self) -> Result<()> {
-        // In a mock, we don't need to do anything for maximize
         Ok(())
     }
 }
 
-/// Implementation of SapSessionInfo for mock session info
+/// Implementation of [`SapSessionInfo`] for mock session info.
 pub struct MockSapSessionInfo {
-    transaction: String,
+    transaction: Rc<RefCell<String>>,
 }
 
 impl MockSapSessionInfo {
-    pub fn new(transaction: &str) -> Self {
-        Self {
-            transaction: transaction.to_string(),
-        }
+    pub fn new(transaction: Rc<RefCell<String>>) -> Self {
+        Self { transaction }
     }
 }
 
 impl SapSessionInfo for MockSapSessionInfo {
     fn transaction(&self) -> Result<String> {
-        Ok(self.transaction.clone())
+        Ok(self.transaction.borrow().clone())
     }
 }
 
-/// Implementation of SapSession for mock session
+/// Implementation of [`SapSession`] for mock session.
+///
+/// `current_transaction` and `events` are kept in `Rc<RefCell<_>>` so the
+/// trait's `&self` methods can still mutate observable state and the same
+/// log is shared with every component returned from `find_by_id`.
 pub struct MockSapSession {
+    #[allow(dead_code)]
     name: String,
     components: HashMap<String, Rc<RefCell<MockComponent>>>,
-    current_transaction: String,
+    current_transaction: Rc<RefCell<String>>,
+    events: Rc<RefCell<Vec<MockEvent>>>,
 }
 
 impl MockSapSession {
@@ -134,7 +201,8 @@ impl MockSapSession {
         Self {
             name: name.to_string(),
             components: HashMap::new(),
-            current_transaction: "S000".to_string(), // Default to login screen
+            current_transaction: Rc::new(RefCell::new("S000".to_string())),
+            events: Rc::new(RefCell::new(Vec::new())),
         }
     }
 
@@ -142,18 +210,81 @@ impl MockSapSession {
         self.components.insert(id.to_string(), component);
     }
 
-    pub fn set_transaction(&mut self, transaction: &str) {
-        self.current_transaction = transaction.to_string();
+    /// Force the current transaction without going through
+    /// `start_transaction` (which would generate a `MockEvent`). Useful for
+    /// arranging the initial fixture state.
+    pub fn set_transaction(&self, transaction: &str) {
+        *self.current_transaction.borrow_mut() = transaction.to_string();
+    }
+
+    /// Snapshot the current event log.
+    pub fn events(&self) -> Vec<MockEvent> {
+        self.events.borrow().clone()
+    }
+
+    /// Drop every recorded event. Handy between fixture setup and the actual
+    /// "act" step of a test.
+    pub fn events_clear(&self) {
+        self.events.borrow_mut().clear();
+    }
+
+    // ---- Ergonomic builders. Each adds a typed component under `id` and
+    // returns &mut Self so tests can chain. ----
+
+    pub fn add_text_field(&mut self, id: &str, initial: &str) -> &mut Self {
+        let name = leaf_name(id);
+        let mut comp = MockComponent::new(id, &name, "GuiTextField");
+        comp.text = initial.to_string();
+        self.add_component(id, Rc::new(RefCell::new(comp)));
+        self
+    }
+
+    pub fn add_button(&mut self, id: &str, label: &str) -> &mut Self {
+        let name = leaf_name(id);
+        let mut comp = MockComponent::new(id, &name, "GuiButton");
+        comp.text = label.to_string();
+        self.add_component(id, Rc::new(RefCell::new(comp)));
+        self
+    }
+
+    pub fn add_checkbox(&mut self, id: &str, selected: bool) -> &mut Self {
+        let name = leaf_name(id);
+        let mut comp = MockComponent::new(id, &name, "GuiCheckBox");
+        comp.properties
+            .insert("selected".to_string(), selected.to_string());
+        self.add_component(id, Rc::new(RefCell::new(comp)));
+        self
+    }
+
+    pub fn add_statusbar(&mut self, id: &str, msg: &str) -> &mut Self {
+        let name = leaf_name(id);
+        let mut comp = MockComponent::new(id, &name, "GuiStatusbar");
+        comp.text = msg.to_string();
+        self.add_component(id, Rc::new(RefCell::new(comp)));
+        self
+    }
+
+    pub fn add_window(&mut self, id: &str, title: &str) -> &mut Self {
+        let name = leaf_name(id);
+        let mut comp = MockComponent::new(id, &name, "GuiFrameWindow");
+        comp.text = title.to_string();
+        self.add_component(id, Rc::new(RefCell::new(comp)));
+        self
     }
 }
 
 impl SapSession for MockSapSession {
     fn find_by_id(&self, id: String) -> Result<Box<dyn SapComponent>> {
+        self.events
+            .borrow_mut()
+            .push(MockEvent::FindById(id.clone()));
         if let Some(component) = self.components.get(&id) {
-            return Ok(Box::new(MockSapComponent::new(component.clone())));
+            return Ok(Box::new(MockSapComponent::with_events(
+                component.clone(),
+                self.events.clone(),
+            )));
         }
 
-        // If not found, return an error
         Err(Error::new(
             HRESULT(-2147467259),
             "Component not found".into(),
@@ -161,26 +292,28 @@ impl SapSession for MockSapSession {
     }
 
     fn info(&self) -> Result<Box<dyn SapSessionInfo>> {
-        Ok(Box::new(MockSapSessionInfo::new(&self.current_transaction)))
+        Ok(Box::new(MockSapSessionInfo::new(
+            self.current_transaction.clone(),
+        )))
     }
 
-    fn start_transaction(&self, _transaction: String) -> Result<()> {
-        // In a real implementation, this would update self.current_transaction
-        // But since self is not mutable here, we'll just return Ok
+    fn start_transaction(&self, transaction: String) -> Result<()> {
+        self.events
+            .borrow_mut()
+            .push(MockEvent::StartTransaction(transaction.clone()));
+        *self.current_transaction.borrow_mut() = transaction;
         Ok(())
     }
 
     fn end_transaction(&self) -> Result<()> {
-        // In a real implementation, this would reset self.current_transaction to "S000"
-        // But since self is not mutable here, we'll just return Ok
+        self.events.borrow_mut().push(MockEvent::EndTransaction);
+        *self.current_transaction.borrow_mut() = "S000".to_string();
         Ok(())
     }
 }
 
-/// Factory for creating mock SAP components
-pub struct MockSapComponentFactory {
-    // This would typically hold configuration for creating mock components
-}
+/// Factory for creating mock SAP components.
+pub struct MockSapComponentFactory;
 
 impl Default for MockSapComponentFactory {
     fn default() -> Self {
@@ -190,7 +323,7 @@ impl Default for MockSapComponentFactory {
 
 impl MockSapComponentFactory {
     pub fn new() -> Self {
-        Self {}
+        Self
     }
 }
 
@@ -200,66 +333,20 @@ impl SapComponentFactory for MockSapComponentFactory {
     }
 }
 
-/// Helper function to create a mock session with some default components
+/// Take the last `/segment` of an SAP-style id (`wnd[0]/usr/txtField` → `txtField`).
+fn leaf_name(id: &str) -> String {
+    id.rsplit('/').next().unwrap_or(id).to_string()
+}
+
+/// Helper function to create a mock session with some default components.
+/// Implemented on top of the new builders to keep one source of truth.
 pub fn create_test_session() -> Box<dyn SapSession> {
     let mut session = MockSapSession::new("Test Session");
-
-    // Add a text field
-    let text_field = Rc::new(RefCell::new(MockComponent {
-        id: "wnd[0]/usr/txtField".to_string(),
-        name: "txtField".to_string(),
-        r_type: "GuiTextField".to_string(),
-        text: "Test Text".to_string(),
-        children: Vec::new(),
-        properties: Default::default(),
-    }));
-    session.add_component("wnd[0]/usr/txtField", text_field);
-
-    // Add a button
-    let button = Rc::new(RefCell::new(MockComponent {
-        id: "wnd[0]/tbar[0]/btn[0]".to_string(),
-        name: "btn[0]".to_string(),
-        r_type: "GuiButton".to_string(),
-        text: "Press Me".to_string(),
-        children: Vec::new(),
-        properties: Default::default(),
-    }));
-    session.add_component("wnd[0]/tbar[0]/btn[0]", button);
-
-    // Add a checkbox
-    let mut properties = std::collections::HashMap::new();
-    properties.insert("selected".to_string(), "false".to_string());
-    let checkbox = Rc::new(RefCell::new(MockComponent {
-        id: "wnd[0]/usr/chkBox".to_string(),
-        name: "chkBox".to_string(),
-        r_type: "GuiCheckBox".to_string(),
-        text: "Check Me".to_string(),
-        children: Vec::new(),
-        properties,
-    }));
-    session.add_component("wnd[0]/usr/chkBox", checkbox);
-
-    // Add a statusbar
-    let statusbar = Rc::new(RefCell::new(MockComponent {
-        id: "wnd[0]/sbar".to_string(),
-        name: "sbar".to_string(),
-        r_type: "GuiStatusbar".to_string(),
-        text: "Status: OK".to_string(),
-        children: Vec::new(),
-        properties: Default::default(),
-    }));
-    session.add_component("wnd[0]/sbar", statusbar);
-
-    // Add a window
-    let window = Rc::new(RefCell::new(MockComponent {
-        id: "wnd[1]".to_string(),
-        name: "wnd[1]".to_string(),
-        r_type: "GuiFrameWindow".to_string(),
-        text: "Popup Window".to_string(),
-        children: Vec::new(),
-        properties: Default::default(),
-    }));
-    session.add_component("wnd[1]", window);
-
+    session
+        .add_text_field("wnd[0]/usr/txtField", "Test Text")
+        .add_button("wnd[0]/tbar[0]/btn[0]", "Press Me")
+        .add_checkbox("wnd[0]/usr/chkBox", false)
+        .add_statusbar("wnd[0]/sbar", "Status: OK")
+        .add_window("wnd[1]", "Popup Window");
     Box::new(session)
 }

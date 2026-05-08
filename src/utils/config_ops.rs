@@ -7,6 +7,7 @@ use std::path::Path;
 use std::thread;
 use std::time::Duration;
 
+use crate::utils::cli_overrides::CliOverrides;
 use crate::utils::config_types::*;
 
 impl Default for SapConfig {
@@ -361,8 +362,18 @@ impl SapConfig {
     /// into this config. Called at the end of every load path so every consumer
     /// sees a merged view.
     fn apply_cli_overrides(&mut self) {
-        let o = crate::utils::cli_overrides::cli_overrides();
+        // Read the process-wide singleton and delegate to the testable
+        // [`apply_overrides_with`] helper. Tests bypass the singleton by calling
+        // `apply_overrides_with` directly with a hand-built `CliOverrides`.
+        let o = crate::utils::cli_overrides::cli_overrides().clone();
+        self.apply_overrides_with(&o);
+    }
 
+    /// Apply a specific [`CliOverrides`] to this config without touching the
+    /// process-wide singleton. Public so integration tests can drive the
+    /// merge logic with arbitrary input. Production code should keep using
+    /// [`apply_cli_overrides`], which reads the installed overrides.
+    pub fn apply_overrides_with(&mut self, o: &CliOverrides) {
         // ----- [global] overrides -----
         let touches_global = o.reports_dir.is_some()
             || o.date_format.is_some()

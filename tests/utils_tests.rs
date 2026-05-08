@@ -122,8 +122,14 @@ fn test_version_constant() {
     // Version should not be empty
     assert!(!version.is_empty());
     
-    // Version should follow semantic versioning format (e.g., "0.3.2")
-    assert!(version.matches(r"^\d+\.\d+\.\d+").count() > 0);
+    // Version should follow semantic versioning format (e.g., "0.3.2").
+    // `str::matches` is literal-substring, not regex, so check the shape
+    // explicitly: three dot-separated all-digit segments.
+    let parts: Vec<&str> = version.split('.').collect();
+    assert!(
+        parts.len() >= 3 && parts.iter().take(3).all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit())),
+        "version '{version}' does not look like semver"
+    );
     
     // Print the version for verification
     println!("Current version: {}", version);

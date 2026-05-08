@@ -1,3 +1,5 @@
+use anyhow::{anyhow, Result};
+use chrono::NaiveDate;
 use clap::{Parser, Subcommand};
 
 use crate::utils::cli_overrides::CliOverrides;
@@ -70,6 +72,65 @@ pub struct Cli {
     /// Override [global].timezone (e.g. UTC, MDT, America/Denver).
     #[arg(long)]
     pub timezone: Option<String>,
+
+    // ---- per-tcode delivery / shipment / date filter overrides ----
+    /// Filter the report by date range (true|false).
+    #[arg(long, value_name = "BOOL")]
+    pub by_date: Option<bool>,
+
+    /// Filter the report by delivery numbers (VT11 | ZVT11 | VL06O) (true|false).
+    #[arg(long, value_name = "BOOL")]
+    pub by_delivery: Option<bool>,
+
+    /// Filter the report by shipment numbers — VL06O ONLY (true|false).
+    #[arg(long, value_name = "BOOL")]
+    pub by_shipment: Option<bool>,
+
+    /// VT11/ZVT11 limiter type. Currently only `date_range` is implemented;
+    /// other values are accepted but no-ops.
+    #[arg(long)]
+    pub limiter: Option<String>,
+
+    /// Inclusive date-range start in ISO format (YYYY-MM-DD).
+    #[arg(long, value_name = "YYYY-MM-DD")]
+    pub date_start: Option<String>,
+
+    /// Inclusive date-range end in ISO format (YYYY-MM-DD).
+    #[arg(long, value_name = "YYYY-MM-DD")]
+    pub date_end: Option<String>,
+
+    /// Where to read delivery numbers from. A bare slug like `vt11` is
+    /// resolved to `<reports_dir>\<slug-lowercased>\` (newest file). A path
+    /// like `C:\out\dn.csv` or `./out.xlsx` is used literally.
+    #[arg(long)]
+    pub delivery_file: Option<String>,
+
+    /// Header column to read for delivery numbers. Default `Delivery`.
+    /// Only used when --delivery-file points at a header CSV/XLSX.
+    #[arg(long)]
+    pub delivery_col: Option<String>,
+
+    /// Where to read shipment numbers from (VL06O only). Same resolution as
+    /// --delivery-file.
+    #[arg(long)]
+    pub shipment_file: Option<String>,
+
+    /// Header column to read for shipment numbers. Default `Shipment Number`.
+    #[arg(long)]
+    pub shipment_col: Option<String>,
+
+    /// ZMDESNR ONLY: send vkey 3 (back) after export, before layout selection
+    /// (true|false). Overrides `[tcode.ZMDESNR].pre_export_back`.
+    #[arg(long, value_name = "BOOL")]
+    pub pre_export_back: Option<bool>,
+
+    /// ZMDESNR ONLY: which results tab to select (e.g. 2, 7). Overrides
+    /// `[tcode.ZMDESNR].tab_number`. When neither this flag nor config sets a
+    /// value, the in-code default is 2. The tab is selected only AFTER the
+    /// variant is applied because SAP GUI requires plant (WERKS) to be valid
+    /// before tab switching works.
+    #[arg(long, value_name = "N")]
+    pub tab_number: Option<i32>,
 }
 
 #[derive(Subcommand)]
@@ -103,9 +164,13 @@ impl Cli {
     }
 
     /// Project the parsed CLI into a [`CliOverrides`] suitable for the
-    /// process-wide override slot.
-    pub fn to_overrides(&self) -> CliOverrides {
-        CliOverrides {
+    /// process-wide override slot. Surfaces parse errors for ISO dates so the
+    /// user gets a clear message instead of silent fallback.
+    pub fn to_overrides(&self) -> Result<CliOverrides> {
+        let date_start = parse_iso_date_opt("--date-start", self.date_start.as_deref())?;
+        let date_end = parse_iso_date_opt("--date-end", self.date_end.as_deref())?;
+
+        Ok(CliOverrides {
             tcode: self.tcode.as_ref().map(|s| s.to_uppercase()),
             layout: self.layout.clone(),
             variant: self.variant.clone(),
@@ -117,6 +182,27 @@ impl Cli {
             date_format: self.date_format.clone(),
             timezone: self.timezone.clone(),
             reports_dir: self.reports_dir.clone(),
-        }
+            by_date: self.by_date,
+            by_delivery: self.by_delivery,
+            by_shipment: self.by_shipment,
+            limiter: self.limiter.clone(),
+            date_start,
+            date_end,
+            delivery_file: self.delivery_file.clone(),
+            delivery_col: self.delivery_col.clone(),
+            shipment_file: self.shipment_file.clone(),
+            shipment_col: self.shipment_col.clone(),
+            pre_export_back: self.pre_export_back,
+            tab_number: self.tab_number,
+        })
+    }
+}
+
+fn parse_iso_date_opt(flag: &str, raw: Option<&str>) -> Result<Option<NaiveDate>> {
+    match raw {
+        Some(s) => NaiveDate::parse_from_str(s, "%Y-%m-%d")
+            .map(Some)
+            .map_err(|e| anyhow!("Invalid {} value '{}': expected ISO YYYY-MM-DD ({})", flag, s, e)),
+        None => Ok(None),
     }
 }

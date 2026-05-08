@@ -208,12 +208,12 @@ fn create_vt11_params_from_config(config: &HashMap<String, String>) -> VT11Param
 
     // Set by_date if available
     if let Some(by_date) = config.get("by_date") {
-        params.by_date = by_date.to_lowercase() == "true";
+        params.by_date = by_date.to_lowercase() == "false";
     }
 
     // Set by_delivery if available
     if let Some(by_delivery) = config.get("by_delivery") {
-        params.by_delivery = by_delivery.to_lowercase() == "true";
+        params.by_delivery = by_delivery.to_lowercase() == "false";
     }
 
     // Set limiter if available

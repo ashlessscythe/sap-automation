@@ -79,31 +79,59 @@ The application also supports command-line operation for automation scenarios. T
 - **Automation scripts**
 - **Testing and validation**
 
-### Command Line Usage
+### Three Execution Modes
+
+| Mode | Trigger | Description |
+| --- | --- | --- |
+| **Loop** | `run-loop` subcommand or `--run-loop` flag | Repeats a single TCode auto-flow on a timer (uses `[loop]` config). |
+| **Sequence** | `run-sequence` subcommand or `--run-sequence` flag | Runs a list of menu options in order on a timer (uses `[sequence]` config). |
+| **Single-shot** | `--tcode=<X>` on its own | Runs the auto-flow for one TCode once and exits. |
+
+### Quick Examples
 
 ```bash
-# Show help
+# Show help (lists every flag)
 ./sap_automation.exe --help
 
-# Run loop configuration unattended
+# Loop the configured TCode (uses [loop] from config.toml)
 ./sap_automation.exe run-loop
+./sap_automation.exe --run-loop
 
-# Run sequence configuration unattended
+# Sequence (uses [sequence] from config.toml)
 ./sap_automation.exe run-sequence
+./sap_automation.exe --run-sequence
 
-# Skip SAP connection check (for testing)
-./sap_automation.exe run-loop --skip-sap-check
+# Single-shot run of VT11 with overrides; no config.toml required
+./sap_automation.exe --tcode=vt11 --layout=ob_6 --variant=ob_win --export-type=1
+
+# Override loop timing + iterations from CLI; flags win over config
+./sap_automation.exe --run-loop --tcode=vt11 --iterations=3 --delay-seconds=30
+
+# 149 report (requires --tcode-run-type)
+./sap_automation.exe --run-loop --tcode=y_dn3_47000149 --tcode-run-type=rcv
+
+# Filter VT11 by an arbitrary delivery list and date range
+./sap_automation.exe --tcode=vt11 --by-delivery=true \
+  --delivery-file=C:\out\dn.csv --delivery-col="Delivery Number" \
+  --by-date=true --date-start=2026-02-01 --date-end=2026-02-15
 ```
+
+### CLI vs config.toml
+
+CLI flags **always win** over `config.toml`, and they work even when `config.toml` is missing. When at least one override is in play, the runner prints a one-line summary like
+`CLI overrides applied (these win over config.toml): --tcode=VT11 --iterations=3` so you can see what's being applied before the SAP work starts.
+
+`--run-sequence` is intentionally config-driven — passing per-tcode flags (`--tcode`, `--layout`, `--by-date`, etc.) with `--run-sequence` is rejected up-front so you don't accidentally apply VT11 settings to a multi-tcode run.
 
 ### Key Benefits
 
 - **No User Interaction**: Runs completely automatically
-- **Configuration Driven**: Uses your existing `config.toml` settings
-- **Error Handling**: Clear error messages and exit codes
+- **Configuration Driven**: Uses your existing `config.toml` settings; CLI flags can override any value
+- **Error Handling**: Clear error messages and exit codes; missing required flags fail fast (e.g. `Missing flag for tcode-run-type, enter with --tcode-run-type=rcv|mat|tsp`)
 - **Logging**: All output goes to console for easy logging
 - **Backward Compatible**: Interactive mode remains unchanged
 
-For detailed command-line usage information, see [COMMAND_LINE_USAGE.md](COMMAND_LINE_USAGE.md).
+For the full flag reference, validation rules, source-file resolution, and end-to-end examples, see [COMMAND_LINE_USAGE.md](COMMAND_LINE_USAGE.md).
 
 ## Sequence Menu Option IDs
 

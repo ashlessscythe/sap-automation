@@ -1,184 +1,145 @@
+//! "Auto-run" config consumption tests, rewritten to use the modern
+//! `[global]` / `[tcode.X]` format and `SapConfig::load_from_path` against a
+//! per-test `TempDir`.
+//!
+//! The original version of this file overwrote the workspace `config.toml`
+//! with backup/restore. That meant tests couldn't run in parallel and a
+//! panicking test could destroy the user's real config. This version is
+//! hermetic: each test owns its config file via `TempDir`.
+//!
+//! These mock helpers mirror the field extraction that the real `*_module.rs`
+//! files do — they don't touch SAP — and assert the same `SapConfig` shape
+//! the report modules consume.
+
+use chrono::NaiveDate;
+use sap_automation::utils::config_types::SapConfig;
 use std::collections::HashMap;
 use std::fs;
-use std::path::Path;
-use chrono::NaiveDate;
+use std::path::PathBuf;
+use tempfile::TempDir;
 
-// Import the necessary modules from the crate
-use sap_automation::utils::config_types::{SapConfig, TcodeConfig};
-use sap_automation::utils::config_types::{default_iterations, default_delay_seconds, default_timezone, default_date_format, get_default_menu_option};
-use sap_automation::utils::config_ops::handle_configure_reports_dir;
+// ----- helpers -----
 
-// Mock function to create VL06O params from config (similar to the one in vl06o_module.rs)
-fn create_vl06o_params_from_config(config: &HashMap<String, String>) -> TestVL06OParams {
-    let mut params = TestVL06OParams::default();
-
-    // Set variant if available
-    if let Some(variant) = config.get("variant") {
-        params.sap_variant_name = Some(variant.clone());
-    }
-
-    // Set layout if available
-    if let Some(layout) = config.get("layout") {
-        params.layout_row = Some(layout.clone());
-    }
-
-    // Set date range if available
-    if let Some(start_date) = config.get("date_range_start") {
-        if let Ok(date) = parse_date(start_date) {
-            params.start_date = date;
-        }
-    }
-
-    if let Some(end_date) = config.get("date_range_end") {
-        if let Ok(date) = parse_date(end_date) {
-            params.end_date = date;
-        }
-    }
-
-    // Set by_date if available
-    if let Some(by_date) = config.get("by_date") {
-        params.by_date = by_date.to_lowercase() == "true";
-    }
-
-    // Set column_name if available
-    if let Some(column_name) = config.get("column_name") {
-        params.column_name = Some(column_name.clone());
-    }
-
-    params
+fn write_temp_config(content: &str) -> (TempDir, PathBuf) {
+    let dir = TempDir::new().expect("tempdir");
+    let path = dir.path().join("config.toml");
+    fs::write(&path, content).expect("write temp config");
+    (dir, path)
 }
 
-// Mock function to create VT11 params from config (similar to the one in vt11_module.rs)
-fn create_vt11_params_from_config(config: &HashMap<String, String>) -> TestVT11Params {
-    let mut params = TestVT11Params::default();
+fn load(path: &PathBuf) -> SapConfig {
+    SapConfig::load_from_path(path.to_str().unwrap()).expect("load_from_path")
+}
 
-    // Set variant if available
-    if let Some(variant) = config.get("variant") {
-        params.sap_variant_name = Some(variant.clone());
-    }
-
-    // Set layout if available
-    if let Some(layout) = config.get("layout") {
-        params.layout_row = Some(layout.clone());
-    }
-
-    // Set date range if available
-    if let Some(start_date) = config.get("date_range_start") {
-        if let Ok(date) = parse_date(start_date) {
-            params.start_date = date;
+fn parse_date(s: &str) -> Result<NaiveDate, &'static str> {
+    for fmt in &["%m/%d/%Y", "%m-%d-%Y", "%Y-%m-%d"] {
+        if let Ok(d) = NaiveDate::parse_from_str(s, fmt) {
+            return Ok(d);
         }
     }
-
-    if let Some(end_date) = config.get("date_range_end") {
-        if let Ok(date) = parse_date(end_date) {
-            params.end_date = date;
-        }
-    }
-
-    // Set column_name if available
-    if let Some(column_name) = config.get("column_name") {
-        params.column_name = Some(column_name.clone());
-    }
-
-    params
-}
-
-// Mock function to create ZMDESNR params from config (similar to the one in zmdesnr_module.rs)
-fn create_zmdesnr_params_from_config(config: &HashMap<String, String>) -> TestZMDESNRParams {
-    let mut params = TestZMDESNRParams::default();
-
-    // Set variant if available
-    if let Some(variant) = config.get("variant") {
-        params.sap_variant_name = Some(variant.clone());
-    }
-
-    // Set layout if available
-    if let Some(layout) = config.get("layout") {
-        params.layout_row = Some(layout.clone());
-    }
-
-    // Set serial_number if available
-    if let Some(serial_number) = config.get("serial_number") {
-        params.serial_number = serial_number.clone();
-    }
-
-    params
-}
-
-// Helper function to parse date strings
-fn parse_date(date_str: &str) -> Result<NaiveDate, &'static str> {
-    // Try to parse the date in MM/DD/YYYY format
-    if let Ok(date) = NaiveDate::parse_from_str(date_str, "%m/%d/%Y") {
-        return Ok(date);
-    }
-
-    // Try to parse the date in MM-DD-YYYY format
-    if let Ok(date) = NaiveDate::parse_from_str(date_str, "%m-%d-%Y") {
-        return Ok(date);
-    }
-
-    // Try to parse the date in YYYY-MM-DD format
-    if let Ok(date) = NaiveDate::parse_from_str(date_str, "%Y-%m-%d") {
-        return Ok(date);
-    }
-
-    // If all parsing attempts fail, return an error
-    Err("Failed to parse date")
-}
-
-// Test structs to mimic the real parameter structs without SAP dependencies
-#[derive(Debug, Default, PartialEq, Clone)]
-struct TestVL06OParams {
-    pub start_date: NaiveDate,
-    pub end_date: NaiveDate,
-    pub sap_variant_name: Option<String>,
-    pub layout_row: Option<String>,
-    pub by_date: bool,
-    pub column_name: Option<String>,
-    pub shipment_numbers: Vec<String>,
+    Err("unrecognized date format")
 }
 
 #[derive(Debug, Default, PartialEq, Clone)]
-struct TestVT11Params {
-    pub start_date: NaiveDate,
-    pub end_date: NaiveDate,
-    pub sap_variant_name: Option<String>,
-    pub layout_row: Option<String>,
-    pub column_name: Option<String>,
+struct VL06OParams {
+    start_date: NaiveDate,
+    end_date: NaiveDate,
+    sap_variant_name: Option<String>,
+    layout_row: Option<String>,
+    by_date: bool,
+    column_name: Option<String>,
 }
 
 #[derive(Debug, Default, PartialEq, Clone)]
-struct TestZMDESNRParams {
-    pub sap_variant_name: Option<String>,
-    pub layout_row: Option<String>,
-    pub serial_number: String,
+struct VT11Params {
+    start_date: NaiveDate,
+    end_date: NaiveDate,
+    sap_variant_name: Option<String>,
+    layout_row: Option<String>,
+    column_name: Option<String>,
 }
 
-// Create a temporary config file for testing
-fn create_test_config(content: &str) -> String {
-    let temp_dir = std::env::temp_dir();
-    let config_path = temp_dir.join("test_config.toml");
-    fs::write(&config_path, content).expect("Failed to write test config file");
-    config_path.to_string_lossy().to_string()
+#[derive(Debug, Default, PartialEq, Clone)]
+struct ZMDESNRParams {
+    sap_variant_name: Option<String>,
+    layout_row: Option<String>,
+    serial_number: String,
 }
 
-// Helper function to create a SapConfig with a specific reports_dir
-fn create_test_sap_config(reports_dir: &str) -> SapConfig {
-    let mut config = SapConfig::default();
-    if let Some(global) = &mut config.global {
-        global.reports_dir = reports_dir.to_string();
+fn vl06o_from_map(m: &HashMap<String, String>) -> VL06OParams {
+    let mut p = VL06OParams::default();
+    if let Some(v) = m.get("variant") {
+        p.sap_variant_name = Some(v.clone());
     }
-    config
+    if let Some(v) = m.get("layout") {
+        p.layout_row = Some(v.clone());
+    }
+    if let Some(v) = m.get("date_range_start") {
+        if let Ok(d) = parse_date(v) {
+            p.start_date = d;
+        }
+    }
+    if let Some(v) = m.get("date_range_end") {
+        if let Ok(d) = parse_date(v) {
+            p.end_date = d;
+        }
+    }
+    if let Some(v) = m.get("by_date") {
+        p.by_date = v.eq_ignore_ascii_case("true");
+    }
+    if let Some(v) = m.get("column_name") {
+        p.column_name = Some(v.clone());
+    }
+    p
 }
+
+fn vt11_from_map(m: &HashMap<String, String>) -> VT11Params {
+    let mut p = VT11Params::default();
+    if let Some(v) = m.get("variant") {
+        p.sap_variant_name = Some(v.clone());
+    }
+    if let Some(v) = m.get("layout") {
+        p.layout_row = Some(v.clone());
+    }
+    if let Some(v) = m.get("date_range_start") {
+        if let Ok(d) = parse_date(v) {
+            p.start_date = d;
+        }
+    }
+    if let Some(v) = m.get("date_range_end") {
+        if let Ok(d) = parse_date(v) {
+            p.end_date = d;
+        }
+    }
+    if let Some(v) = m.get("column_name") {
+        p.column_name = Some(v.clone());
+    }
+    p
+}
+
+fn zmdesnr_from_map(m: &HashMap<String, String>) -> ZMDESNRParams {
+    let mut p = ZMDESNRParams::default();
+    if let Some(v) = m.get("variant") {
+        p.sap_variant_name = Some(v.clone());
+    }
+    if let Some(v) = m.get("layout") {
+        p.layout_row = Some(v.clone());
+    }
+    if let Some(v) = m.get("serial_number") {
+        p.serial_number = v.clone();
+    }
+    p
+}
+
+// ----- tests -----
 
 #[test]
-fn test_load_config() {
-    // Create a test config file with the new format
-    let config_content = r#"
+fn vl06o_full_config_round_trips() {
+    let (_tmp, path) = write_temp_config(
+        r#"
 [global]
 reports_dir = "C:\\Test\\Reports"
 default_tcode = "VL06O"
-timezone = "MST"
 
 [tcode.VL06O]
 variant = "TEST_VARIANT"
@@ -186,282 +147,142 @@ layout = "TEST_LAYOUT"
 column_name = "Test Column"
 date_range_start = "04/01/2025"
 date_range_end = "04/15/2025"
-"#;
-    
-    let config_path = create_test_config(config_content);
-    
-    // Create a backup of the current config.toml if it exists
-    let backup_path = "config.toml.bak";
-    let config_exists = Path::new("config.toml").exists();
-    if config_exists {
-        fs::copy("config.toml", backup_path).expect("Failed to backup config.toml");
-    }
-    
-    // Copy our test config to the project directory
-    fs::copy(&config_path, "config.toml").expect("Failed to copy test config to project directory");
-    
-    // Load the config
-    let config = SapConfig::load().expect("Failed to load config");
-    
-    // Verify the global config was loaded correctly
-    assert!(config.global.is_some());
-    if let Some(global) = &config.global {
-        assert_eq!(global.reports_dir, "C:\\Test\\Reports");
-        assert_eq!(global.default_tcode, Some("VL06O".to_string()));
-        assert_eq!(global.timezone, "MST");
-    }
-    
-    // Verify the tcode config was loaded correctly
-    assert!(config.tcode.is_some());
-    if let Some(tcode_configs) = &config.tcode {
-        assert!(tcode_configs.contains_key("VL06O"));
-        if let Some(vl06o_config) = tcode_configs.get("VL06O") {
-            assert_eq!(vl06o_config.variant, Some("TEST_VARIANT".to_string()));
-            assert_eq!(vl06o_config.layout, Some("TEST_LAYOUT".to_string()));
-            assert_eq!(vl06o_config.column_name, Some("Test Column".to_string()));
-            assert_eq!(vl06o_config.date_range_start, Some("04/01/2025".to_string()));
-            assert_eq!(vl06o_config.date_range_end, Some("04/15/2025".to_string()));
-        }
-    }
-    
-    // Restore the original config.toml if it existed
-    if config_exists {
-        fs::copy(backup_path, "config.toml").expect("Failed to restore config.toml");
-        fs::remove_file(backup_path).expect("Failed to remove backup file");
-    } else {
-        fs::remove_file("config.toml").expect("Failed to remove test config file");
-    }
+by_date = "true"
+"#,
+    );
+
+    let cfg = load(&path);
+    let map = cfg
+        .get_tcode_config("VL06O", None)
+        .expect("VL06O config present");
+    let p = vl06o_from_map(&map);
+
+    assert_eq!(p.sap_variant_name.as_deref(), Some("TEST_VARIANT"));
+    assert_eq!(p.layout_row.as_deref(), Some("TEST_LAYOUT"));
+    assert_eq!(p.column_name.as_deref(), Some("Test Column"));
+    assert!(p.by_date);
+    assert_eq!(
+        p.start_date,
+        NaiveDate::parse_from_str("04/01/2025", "%m/%d/%Y").unwrap()
+    );
+    assert_eq!(
+        p.end_date,
+        NaiveDate::parse_from_str("04/15/2025", "%m/%d/%Y").unwrap()
+    );
 }
 
 #[test]
-fn test_get_tcode_config() {
-    // Create a test SapConfig with the new structure
-    let mut config = SapConfig::new();
-    
-    // Set up global config
-    if let Some(global) = &mut config.global {
-        global.default_tcode = Some("VL06O".to_string());
-    }
-    
-    // Set up VL06O tcode config
-    if config.tcode.is_none() {
-        config.tcode = Some(HashMap::new());
-    }
-    
-    if let Some(tcode_configs) = &mut config.tcode {
-        let mut vl06o_config = TcodeConfig::default();
-        vl06o_config.variant = Some("TEST_VARIANT".to_string());
-        vl06o_config.layout = Some("TEST_LAYOUT".to_string());
-        vl06o_config.column_name = Some("Test Column".to_string());
-        vl06o_config.date_range_start = Some("04/01/2025".to_string());
-        vl06o_config.date_range_end = Some("04/15/2025".to_string());
-        vl06o_config.by_date = Some("true".to_string());
-        
-        tcode_configs.insert("VL06O".to_string(), vl06o_config);
-        
-        // Add VT11 config with custom parameter
-        let mut vt11_config = TcodeConfig::default();
-        vt11_config.additional_params.insert("custom_param".to_string(), "custom_value".to_string());
-        
-        tcode_configs.insert("VT11".to_string(), vt11_config);
-    }
-    
-    // Get the VL06O config
-    let vl06o_config = config.get_tcode_config("VL06O", None).expect("Failed to get VL06O config");
-    
-    // Verify the VL06O config
-    assert_eq!(vl06o_config.get("variant"), Some(&"TEST_VARIANT".to_string()));
-    assert_eq!(vl06o_config.get("layout"), Some(&"TEST_LAYOUT".to_string()));
-    assert_eq!(vl06o_config.get("column_name"), Some(&"Test Column".to_string()));
-    assert_eq!(vl06o_config.get("date_range_start"), Some(&"04/01/2025".to_string()));
-    assert_eq!(vl06o_config.get("date_range_end"), Some(&"04/15/2025".to_string()));
-    assert_eq!(vl06o_config.get("by_date"), Some(&"true".to_string()));
-    
-    // Get the VT11 config
-    let vt11_config = config.get_tcode_config("VT11", None).expect("Failed to get VT11 config");
-    
-    // Verify the VT11 config has the custom parameter but not the VL06O-specific ones
-    assert_eq!(vt11_config.get("custom_param"), Some(&"custom_value".to_string()));
-    assert!(vt11_config.get("by_date").is_none());
+fn vt11_full_config_round_trips() {
+    let (_tmp, path) = write_temp_config(
+        r#"
+[tcode.VT11]
+variant = "VT11_VARIANT"
+layout = "VT11_LAYOUT"
+column_name = "VT11 Column"
+date_range_start = "04/01/2025"
+date_range_end = "04/15/2025"
+"#,
+    );
+
+    let cfg = load(&path);
+    let map = cfg.get_tcode_config("VT11", None).unwrap();
+    let p = vt11_from_map(&map);
+
+    assert_eq!(p.sap_variant_name.as_deref(), Some("VT11_VARIANT"));
+    assert_eq!(p.layout_row.as_deref(), Some("VT11_LAYOUT"));
+    assert_eq!(p.column_name.as_deref(), Some("VT11 Column"));
 }
 
 #[test]
-fn test_vl06o_params_from_config() {
-    // Create a test config HashMap
-    let mut config = HashMap::new();
-    config.insert("variant".to_string(), "TEST_VARIANT".to_string());
-    config.insert("layout".to_string(), "TEST_LAYOUT".to_string());
-    config.insert("column_name".to_string(), "Test Column".to_string());
-    config.insert("date_range_start".to_string(), "04/01/2025".to_string());
-    config.insert("date_range_end".to_string(), "04/15/2025".to_string());
-    config.insert("by_date".to_string(), "true".to_string());
-    
-    // Create VL06O params from the config
-    let params = create_vl06o_params_from_config(&config);
-    
-    // Verify the params
-    assert_eq!(params.sap_variant_name, Some("TEST_VARIANT".to_string()));
-    assert_eq!(params.layout_row, Some("TEST_LAYOUT".to_string()));
-    assert_eq!(params.column_name, Some("Test Column".to_string()));
-    assert_eq!(params.by_date, true);
-    
-    // Verify the dates
-    let expected_start_date = NaiveDate::parse_from_str("04/01/2025", "%m/%d/%Y").unwrap();
-    let expected_end_date = NaiveDate::parse_from_str("04/15/2025", "%m/%d/%Y").unwrap();
-    assert_eq!(params.start_date, expected_start_date);
-    assert_eq!(params.end_date, expected_end_date);
+fn zmdesnr_full_config_round_trips() {
+    let (_tmp, path) = write_temp_config(
+        r#"
+[tcode.ZMDESNR]
+variant = "ZMD_VARIANT"
+layout = "ZMD_LAYOUT"
+serial_number = "123456789"
+"#,
+    );
+
+    let cfg = load(&path);
+    let map = cfg.get_tcode_config("ZMDESNR", None).unwrap();
+    let p = zmdesnr_from_map(&map);
+
+    assert_eq!(p.sap_variant_name.as_deref(), Some("ZMD_VARIANT"));
+    assert_eq!(p.layout_row.as_deref(), Some("ZMD_LAYOUT"));
+    assert_eq!(p.serial_number, "123456789");
 }
 
 #[test]
-fn test_vt11_params_from_config() {
-    // Create a test config HashMap
-    let mut config = HashMap::new();
-    config.insert("variant".to_string(), "TEST_VARIANT".to_string());
-    config.insert("layout".to_string(), "TEST_LAYOUT".to_string());
-    config.insert("column_name".to_string(), "Test Column".to_string());
-    config.insert("date_range_start".to_string(), "04/01/2025".to_string());
-    config.insert("date_range_end".to_string(), "04/15/2025".to_string());
-    
-    // Create VT11 params from the config
-    let params = create_vt11_params_from_config(&config);
-    
-    // Verify the params
-    assert_eq!(params.sap_variant_name, Some("TEST_VARIANT".to_string()));
-    assert_eq!(params.layout_row, Some("TEST_LAYOUT".to_string()));
-    assert_eq!(params.column_name, Some("Test Column".to_string()));
-    
-    // Verify the dates
-    let expected_start_date = NaiveDate::parse_from_str("04/01/2025", "%m/%d/%Y").unwrap();
-    let expected_end_date = NaiveDate::parse_from_str("04/15/2025", "%m/%d/%Y").unwrap();
-    assert_eq!(params.start_date, expected_start_date);
-    assert_eq!(params.end_date, expected_end_date);
+fn missing_config_returns_none_for_unknown_tcode() {
+    // Empty file → SapConfig still loads but tcode map is empty.
+    let (_tmp, path) = write_temp_config("");
+    let cfg = load(&path);
+    assert!(cfg.get_tcode_config("VT11", None).is_none());
+    assert!(cfg.get_tcode_config("ZMDESNR", None).is_none());
 }
 
 #[test]
-fn test_zmdesnr_params_from_config() {
-    // Create a test config HashMap
-    let mut config = HashMap::new();
-    config.insert("variant".to_string(), "TEST_VARIANT".to_string());
-    config.insert("layout".to_string(), "TEST_LAYOUT".to_string());
-    config.insert("serial_number".to_string(), "123456789".to_string());
-    
-    // Create ZMDESNR params from the config
-    let params = create_zmdesnr_params_from_config(&config);
-    
-    // Verify the params
-    assert_eq!(params.sap_variant_name, Some("TEST_VARIANT".to_string()));
-    assert_eq!(params.layout_row, Some("TEST_LAYOUT".to_string()));
-    assert_eq!(params.serial_number, "123456789".to_string());
+fn nonexistent_path_returns_default_config() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("never-existed.toml");
+    let cfg = SapConfig::load_from_path(path.to_str().unwrap())
+        .expect("load_from_path tolerates a missing file");
+    assert!(cfg.get_tcode_config("VT11", None).is_none());
 }
 
 #[test]
-fn test_config_with_different_date_formats() {
-    // Test with MM/DD/YYYY format
-    let mut config1 = HashMap::new();
-    config1.insert("date_range_start".to_string(), "04/01/2025".to_string());
-    config1.insert("date_range_end".to_string(), "04/15/2025".to_string());
-    
-    let params1 = create_vl06o_params_from_config(&config1);
-    let expected_start1 = NaiveDate::parse_from_str("04/01/2025", "%m/%d/%Y").unwrap();
-    let expected_end1 = NaiveDate::parse_from_str("04/15/2025", "%m/%d/%Y").unwrap();
-    assert_eq!(params1.start_date, expected_start1);
-    assert_eq!(params1.end_date, expected_end1);
-    
-    // Test with MM-DD-YYYY format
-    let mut config2 = HashMap::new();
-    config2.insert("date_range_start".to_string(), "04-01-2025".to_string());
-    config2.insert("date_range_end".to_string(), "04-15-2025".to_string());
-    
-    let params2 = create_vl06o_params_from_config(&config2);
-    let expected_start2 = NaiveDate::parse_from_str("04-01-2025", "%m-%d-%Y").unwrap();
-    let expected_end2 = NaiveDate::parse_from_str("04-15-2025", "%m-%d-%Y").unwrap();
-    assert_eq!(params2.start_date, expected_start2);
-    assert_eq!(params2.end_date, expected_end2);
-    
-    // Test with YYYY-MM-DD format
-    let mut config3 = HashMap::new();
-    config3.insert("date_range_start".to_string(), "2025-04-01".to_string());
-    config3.insert("date_range_end".to_string(), "2025-04-15".to_string());
-    
-    let params3 = create_vl06o_params_from_config(&config3);
-    let expected_start3 = NaiveDate::parse_from_str("2025-04-01", "%Y-%m-%d").unwrap();
-    let expected_end3 = NaiveDate::parse_from_str("2025-04-15", "%Y-%m-%d").unwrap();
-    assert_eq!(params3.start_date, expected_start3);
-    assert_eq!(params3.end_date, expected_end3);
+fn multiple_date_formats_are_accepted() {
+    let (_tmp, path) = write_temp_config(
+        r#"
+[tcode.VL06O]
+variant = "v"
+date_range_start = "2025-04-01"
+date_range_end = "04-15-2025"
+"#,
+    );
+    let cfg = load(&path);
+    let map = cfg.get_tcode_config("VL06O", None).unwrap();
+    let p = vl06o_from_map(&map);
+    assert_eq!(
+        p.start_date,
+        NaiveDate::parse_from_str("2025-04-01", "%Y-%m-%d").unwrap()
+    );
+    assert_eq!(
+        p.end_date,
+        NaiveDate::parse_from_str("04-15-2025", "%m-%d-%Y").unwrap()
+    );
 }
 
 #[test]
-fn test_tcode_specific_params() {
-    // Create a test SapConfig with the new structure
-    let mut config = SapConfig::new();
-    
-    // Set up tcode configs
-    if config.tcode.is_none() {
-        config.tcode = Some(HashMap::new());
-    }
-    
-    if let Some(tcode_configs) = &mut config.tcode {
-        // VL06O config
-        let mut vl06o_config = TcodeConfig::default();
-        vl06o_config.by_date = Some("true".to_string());
-        vl06o_config.additional_params.insert("custom_param".to_string(), "vl06o_value".to_string());
-        tcode_configs.insert("VL06O".to_string(), vl06o_config);
-        
-        // VT11 config
-        let mut vt11_config = TcodeConfig::default();
-        vt11_config.additional_params.insert("custom_param".to_string(), "vt11_value".to_string());
-        tcode_configs.insert("VT11".to_string(), vt11_config);
-        
-        // ZMDESNR config
-        let mut zmdesnr_config = TcodeConfig::default();
-        zmdesnr_config.serial_number = Some("123456789".to_string());
-        tcode_configs.insert("ZMDESNR".to_string(), zmdesnr_config);
-    }
-    
-    // Get the VL06O config
-    let vl06o_config = config.get_tcode_config("VL06O", None).expect("Failed to get VL06O config");
-    
-    // Verify the VL06O config has the VL06O-specific parameters
-    assert_eq!(vl06o_config.get("by_date"), Some(&"true".to_string()));
-    assert_eq!(vl06o_config.get("custom_param"), Some(&"vl06o_value".to_string()));
-    assert!(vl06o_config.get("serial_number").is_none());
-    
-    // Get the VT11 config
-    let vt11_config = config.get_tcode_config("VT11", None).expect("Failed to get VT11 config");
-    
-    // Verify the VT11 config has the VT11-specific parameters
-    assert_eq!(vt11_config.get("custom_param"), Some(&"vt11_value".to_string()));
-    assert!(vt11_config.get("by_date").is_none());
-    
-    // Get the ZMDESNR config
-    let zmdesnr_config = config.get_tcode_config("ZMDESNR", None).expect("Failed to get ZMDESNR config");
-    
-    // Verify the ZMDESNR config has the ZMDESNR-specific parameters
-    assert_eq!(zmdesnr_config.get("serial_number"), Some(&"123456789".to_string()));
-    assert!(zmdesnr_config.get("by_date").is_none());
-}
+fn tcode_specific_sections_are_isolated() {
+    let (_tmp, path) = write_temp_config(
+        r#"
+[tcode.VL06O]
+variant = "VL06O_VARIANT"
+by_date = "true"
 
-#[test]
-fn test_missing_config_params() {
-    // Create an empty config HashMap
-    let config = HashMap::new();
-    
-    // Create params from the empty config
-    let vl06o_params = create_vl06o_params_from_config(&config);
-    let vt11_params = create_vt11_params_from_config(&config);
-    let zmdesnr_params = create_zmdesnr_params_from_config(&config);
-    
-    // Verify default values are used
-    assert_eq!(vl06o_params.sap_variant_name, None);
-    assert_eq!(vl06o_params.layout_row, None);
-    assert_eq!(vl06o_params.column_name, None);
-    assert_eq!(vl06o_params.by_date, false);
-    
-    assert_eq!(vt11_params.sap_variant_name, None);
-    assert_eq!(vt11_params.layout_row, None);
-    assert_eq!(vt11_params.column_name, None);
-    
-    assert_eq!(zmdesnr_params.sap_variant_name, None);
-    assert_eq!(zmdesnr_params.layout_row, None);
-    assert_eq!(zmdesnr_params.serial_number, "");
+[tcode.VT11]
+column_name = "VT11 Column"
+
+[tcode.ZMDESNR]
+serial_number = "123456789"
+"#,
+    );
+
+    let cfg = load(&path);
+
+    // VL06O sees its own values, not VT11 / ZMDESNR fields.
+    let vl_map = cfg.get_tcode_config("VL06O", None).unwrap();
+    assert_eq!(vl_map.get("variant").map(String::as_str), Some("VL06O_VARIANT"));
+    assert_eq!(vl_map.get("by_date").map(String::as_str), Some("true"));
+    assert!(vl_map.get("serial_number").is_none());
+
+    let vt_map = cfg.get_tcode_config("VT11", None).unwrap();
+    assert_eq!(vt_map.get("column_name").map(String::as_str), Some("VT11 Column"));
+    assert!(vt_map.get("by_date").is_none());
+
+    let zm_map = cfg.get_tcode_config("ZMDESNR", None).unwrap();
+    assert_eq!(zm_map.get("serial_number").map(String::as_str), Some("123456789"));
+    assert!(zm_map.get("by_date").is_none());
 }

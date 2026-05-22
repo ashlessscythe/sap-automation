@@ -783,6 +783,10 @@ impl SapConfig {
                     content.push_str(&format!("by_date = \"{}\"\n", by_date));
                 }
 
+                if let Some(by_delivery) = &tcode_config.by_delivery {
+                    content.push_str(&format!("by_delivery = \"{}\"\n", by_delivery));
+                }
+
                 if let Some(serial_number) = &tcode_config.serial_number {
                     content.push_str(&format!("serial_number = \"{}\"\n", serial_number));
                 }

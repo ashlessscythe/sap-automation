@@ -342,6 +342,7 @@ fn configure_tcode_parameters(config: &mut SapConfig, tcode_name: &str) -> Resul
         "Configure Column Name",
         "Configure Date Range",
         "Configure By Date",
+        "Configure By Delivery",
         "Configure Serial Number",
         "Configure Tab Number",
         "Add Custom Parameter",
@@ -460,6 +461,22 @@ fn configure_tcode_parameters(config: &mut SapConfig, tcode_name: &str) -> Resul
                 println!("By Date set to: {}", by_date);
             }
             5 => {
+                // configure by_delivery
+                let current = tcode_config.by_delivery.clone().unwrap_or_default();
+                let by_delivery_options = vec!["true", "false"];
+                let default_index = if current == "true" { 0 } else { 1 };
+                let by_delivery_choice = Select::new()
+                    .with_prompt("Filter by delivery?")
+                    .items(&by_delivery_options)
+                    .default(default_index)
+                    .interact()
+                    .unwrap();
+
+                let by_delivery = by_delivery_options[by_delivery_choice].to_string();
+                tcode_config.by_delivery = Some(by_delivery.clone());
+                println!("By Delivery set to: {}", by_delivery);
+            }
+            6 => {
                 // Configure Serial Number
                 let current = tcode_config.serial_number.clone().unwrap_or_default();
                 let serial_number: String = Input::new()
@@ -477,7 +494,7 @@ fn configure_tcode_parameters(config: &mut SapConfig, tcode_name: &str) -> Resul
                     println!("Serial Number set to: {}", serial_number);
                 }
             }
-            6 => {
+            7 => {
                 // Configure Tab Number
                 let current = tcode_config.tab_number.clone().unwrap_or_default();
                 let tab_number: String = Input::new()
@@ -495,7 +512,7 @@ fn configure_tcode_parameters(config: &mut SapConfig, tcode_name: &str) -> Resul
                     println!("Tab Number set to: {}", tab_number);
                 }
             }
-            7 => {
+            8 => {
                 // Add Custom Parameter
                 let param_name: String = Input::new()
                     .with_prompt("Enter Parameter Name")
@@ -519,7 +536,7 @@ fn configure_tcode_parameters(config: &mut SapConfig, tcode_name: &str) -> Resul
                     println!("Parameter '{}' set to: {}", param_name, param_value);
                 }
             }
-            8 => {
+            9 => {
                 // Remove Parameter
                 let mut param_names: Vec<String> = Vec::new();
 
@@ -538,6 +555,9 @@ fn configure_tcode_parameters(config: &mut SapConfig, tcode_name: &str) -> Resul
                 }
                 if tcode_config.by_date.is_some() {
                     param_names.push("by_date".to_string());
+                }
+                if tcode_config.by_delivery.is_some() {
+                    param_names.push("by_delivery".to_string());
                 }
                 if tcode_config.serial_number.is_some() {
                     param_names.push("serial_number".to_string());
@@ -595,6 +615,10 @@ fn configure_tcode_parameters(config: &mut SapConfig, tcode_name: &str) -> Resul
                         tcode_config.by_date = None;
                         println!("By Date configuration cleared.");
                     }
+                    "by_delivery" => {
+                        tcode_config.by_delivery = None;
+                        println!("By Delivery configuration cleared.");
+                    }
                     "serial_number" => {
                         tcode_config.serial_number = None;
                         println!("Serial Number configuration cleared.");
@@ -609,7 +633,7 @@ fn configure_tcode_parameters(config: &mut SapConfig, tcode_name: &str) -> Resul
                     }
                 }
             }
-            9 => {
+            10 => {
                 // Delete This TCode Configuration
                 println!(
                     "Are you sure you want to delete the configuration for TCode '{}'? (y/n)",

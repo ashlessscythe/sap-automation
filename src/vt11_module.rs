@@ -208,12 +208,12 @@ fn create_vt11_params_from_config(config: &HashMap<String, String>) -> VT11Param
 
     // Set by_date if available
     if let Some(by_date) = config.get("by_date") {
-        params.by_date = by_date.to_lowercase() == "false";
+        params.by_date = by_date.eq_ignore_ascii_case("true");
     }
 
     // Set by_delivery if available
     if let Some(by_delivery) = config.get("by_delivery") {
-        params.by_delivery = by_delivery.to_lowercase() == "false";
+        params.by_delivery = by_delivery.eq_ignore_ascii_case("true");
     }
 
     // Set limiter if available
@@ -347,4 +347,33 @@ fn parse_date(date_str: &str) -> Result<NaiveDate> {
 
     // If all parsing attempts fail, return an error
     Err(windows::core::Error::from_win32())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    #[test]
+    fn vt11_config_honors_by_delivery_and_by_date() {
+        let mut m = HashMap::new();
+        m.insert("by_delivery".to_string(), "true".to_string());
+        m.insert("by_date".to_string(), "true".to_string());
+        let p = create_vt11_params_from_config(&m);
+        assert!(p.by_delivery);
+        assert!(p.by_date);
+
+        m.insert("by_delivery".to_string(), "false".to_string());
+        m.insert("by_date".to_string(), "false".to_string());
+        let p = create_vt11_params_from_config(&m);
+        assert!(!p.by_delivery);
+        assert!(!p.by_date);
+    }
+
+    #[test]
+    fn vt11_config_defaults_when_flags_omitted() {
+        let p = create_vt11_params_from_config(&HashMap::new());
+        assert!(!p.by_delivery);
+        assert!(!p.by_date);
+    }
 }

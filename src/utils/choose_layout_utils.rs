@@ -595,13 +595,16 @@ const LAYOUT_149_BASE: &str =
 
 /// Ensure 149 has the inbond layout: select if present, otherwise set up default columns and save.
 ///
-/// - If `layout_name` is found → select it.
-/// - If missing/empty → set up `columns`, then ask whether to save under `layout_name` (or `inb_ship`).
+/// Returns `(ok, saved_layout_name)`:
+/// - existing layout selected → `(true, None)`
+/// - columns set up and saved in SAP → `(true, Some(name))` so callers can persist to config
+/// - columns set up but not saved → `(true, None)`
+/// - failure → `(false, None)`
 pub fn ensure_inbond_layout_149(
     session: &GuiSession,
     layout_name: &str,
     columns: &[String],
-) -> windows::core::Result<bool> {
+) -> windows::core::Result<(bool, Option<String>)> {
     use crate::utils::setup_layout_utils::setup_layout;
     use dialoguer::{Confirm, Input};
 
@@ -620,7 +623,7 @@ pub fn ensure_inbond_layout_149(
     if !layout_name.trim().is_empty() {
         if try_select_layout_149(session, layout_name)? {
             println!("Using existing layout '{}'", layout_name);
-            return Ok(true);
+            return Ok((true, None));
         }
         println!(
             "Provided layout '{}' not found. Setting up default inbond columns...",
@@ -631,7 +634,7 @@ pub fn ensure_inbond_layout_149(
     }
 
     if !open_change_layout_149(session)? {
-        return Ok(false);
+        return Ok((false, None));
     }
 
     // Confirm save name when config layout was missing/invalid
@@ -679,12 +682,16 @@ pub fn ensure_inbond_layout_149(
                     " (not saved)".to_string()
                 }
             );
-            Ok(true)
+            if do_save {
+                Ok((true, Some(final_name)))
+            } else {
+                Ok((true, None))
+            }
         }
         Ok(false) => {
             println!("setup_layout returned false for 149 inbond columns");
             close_popups(session, None, None)?;
-            Ok(false)
+            Ok((false, None))
         }
         Err(e) => {
             println!("Error setting up 149 inbond layout: {}", e);

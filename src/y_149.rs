@@ -317,8 +317,16 @@ pub fn run_export_by_delivery(
 
     // Select existing layout, or set up default inbond columns and optionally save
     match ensure_inbond_layout_149(session, &params.layout, &params.layout_columns) {
-        Ok(true) => {}
-        Ok(false) => {
+        Ok((true, Some(saved_name))) => {
+            if let Err(e) = crate::inbond_shipment::persist_inbond_layout_149(&saved_name) {
+                println!(
+                    "Layout saved in SAP as '{}', but failed to update config.toml: {}",
+                    saved_name, e
+                );
+            }
+        }
+        Ok((true, None)) => {}
+        Ok((false, _)) => {
             println!(
                 "Warning: could not apply or set up layout '{}'; exporting as-is",
                 params.layout

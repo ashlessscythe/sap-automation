@@ -100,6 +100,92 @@ impl InbondSettings {
     }
 }
 
+/// Persist a confirmed-working 149 layout name to `[inbond].layout_149` in config.toml.
+/// Creates the `[inbond]` section if missing; updates `layout_149` when it already exists.
+pub fn persist_inbond_layout_149(layout_name: &str) -> anyhow::Result<()> {
+    use crate::utils::config_types::SapConfig;
+    use toml::Value;
+
+    let name = layout_name.trim();
+    if name.is_empty() {
+        return Ok(());
+    }
+
+    let mut config = SapConfig::load()?;
+    let path = config.config_path.clone();
+
+    let mut root = match config.raw_config.take() {
+        Some(Value::Table(t)) => t,
+        _ => {
+            // Reload file as table, or start fresh table for inbond-only update
+            match std::fs::read_to_string(&path) {
+                Ok(content) => match content.parse::<Value>() {
+                    Ok(Value::Table(t)) => t,
+                    _ => toml::map::Map::new(),
+                },
+                Err(_) => toml::map::Map::new(),
+            }
+        }
+    };
+
+    let inbond = root
+        .entry("inbond".to_string())
+        .or_insert_with(|| Value::Table(toml::map::Map::new()));
+
+    if let Value::Table(table) = inbond {
+        let prev = table
+            .get("layout_149")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        table.insert("layout_149".to_string(), Value::String(name.to_string()));
+
+        // Sensible defaults if creating a new [inbond] section
+        if !table.contains_key("vl06o_variant") {
+            table.insert(
+                "vl06o_variant".to_string(),
+                Value::String("blank_".to_string()),
+            );
+        }
+        if !table.contains_key("variant_149") {
+            table.insert(
+                "variant_149".to_string(),
+                Value::String("inb_ship".to_string()),
+            );
+        }
+        if !table.contains_key("export_type") {
+            table.insert("export_type".to_string(), Value::Integer(1));
+        }
+        if !table.contains_key("open_notepad") {
+            table.insert("open_notepad".to_string(), Value::Boolean(true));
+        }
+
+        config.raw_config = Some(Value::Table(root));
+        config.save()?;
+
+        if prev.is_empty() {
+            println!(
+                "Wrote [inbond].layout_149 = \"{}\" to {}",
+                name, path
+            );
+        } else if prev != name {
+            println!(
+                "Updated [inbond].layout_149 in {}: \"{}\" → \"{}\"",
+                path, prev, name
+            );
+        } else {
+            println!(
+                "Confirmed [inbond].layout_149 = \"{}\" in {}",
+                name, path
+            );
+        }
+    } else {
+        anyhow::bail!("[inbond] section in config is not a table");
+    }
+
+    Ok(())
+}
+
 /// Run VL06O for a single shipment, export list, return export path.
 pub fn run_vl06o_by_shipment(
     session: &GuiSession,

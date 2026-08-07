@@ -177,7 +177,7 @@ export_type = 1
 open_notepad = true
 ```
 
-If `layout_149` is missing in SAP (or empty), the flow sets up `layout_columns` via Change Layout and asks whether to save under that name (default `inb_ship`).
+If `layout_149` is missing in SAP (or empty), the flow sets up `layout_columns` via Change Layout and asks whether to save under that name (default `inb_ship`). When you confirm and SAP save succeeds, `[inbond].layout_149` is written/updated in `config.toml` so the next run uses the confirmed name.
 
 ## Dependencies
 

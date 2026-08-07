@@ -154,17 +154,57 @@ pub fn get_sap_text_errors(
     Ok(result)
 }
 
+/// Cell type prefix for SAP multi-value paste tables (`ctxt` vs `txt`).
+/// VL06O/VT11 use `ctxtRSCSEL_255-SLOW_I`; y_dn3_47000149 delivery multi uses `txtRSCSEL_255-SLOW_I`.
+fn multi_paste_cell_id(table_id: &str, cell_prefix: &str, row: i32) -> String {
+    format!(
+        "{}/{}RSCSEL_255-SLOW_I[1,{}]",
+        table_id, cell_prefix, row
+    )
+}
+
+fn read_multi_paste_cell(session: &GuiSession, full_field_id: &str) -> Result<Option<String>> {
+    let Ok(field) = session.find_by_id(full_field_id.to_string()) else {
+        return Ok(None);
+    };
+    if let Some(text_field) = field.downcast::<GuiCTextField>() {
+        return Ok(Some(text_field.text()?));
+    }
+    if let Some(text_field) = field.downcast::<GuiTextField>() {
+        return Ok(Some(text_field.text()?));
+    }
+    Ok(None)
+}
+
+fn write_multi_paste_cell(session: &GuiSession, full_field_id: &str, value: &str) -> Result<bool> {
+    let Ok(field) = session.find_by_id(full_field_id.to_string()) else {
+        return Ok(false);
+    };
+    if let Some(text_field) = field.downcast::<GuiCTextField>() {
+        text_field.set_text(value.to_string())?;
+        return Ok(true);
+    }
+    if let Some(text_field) = field.downcast::<GuiTextField>() {
+        text_field.set_text(value.to_string())?;
+        return Ok(true);
+    }
+    Ok(false)
+}
+
 /// Paste values into a scrollable table in SAP GUI
 ///
 /// This function pastes values into a scrollable table in SAP GUI at the specified window index.
 /// It handles scrolling through the table to paste all values, even when there are thousands.
 /// This is a faithful port of the VBA implementation from deliv_packages.md
+///
+/// `cell_prefix` is typically `"ctxt"` (VL06O/VT11) or `"txt"` (149 delivery multi).
 pub fn paste_values_with_scroll(
     session: &GuiSession,
     wnd_idx: i32,
     table_id: &str,
     values: &[String],
     batch_size: usize,
+    cell_prefix: &str,
 ) -> Result<bool> {
     if values.is_empty() {
         return Ok(true);
@@ -186,8 +226,9 @@ pub fn paste_values_with_scroll(
         .collect();
 
     println!(
-        "Starting to paste {} values using VBA-style scrolling",
-        clean_values.len()
+        "Starting to paste {} values using VBA-style scrolling (cell_prefix={})",
+        clean_values.len(),
+        cell_prefix
     );
 
     // Process values in batches, similar to VBA approach
@@ -209,19 +250,15 @@ pub fn paste_values_with_scroll(
                         page_down_count += 1;
                         std::thread::sleep(std::time::Duration::from_millis(50));
                         // Check if row 1 is empty (indicating we've scrolled to a new area)
-                        let check_field_id = format!("{}/ctxtRSCSEL_255-SLOW_I[1,1]", table_id);
+                        let check_field_id = multi_paste_cell_id(table_id, cell_prefix, 1);
                         let check_full_id = format!("wnd[{}]/usr/{}", wnd_idx, check_field_id);
-                        if let Ok(field) = session.find_by_id(check_full_id) {
-                            if let Some(text_field) = field.downcast::<GuiCTextField>() {
-                                if let Ok(text) = text_field.text() {
-                                    if text.is_empty() {
-                                        println!(
-                                            "Found empty row at index 1 after {} Page Down presses",
-                                            page_down_count
-                                        );
-                                        break;
-                                    }
-                                }
+                        if let Some(text) = read_multi_paste_cell(session, &check_full_id)? {
+                            if text.is_empty() {
+                                println!(
+                                    "Found empty row at index 1 after {} Page Down presses",
+                                    page_down_count
+                                );
+                                break;
                             }
                         }
                         // Safety limit to prevent infinite loop
@@ -245,40 +282,28 @@ pub fn paste_values_with_scroll(
         // Determine correct start index after scrolling
         let mut start_index = 0;
         if values_pasted > 0 {
-            let field_id = format!("{}/ctxtRSCSEL_255-SLOW_I[1,0]", table_id);
+            let field_id = multi_paste_cell_id(table_id, cell_prefix, 0);
             let full_field_id = format!("wnd[{}]/usr/{}", wnd_idx, field_id);
-            if let Ok(field) = session.find_by_id(full_field_id) {
-                if let Some(text_field) = field.downcast::<GuiCTextField>() {
-                    if let Ok(text) = text_field.text() {
-                        if !text.trim().is_empty() {
-                            start_index = 1;
-                        }
-                    }
+            if let Some(text) = read_multi_paste_cell(session, &full_field_id)? {
+                if !text.trim().is_empty() {
+                    start_index = 1;
                 }
             }
         }
         let mut local_index = start_index;
         for i in 0..current_batch_size {
             let global_index = values_pasted + i;
-            // Try to find the field using the correct pattern from VBA
-            let field_id = format!("{}/ctxtRSCSEL_255-SLOW_I[1,{}]", table_id, local_index);
+            let field_id = multi_paste_cell_id(table_id, cell_prefix, local_index as i32);
             let full_field_id = format!("wnd[{}]/usr/{}", wnd_idx, field_id);
-            if let Ok(field) = session.find_by_id(full_field_id.clone()) {
-                if let Some(text_field) = field.downcast::<GuiCTextField>() {
-                    let clean_value = clean_values[global_index].clone();
-                    println!(
-                        "  Pasted value {} at local index {}",
-                        clean_value, local_index
-                    );
-                    text_field.set_text(clean_value)?;
-                    local_index += 1;
-                } else {
-                    println!("  Field found but not a text field: {}", full_field_id);
-                    break;
-                }
+            let clean_value = clean_values[global_index].clone();
+            if write_multi_paste_cell(session, &full_field_id, &clean_value)? {
+                println!(
+                    "  Pasted value {} at local index {}",
+                    clean_value, local_index
+                );
+                local_index += 1;
             } else {
-                println!("  Field not found: {}", full_field_id);
-                // If we can't find the field, we might need to scroll
+                println!("  Field not found or not a text field: {}", full_field_id);
                 break;
             }
         }

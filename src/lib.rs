@@ -1,5 +1,7 @@
 pub mod app;
 pub mod cli;
+pub mod inbond_shipment;
+pub mod inbond_shipment_module;
 pub mod tui;
 pub mod utils;
 pub mod vl06o;

@@ -18,12 +18,14 @@ pub fn export_type_to_extension(export_type: u8) -> &'static str {
 /// Perform a "Save list in file" export for the active ALV grid.
 /// Assumes the "SAVE LIST IN FILE..." dialog (wnd[1]) is already open.
 /// Selects the radio option based on export_type, confirms, and saves to disk unless clipboard.
+///
+/// Returns the full path of the written file, or an empty string for clipboard export.
 pub fn export_local_file(
     session: &GuiSession,
     tcode_for_path: &str,
     export_type: u8,
     filename_suffix: Option<&str>,
-) -> Result<()> {
+) -> Result<String> {
     // Select export format based on export_type (0..=4)
     let radio_index = match export_type {
         0 => "0", // unconverted
@@ -59,7 +61,7 @@ pub fn export_local_file(
     // For clipboard export, don't create a file
     if export_type == 4 {
         println!("Exporting to clipboard - no file created");
-        return Ok(());
+        return Ok(String::new());
     }
 
     // Wait for save dialog to appear
@@ -88,12 +90,8 @@ pub fn export_local_file(
     // Small delay for export to finish
     std::thread::sleep(std::time::Duration::from_millis(2000));
 
-    println!(
-        "Successfully exported data to {}{}{}",
-        file_path,
-        std::path::MAIN_SEPARATOR,
-        file_name
-    );
+    let full_path = format!("{}{}{}", file_path, std::path::MAIN_SEPARATOR, file_name);
+    println!("Successfully exported data to {}", full_path);
 
-    Ok(())
+    Ok(full_path)
 }

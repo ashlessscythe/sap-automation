@@ -188,6 +188,172 @@ pub fn run_export(session: &GuiSession, params: &Report149Params) -> Result<bool
     Ok(true)
 }
 
+/// Parameters for 149 export filtered by delivery numbers (inbond flow).
+#[derive(Debug, Clone)]
+pub struct Report149ByDeliveryParams {
+    pub variant: String,
+    pub layout: String,
+    /// Column display names for Change Layout fallback when `layout` is missing/not found.
+    pub layout_columns: Vec<String>,
+    pub delivery_numbers: Vec<String>,
+    pub export_type: u8,
+    pub filename_suffix: Option<String>,
+}
+
+impl Default for Report149ByDeliveryParams {
+    fn default() -> Self {
+        Self {
+            variant: "inb_ship".to_string(),
+            layout: "inb_ship".to_string(),
+            layout_columns: crate::utils::choose_layout_utils::inbond_default_layout_columns(),
+            delivery_numbers: Vec::new(),
+            export_type: 1,
+            filename_suffix: Some("inbond".to_string()),
+        }
+    }
+}
+
+/// Run 149 report filtered by delivery numbers, apply layout, and export to a local file.
+///
+/// Returns the exported file path on success.
+pub fn run_export_by_delivery(
+    session: &GuiSession,
+    params: &Report149ByDeliveryParams,
+) -> Result<Option<String>> {
+    println!("Running 149 report export by delivery...");
+
+    if params.delivery_numbers.is_empty() {
+        println!("No delivery numbers provided for 149 export");
+        return Ok(None);
+    }
+
+    if !assert_tcode(session, "y_dn3_47000149", Some(0))? {
+        println!("Failed to activate y_dn3_47000149 transaction");
+        return Ok(None);
+    }
+
+    if !variant_select(session, "y_dn3_47000149", &params.variant)? {
+        println!(
+            "Failed to select variant '{}' for tCode 'y_dn3_47000149'",
+            &params.variant
+        );
+        return Ok(None);
+    }
+
+    // Clear plant filter (removed 260807 variant fills in plant)
+    // if let Ok(txt) = session.find_by_id("wnd[0]/usr/ctxtS_WERKS-LOW".to_string()) {
+    //     if let Some(text_field) = txt.downcast::<GuiCTextField>() {
+    //         text_field.set_text("".to_string())?;
+    //     }
+    // }
+
+    // Open delivery multi-select
+    if let Ok(btn) = session.find_by_id("wnd[0]/usr/btn%_S_DELIV_%_APP_%-VALU_PUSH".to_string()) {
+        if let Some(button) = btn.downcast::<GuiButton>() {
+            button.press()?;
+        }
+    } else {
+        println!("Delivery multi-select button not found");
+        return Ok(None);
+    }
+
+    // Clear previous entries
+    if let Ok(window) = session.find_by_id("wnd[1]".to_string()) {
+        if let Some(modal_window) = window.downcast::<GuiModalWindow>() {
+            modal_window.send_v_key(16)?;
+        }
+    }
+
+    let table_id = "tabsTAB_STRIP/tabpSIVA/ssubSCREEN_HEADER:SAPLALDB:3010/tblSAPLALDBSINGLE";
+    let paste_ok = crate::utils::sap_ctrl_utils::paste_values_with_scroll(
+        session,
+        1,
+        table_id,
+        &params.delivery_numbers,
+        7,
+        "txt",
+    )?;
+    if !paste_ok {
+        println!("Failed to paste delivery numbers into 149");
+        return Ok(None);
+    }
+
+    // Close multi window (toolbar confirm, matching recording)
+    if let Ok(btn) = session.find_by_id("wnd[1]/tbar[0]/btn[8]".to_string()) {
+        if let Some(button) = btn.downcast::<GuiButton>() {
+            button.press()?;
+        }
+    } else if let Ok(window) = session.find_by_id("wnd[1]".to_string()) {
+        if let Some(modal_window) = window.downcast::<GuiModalWindow>() {
+            modal_window.send_v_key(8)?;
+        }
+    }
+
+    // Execute via toolbar F8 button (recording: tbar[1]/btn[8])
+    if let Ok(btn) = session.find_by_id("wnd[0]/tbar[1]/btn[8]".to_string()) {
+        if let Some(button) = btn.downcast::<GuiButton>() {
+            button.press()?;
+        }
+    } else if let Ok(wnd) = session.find_by_id("wnd[0]".to_string()) {
+        if let Some(window) = wnd.downcast::<GuiMainWindow>() {
+            window.send_v_key(8)?;
+        }
+    }
+
+    // Status bar only (ignore trailing wnd[1] popup per plan)
+    if let Ok(s) = crate::utils::sap_ctrl_utils::hit_ctrl(session, 0, "/sbar", "Text", "Get", "") {
+        if !s.is_empty() {
+            eprintln!("149 status bar: {}", s);
+            let lower = s.to_lowercase();
+            if lower.contains("no data")
+                || lower.contains("not found")
+                || lower.contains("no items")
+            {
+                println!("149 returned no data: {}", s);
+                return Ok(None);
+            }
+        }
+    }
+
+    // Select existing layout, or set up default inbond columns and optionally save
+    match ensure_inbond_layout_149(session, &params.layout, &params.layout_columns) {
+        Ok(true) => {}
+        Ok(false) => {
+            println!(
+                "Warning: could not apply or set up layout '{}'; exporting as-is",
+                params.layout
+            );
+        }
+        Err(e) => {
+            println!("Error ensuring layout '{}': {}", params.layout, e);
+            return Ok(None);
+        }
+    }
+
+    // Open export dialog then save
+    if let Ok(menu) = session.find_by_id("wnd[0]/mbar/menu[0]/menu[3]/menu[2]".to_string()) {
+        if let Some(menu_item) = menu.downcast::<GuiMenu>() {
+            menu_item.select()?;
+        }
+    }
+
+    let suffix = params.filename_suffix.as_deref();
+    match export_local_file(session, "y_149", params.export_type, suffix) {
+        Ok(path) if !path.is_empty() => {
+            println!("149 by-delivery export completed: {}", path);
+            Ok(Some(path))
+        }
+        Ok(_) => {
+            println!("149 export completed but no file path returned");
+            Ok(None)
+        }
+        Err(e) => {
+            println!("Error exporting 149 data: {}", e);
+            Ok(None)
+        }
+    }
+}
+
 /// Export the current data to a file
 fn export_to_file(session: &GuiSession, plant: &str, export_type: u8) -> Result<()> {
     // Select Export menu to open the local file export dialog
@@ -198,5 +364,6 @@ fn export_to_file(session: &GuiSession, plant: &str, export_type: u8) -> Result<
     }
 
     // Delegate to shared utility to handle radio selection and saving
-    export_local_file(session, "y_149", export_type, Some(plant))
+    let _ = export_local_file(session, "y_149", export_type, Some(plant))?;
+    Ok(())
 }

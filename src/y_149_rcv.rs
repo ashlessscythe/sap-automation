@@ -229,5 +229,6 @@ fn export_rcv_to_file(session: &GuiSession, plant: &str, export_type: u8) -> Res
 
     // Delegate to shared utility to handle radio selection and saving
     let plant_name = if plant.is_empty() { "rcv" } else { plant };
-    export_local_file(session, "y_149_rcv", export_type, Some(plant_name))
+    let _ = export_local_file(session, "y_149_rcv", export_type, Some(plant_name))?;
+    Ok(())
 }

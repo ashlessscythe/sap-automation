@@ -66,6 +66,24 @@ rcv_variant = "material_rcv"
 rcv_days_back = 1
 rcv_layout = "rcv_layoutname"
 
+# Inbond clerk flow: shipment → VL06O → 149 (inb_ship) → paste-ready txt + Notepad
+# Used by menu "Inbond - Shipment to 149". Does not use exec_rest.
+[inbond]
+vl06o_variant = "blank_"
+variant_149 = "inb_ship"
+layout_149 = "inb_ship"
+# Used when layout_149 is missing or not found in SAP (Change Layout setup)
+layout_columns = [
+  "Plant",
+  "Delivery Number",
+  "Material",
+  "Quantity",
+  "UOM",
+  "Logistics Reference Number"
+]
+export_type = 1
+open_notepad = true
+
 [loop]
 tcode = "VT11"
 iterations = "4"

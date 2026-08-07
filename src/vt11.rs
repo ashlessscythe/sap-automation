@@ -360,6 +360,7 @@ pub fn run_export(session: &GuiSession, params: &VT11Params) -> Result<bool> {
                     table_id,
                     &delivery_numbers,
                     batch_size,
+                    "ctxt",
                 )?;
 
                 if !paste_result {

@@ -356,6 +356,7 @@ pub fn run_export(session: &GuiSession, params: &ZVT11Params) -> Result<bool> {
                     table_id,
                     &delivery_numbers,
                     batch_size,
+                    "ctxt",
                 )?;
 
                 if !paste_result {

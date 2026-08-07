@@ -10,6 +10,8 @@ use std::thread;
 use std::time::Duration;
 
 mod app;
+mod inbond_shipment;
+mod inbond_shipment_module;
 mod tui;
 mod utils;
 mod vl06o;
@@ -29,6 +31,7 @@ mod zvt11;
 mod zvt11_module;
 
 use app::*;
+use inbond_shipment_module::run_inbond_shipment_module;
 use utils::config_types::get_default_menu_option;
 use utils::excel_file_ops::handle_read_excel_file;
 use utils::loop_config::{handle_configure_loop, run_loop};
@@ -350,6 +353,7 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                     "149 Report - RCV",
                     "149 Report - RCV Auto Run (from config)",
                     "149 Report - Auto Run (from config)",
+                    "Inbond - Shipment to 149",
                     "Run Loop (using config)",
                     "Run Sequence (using config)",
                     "Configure Reports Directory",
@@ -379,7 +383,9 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                     "149 Report - y_dn3_47000149 (Not available - Login required)",
                     "149 Report - Material Not TSP (Not available - Login required)",
                     "149 Report - RCV (Not available - Login required)",
+                    "149 Report - RCV Auto Run (Not available - Login required)",
                     "149 Report - Auto Run (Not available - Login required)",
+                    "Inbond - Shipment to 149 (Not available - Login required)",
                     "Run Loop (Not available - Login required)",
                     "Run Sequence (Not available - Login required)",
                     "Configure Reports Directory",
@@ -412,6 +418,7 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                 "149 Report - RCV (Not available - SAP connection required)",
                 "149 Report - RCV Auto Run (Not available - SAP connection required)",
                 "149 Report - Auto Run (Not available - SAP connection required)",
+                "Inbond - Shipment to 149 (Not available - SAP connection required)",
                 "Run Loop (Not available - SAP connection required)",
                 "Run Sequence (Not available - SAP connection required)",
                 "Configure Reports Directory",
@@ -733,6 +740,21 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                 }
             }
             19 => {
+                // Inbond - Shipment to 149
+                if sap_connected && is_logged_in {
+                    if let Err(e) = run_inbond_shipment_module(session.as_ref().unwrap()) {
+                        eprintln!("Error running inbond shipment module: {}", e);
+                        thread::sleep(Duration::from_secs(2));
+                    }
+                } else if sap_connected {
+                    println!("You need to log in first.");
+                    thread::sleep(Duration::from_secs(2));
+                } else {
+                    println!("SAP connection not available. Cannot run inbond shipment module.");
+                    thread::sleep(Duration::from_secs(2));
+                }
+            }
+            20 => {
                 // Run Loop (using config) (only if logged in and SAP connected)
                 if sap_connected && is_logged_in {
                     if let Err(e) = run_loop(session.as_ref().unwrap()) {
@@ -747,7 +769,7 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                     thread::sleep(Duration::from_secs(2));
                 }
             }
-            20 => {
+            21 => {
                 // Run Sequence (using config) (only if logged in and SAP connected)
                 if sap_connected && is_logged_in {
                     if let Err(e) = run_sequence(session.as_ref().unwrap()) {
@@ -762,42 +784,42 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                     thread::sleep(Duration::from_secs(2));
                 }
             }
-            21 => {
+            22 => {
                 // Configure Reports Directory (available regardless of SAP connection)
                 if let Err(e) = handle_configure_reports_dir() {
                     eprintln!("Error configuring reports directory: {}", e);
                     thread::sleep(Duration::from_secs(2));
                 }
             }
-            22 => {
+            23 => {
                 // Configure SAP Parameters (available regardless of SAP connection)
                 if let Err(e) = utils::config_handlers::handle_configure_sap_params() {
                     eprintln!("Error configuring SAP parameters: {}", e);
                     thread::sleep(Duration::from_secs(2));
                 }
             }
-            23 => {
+            24 => {
                 // Configure Loop (available regardless of SAP connection)
                 if let Err(e) = handle_configure_loop() {
                     eprintln!("Error configuring loop: {}", e);
                     thread::sleep(Duration::from_secs(2));
                 }
             }
-            24 => {
+            25 => {
                 // Configure Sequence (available regardless of SAP connection)
                 if let Err(e) = handle_configure_sequence() {
                     eprintln!("Error configuring sequence: {}", e);
                     thread::sleep(Duration::from_secs(2));
                 }
             }
-            25 => {
+            26 => {
                 // Read Excel File (available regardless of SAP connection)
                 if let Err(e) = handle_read_excel_file() {
                     eprintln!("Error reading Excel file: {}", e);
                     thread::sleep(Duration::from_secs(2));
                 }
             }
-            26 => {
+            27 => {
                 // Log out of SAP (only if logged in and SAP connected)
                 if sap_connected && is_logged_in {
                     if let Err(e) = handle_logout(session.as_ref().unwrap()) {
@@ -812,7 +834,7 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                     thread::sleep(Duration::from_secs(2));
                 }
             }
-            27 => {
+            28 => {
                 // Exit application
                 clear_screen();
                 println!("Exiting application...");

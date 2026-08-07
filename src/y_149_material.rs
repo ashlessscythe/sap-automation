@@ -211,5 +211,6 @@ fn export_material_to_file(session: &GuiSession, material: &str, export_type: u8
     }
 
     // Delegate to shared utility to handle radio selection and saving
-    export_local_file(session, "y_149_material", export_type, Some(material))
+    let _ = export_local_file(session, "y_149_material", export_type, Some(material))?;
+    Ok(())
 }

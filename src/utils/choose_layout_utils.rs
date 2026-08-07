@@ -499,6 +499,201 @@ pub fn choose_layout_149(session: &GuiSession, layout_name: &str) -> windows::co
     }
 }
 
+/// Default Displayed Columns for inbond material.php paste (Plant … Logistics Reference).
+pub fn inbond_default_layout_columns() -> Vec<String> {
+    vec![
+        "Plant".to_string(),
+        "Delivery Number".to_string(),
+        "Material".to_string(),
+        "Quantity".to_string(),
+        "UOM".to_string(),
+        "Logistics Reference Number".to_string(),
+    ]
+}
+
+/// Try to select an existing 149 layout by name. Returns `true` if selected.
+/// Closes the choose-layout popup when not found (no interactive prompt).
+pub fn try_select_layout_149(
+    session: &GuiSession,
+    layout_name: &str,
+) -> windows::core::Result<bool> {
+    if layout_name.trim().is_empty() {
+        return Ok(false);
+    }
+
+    eprintln!(
+        "DEBUG: try_select_layout_149 for layout: {}",
+        layout_name
+    );
+
+    if let Ok(button) = session.find_by_id("wnd[0]/tbar[1]/btn[33]".to_string()) {
+        if let Some(btn) = button.downcast::<GuiButton>() {
+            btn.press()?;
+        } else {
+            return Ok(false);
+        }
+    } else {
+        println!("149 layout button (btn[33]) not found");
+        return Ok(false);
+    }
+
+    thread::sleep(Duration::from_millis(1000));
+
+    let grid_id =
+        "wnd[1]/usr/ssubD0500_SUBSCREEN:SAPLSLVC_DIALOG:0501/cntlG51_CONTAINER/shellcont/shell";
+
+    if let Ok(grid_obj) = session.find_by_id(grid_id.to_string()) {
+        if let Some(grid) = grid_obj.downcast::<GuiGridView>() {
+            let row_count = grid.row_count()?;
+            for i in 0..row_count {
+                if let Ok(cell_text) = grid.get_cell_value(i, "TEXT".to_string()) {
+                    if cell_text.trim().eq_ignore_ascii_case(layout_name.trim()) {
+                        grid.set_current_cell(i, "TEXT".to_string())?;
+                        grid.set_selected_rows(i.to_string())?;
+                        grid.click_current_cell()?;
+                        eprintln!("DEBUG: Layout '{}' selected", layout_name);
+                        return Ok(true);
+                    }
+                }
+            }
+        }
+    }
+
+    println!(
+        "Layout '{}' not found. Closing choose-layout dialog...",
+        layout_name
+    );
+    close_popups(session, None, None)?;
+    Ok(false)
+}
+
+fn open_change_layout_149(session: &GuiSession) -> windows::core::Result<bool> {
+    // Change Layout toolbar button (same pattern as VBA SetupLayout for ALV reports)
+    if let Ok(button) = session.find_by_id("wnd[0]/tbar[1]/btn[32]".to_string()) {
+        if let Some(btn) = button.downcast::<GuiButton>() {
+            btn.press()?;
+            thread::sleep(Duration::from_millis(800));
+            return Ok(true);
+        }
+    }
+
+    // Fallback: Settings → Layout → Change (common ALV menu path)
+    if let Ok(menu) = session.find_by_id("wnd[0]/mbar/menu[3]/menu[0]/menu[0]".to_string()) {
+        if let Some(menu_item) = menu.downcast::<GuiMenu>() {
+            menu_item.select()?;
+            thread::sleep(Duration::from_millis(800));
+            return Ok(true);
+        }
+    }
+
+    println!("Could not open Change Layout dialog for 149");
+    Ok(false)
+}
+
+const LAYOUT_149_BASE: &str =
+    "/usr/tabsG_TS_ALV/tabpALV_M_R1/ssubSUB_DYN0510:SAPLSKBH:0620";
+
+/// Ensure 149 has the inbond layout: select if present, otherwise set up default columns and save.
+///
+/// - If `layout_name` is found → select it.
+/// - If missing/empty → set up `columns`, then ask whether to save under `layout_name` (or `inb_ship`).
+pub fn ensure_inbond_layout_149(
+    session: &GuiSession,
+    layout_name: &str,
+    columns: &[String],
+) -> windows::core::Result<bool> {
+    use crate::utils::setup_layout_utils::setup_layout;
+    use dialoguer::{Confirm, Input};
+
+    let save_name = if layout_name.trim().is_empty() {
+        "inb_ship".to_string()
+    } else {
+        layout_name.trim().to_string()
+    };
+
+    let cols: Vec<String> = if columns.is_empty() {
+        inbond_default_layout_columns()
+    } else {
+        columns.to_vec()
+    };
+
+    if !layout_name.trim().is_empty() {
+        if try_select_layout_149(session, layout_name)? {
+            println!("Using existing layout '{}'", layout_name);
+            return Ok(true);
+        }
+        println!(
+            "Provided layout '{}' not found. Setting up default inbond columns...",
+            layout_name
+        );
+    } else {
+        println!("No layout provided. Setting up default inbond columns...");
+    }
+
+    if !open_change_layout_149(session)? {
+        return Ok(false);
+    }
+
+    // Confirm save name when config layout was missing/invalid
+    let do_save = Confirm::new()
+        .with_prompt(format!(
+            "Save this layout as '{}' for next time?",
+            save_name
+        ))
+        .default(true)
+        .interact()
+        .unwrap_or(true);
+
+    let mut final_name = save_name.clone();
+    if do_save {
+        let custom: String = Input::new()
+            .with_prompt("Layout name to save")
+            .with_initial_text(&save_name)
+            .interact_text()
+            .unwrap_or_else(|_| save_name.clone());
+        if !custom.trim().is_empty() {
+            final_name = custom.trim().to_string();
+        }
+    }
+
+    println!(
+        "Setting up layout columns {:?} (save={} as '{}')",
+        cols, do_save, final_name
+    );
+
+    match setup_layout(
+        session,
+        1,
+        LAYOUT_149_BASE,
+        &final_name,
+        &cols,
+        200,
+        !do_save, // no_save when user declines
+    ) {
+        Ok(true) => {
+            println!(
+                "Default inbond layout ready{}",
+                if do_save {
+                    format!(" and saved as '{}'", final_name)
+                } else {
+                    " (not saved)".to_string()
+                }
+            );
+            Ok(true)
+        }
+        Ok(false) => {
+            println!("setup_layout returned false for 149 inbond columns");
+            close_popups(session, None, None)?;
+            Ok(false)
+        }
+        Err(e) => {
+            println!("Error setting up 149 inbond layout: {}", e);
+            let _ = close_popups(session, None, None);
+            Err(e)
+        }
+    }
+}
+
 /// Special layout selection method for ZVT11 tcode
 ///
 /// This method uses a grid-based approach similar to 149

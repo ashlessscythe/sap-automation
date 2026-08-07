@@ -145,6 +145,29 @@ variant = "serial_variant"
 layout = "serial_layout"
 ```
 
+### Inbond Configuration
+
+Used by menu **Inbond - Shipment to 149** (VL06O by shipment → 149 by delivery → paste-ready txt + Notepad):
+
+```toml
+[inbond]
+vl06o_variant = "blank_"
+variant_149 = "inb_ship"
+layout_149 = "inb_ship"
+layout_columns = [
+  "Plant",
+  "Delivery Number",
+  "Material",
+  "Quantity",
+  "UOM",
+  "Logistics Reference Number"
+]
+export_type = 1
+open_notepad = true
+```
+
+Defaults match the values above when `[inbond]` is omitted. If `layout_149` is empty or not found in SAP, columns from `layout_columns` are set up via Change Layout and you are prompted to save under that name. This flow does not use `exec_rest`.
+
 ### Loop Configuration
 
 ```toml

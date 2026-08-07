@@ -144,6 +144,40 @@ These IDs match the current main menu and can be used in the sequence configurat
 - 11: VL06O - Delivery Packages Auto Run
 - 13: ZMDESNR - Auto Run
 - 18: 149 Report - Auto Run
+- 19: Inbond - Shipment to 149
+
+### Inbond - Shipment to 149
+
+Interactive clerk flow (menu option **Inbond - Shipment to 149**):
+
+1. Prompt for a shipment number
+2. Run **VL06O** with variant from `[inbond].vl06o_variant` (default `blank_`)
+3. Export the delivery list, parse and **dedupe** delivery numbers
+4. Run **y_dn3_47000149** with variant/layout `inb_ship` (configurable), paste deliveries into `S_DELIV`
+5. Export a timestamped paste-ready `.txt` and open it in Notepad
+
+Clerk then pastes the file into `material.php` `#clipboard`, types the shipment into `#shipmentInput`, and clicks `#splitBtn`.
+
+This path does **not** use `exec_rest` (no browser/GUI upload).
+
+```toml
+[inbond]
+vl06o_variant = "blank_"
+variant_149 = "inb_ship"
+layout_149 = "inb_ship"
+layout_columns = [
+  "Plant",
+  "Delivery Number",
+  "Material",
+  "Quantity",
+  "UOM",
+  "Logistics Reference Number"
+]
+export_type = 1
+open_notepad = true
+```
+
+If `layout_149` is missing in SAP (or empty), the flow sets up `layout_columns` via Change Layout and asks whether to save under that name (default `inb_ship`).
 
 ## Dependencies
 

@@ -368,6 +368,7 @@ pub fn run_export(session: &GuiSession, params: &VL06OParams) -> Result<bool> {
         table_id,
         &params.shipment_numbers,
         batch_size,
+        "ctxt",
     )?;
 
     if !paste_result {
@@ -546,6 +547,7 @@ pub fn run_export_delivery_packages(
         table_id,
         &delivery_numbers,
         batch_size,
+        "ctxt",
     )?;
 
     if !paste_result {
@@ -777,6 +779,7 @@ pub fn run_date_update(
         table_id,
         &params.entries,
         batch_size,
+        "ctxt",
     )?;
 
     if !paste_result {

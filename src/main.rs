@@ -34,6 +34,7 @@ mod zvt11_module;
 
 use app::*;
 use inbond_shipment_module::run_inbond_shipment_module;
+use lx03_module::{run_lx03_auto, run_lx03_module};
 use utils::config_types::get_default_menu_option;
 use utils::excel_file_ops::handle_read_excel_file;
 use utils::loop_config::{handle_configure_loop, run_loop};
@@ -45,7 +46,6 @@ use vt11_module::{run_vt11_auto, run_vt11_module};
 use y_149_material_module::run_149_material_module;
 use y_149_module::{run_149_auto, run_149_module};
 use y_149_rcv_module::{run_149_rcv_auto, run_149_rcv_module};
-use lx03_module::{run_lx03_auto, run_lx03_module};
 use zmdesnr_module::{run_zmdesnr_auto, run_zmdesnr_module};
 use zvt11_module::{run_zvt11_auto, run_zvt11_module};
 

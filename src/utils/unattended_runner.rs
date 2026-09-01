@@ -128,6 +128,9 @@ fn run_loop_unattended_internal(session: &GuiSession) -> Result<()> {
             "ZMDESNR" => {
                 crate::zmdesnr_module::run_zmdesnr_auto(session)?;
             }
+            "LX03" => {
+                crate::lx03_module::run_lx03_auto(session)?;
+            }
             "y_dn3_47000149" | "Y_DN3_47000149" => {
                 // Handle 149 report with different run types
                 match config.tcode_run_type.as_deref() {
@@ -363,6 +366,7 @@ pub fn run_single_tcode_unattended(
         "VT11" => crate::vt11_module::run_vt11_auto(session)?,
         "ZVT11" => crate::zvt11_module::run_zvt11_auto(session)?,
         "ZMDESNR" => crate::zmdesnr_module::run_zmdesnr_auto(session)?,
+        "LX03" => crate::lx03_module::run_lx03_auto(session)?,
         "Y_DN3_47000149" => match tcode_run_type {
             Some("rcv") => {
                 println!("Running 149 RCV auto...");
@@ -383,7 +387,7 @@ pub fn run_single_tcode_unattended(
         other => {
             return Err(anyhow::anyhow!(
                 "Single-shot mode does not support TCode '{}'. Supported: \
-                 VT11, ZVT11, VL06O, ZMDESNR, Y_DN3_47000149.",
+                 VT11, ZVT11, VL06O, ZMDESNR, LX03, Y_DN3_47000149.",
                 other
             ));
         }

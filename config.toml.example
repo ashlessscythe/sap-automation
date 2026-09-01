@@ -51,6 +51,11 @@ tab_number = "2"
 serial_number = "SN12345"
 pre_export_back = true
 
+[tcode.LX03]
+variant = "your_variant"
+layout = "test_bin"
+export_type = 1
+
 [tcode.y_dn3_47000149]
 variant = "variant_name"
 layout = "pending"

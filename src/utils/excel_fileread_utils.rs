@@ -2,7 +2,7 @@
 #![allow(dead_code)]
 
 use anyhow::{Context, Result};
-use calamine::{open_workbook, DataType, Range, Reader, Xlsx};
+use calamine::{open_workbook, Data, Range, Reader, Xlsx};
 use std::io::{self, ErrorKind};
 use std::path::Path;
 
@@ -16,19 +16,18 @@ pub enum ExcelValue {
     Empty,
 }
 
-impl From<&DataType> for ExcelValue {
-    fn from(dt: &DataType) -> Self {
-        match *dt {
-            DataType::String(ref s) => ExcelValue::String(s.clone()),
-            DataType::Float(f) => ExcelValue::Float(f),
-            DataType::Int(i) => ExcelValue::Int(i),
-            DataType::Bool(b) => ExcelValue::Bool(b),
-            DataType::Empty => ExcelValue::Empty,
-            DataType::Error(_) => ExcelValue::Empty,
-            DataType::DateTime(d) => ExcelValue::Float(d),
-            DataType::Duration(d) => ExcelValue::Float(d),
-            DataType::DateTimeIso(ref s) => ExcelValue::String(s.clone()),
-            DataType::DurationIso(ref s) => ExcelValue::String(s.clone()),
+impl From<&Data> for ExcelValue {
+    fn from(dt: &Data) -> Self {
+        match dt {
+            Data::String(s) => ExcelValue::String(s.clone()),
+            Data::Float(f) => ExcelValue::Float(*f),
+            Data::Int(i) => ExcelValue::Int(*i),
+            Data::Bool(b) => ExcelValue::Bool(*b),
+            Data::Empty => ExcelValue::Empty,
+            Data::Error(_) => ExcelValue::Empty,
+            Data::DateTime(dt) => ExcelValue::Float(dt.as_f64()),
+            Data::DateTimeIso(s) => ExcelValue::String(s.clone()),
+            Data::DurationIso(s) => ExcelValue::String(s.clone()),
         }
     }
 }
@@ -158,7 +157,7 @@ pub fn read_excel_file(file_path: &str, sheet_name: &str) -> Result<ExcelDataFra
 }
 
 /// Parses an Excel range into a dataframe
-fn parse_excel_range(range: Range<DataType>) -> Result<ExcelDataFrame> {
+fn parse_excel_range(range: Range<Data>) -> Result<ExcelDataFrame> {
     let mut df = ExcelDataFrame::new();
 
     // Get dimensions

@@ -12,6 +12,8 @@ use std::time::Duration;
 mod app;
 mod inbond_shipment;
 mod inbond_shipment_module;
+mod lx03;
+mod lx03_module;
 mod tui;
 mod utils;
 mod vl06o;
@@ -43,6 +45,7 @@ use vt11_module::{run_vt11_auto, run_vt11_module};
 use y_149_material_module::run_149_material_module;
 use y_149_module::{run_149_auto, run_149_module};
 use y_149_rcv_module::{run_149_rcv_auto, run_149_rcv_module};
+use lx03_module::{run_lx03_auto, run_lx03_module};
 use zmdesnr_module::{run_zmdesnr_auto, run_zmdesnr_module};
 use zvt11_module::{run_zvt11_auto, run_zvt11_module};
 
@@ -364,6 +367,8 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                     "VL06O - Auto Run Delivery Packages",
                     "ZMDESNR - Serial Number History",
                     "ZMDESNR - Auto Run (from config)",
+                    "LX03 - Bin Status Report",
+                    "LX03 - Auto Run (from config)",
                     "149 Report - y_dn3_47000149",
                     "149 Report - Material Not TSP",
                     "149 Report - RCV",
@@ -396,6 +401,8 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                     "VL06O - Auto Run Delivery Packages (Not available - Login required)",
                     "ZMDESNR - Serial Number History (Not available - Login required)",
                     "ZMDESNR - Auto Run (Not available - Login required)",
+                    "LX03 - Bin Status Report (Not available - Login required)",
+                    "LX03 - Auto Run (Not available - Login required)",
                     "149 Report - y_dn3_47000149 (Not available - Login required)",
                     "149 Report - Material Not TSP (Not available - Login required)",
                     "149 Report - RCV (Not available - Login required)",
@@ -429,6 +436,8 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                 "VL06O - Auto Run Delivery Packages (Not available - SAP connection required)",
                 "ZMDESNR - Serial Number History (Not available - SAP connection required)",
                 "ZMDESNR - Auto Run (Not available - SAP connection required)",
+                "LX03 - Bin Status Report (Not available - SAP connection required)",
+                "LX03 - Auto Run (Not available - SAP connection required)",
                 "149 Report - y_dn3_47000149 (Not available - SAP connection required)",
                 "149 Report - Material Not TSP (Not available - SAP connection required)",
                 "149 Report - RCV (Not available - SAP connection required)",
@@ -679,6 +688,36 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                 }
             }
             14 => {
+                // Run LX03 module (only if logged in and SAP connected)
+                if sap_connected && is_logged_in {
+                    if let Err(e) = run_lx03_module(session.as_ref().unwrap()) {
+                        eprintln!("Error running LX03 module: {}", e);
+                        thread::sleep(Duration::from_secs(2));
+                    }
+                } else if sap_connected {
+                    println!("You need to log in first.");
+                    thread::sleep(Duration::from_secs(2));
+                } else {
+                    println!("SAP connection not available. Cannot run LX03 module.");
+                    thread::sleep(Duration::from_secs(2));
+                }
+            }
+            15 => {
+                // Run LX03 Auto module (only if logged in and SAP connected)
+                if sap_connected && is_logged_in {
+                    if let Err(e) = run_lx03_auto(session.as_ref().unwrap()) {
+                        eprintln!("Error running LX03 auto module: {}", e);
+                        thread::sleep(Duration::from_secs(2));
+                    }
+                } else if sap_connected {
+                    println!("You need to log in first.");
+                    thread::sleep(Duration::from_secs(2));
+                } else {
+                    println!("SAP connection not available. Cannot run LX03 auto module.");
+                    thread::sleep(Duration::from_secs(2));
+                }
+            }
+            16 => {
                 // Run 149 Report module (only if logged in and SAP connected)
                 if sap_connected && is_logged_in {
                     if let Err(e) = run_149_module(session.as_ref().unwrap()) {
@@ -693,7 +732,7 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                     thread::sleep(Duration::from_secs(2));
                 }
             }
-            15 => {
+            17 => {
                 // Run 149 Material Not TSP module (only if logged in and SAP connected)
                 if sap_connected && is_logged_in {
                     if let Err(e) = run_149_material_module(session.as_ref().unwrap()) {
@@ -710,7 +749,7 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                     thread::sleep(Duration::from_secs(2));
                 }
             }
-            16 => {
+            18 => {
                 // Run 149 RCV module (only if logged in and SAP connected)
                 if sap_connected && is_logged_in {
                     if let Err(e) = run_149_rcv_module(session.as_ref().unwrap()) {
@@ -725,7 +764,7 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                     thread::sleep(Duration::from_secs(2));
                 }
             }
-            17 => {
+            19 => {
                 // Run 149 RCV Auto module (only if logged in and SAP connected)
                 if sap_connected && is_logged_in {
                     if let Err(e) = run_149_rcv_auto(session.as_ref().unwrap()) {
@@ -740,7 +779,7 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                     thread::sleep(Duration::from_secs(2));
                 }
             }
-            18 => {
+            20 => {
                 // Run 149 Report Auto module (only if logged in and SAP connected)
                 if sap_connected && is_logged_in {
                     if let Err(e) = run_149_auto(session.as_ref().unwrap()) {
@@ -755,7 +794,7 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                     thread::sleep(Duration::from_secs(2));
                 }
             }
-            19 => {
+            21 => {
                 // Inbond - Shipment to 149
                 if sap_connected && is_logged_in {
                     if let Err(e) = run_inbond_shipment_module(session.as_ref().unwrap()) {
@@ -770,7 +809,7 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                     thread::sleep(Duration::from_secs(2));
                 }
             }
-            20 => {
+            22 => {
                 // Run Loop (using config) (only if logged in and SAP connected)
                 if sap_connected && is_logged_in {
                     if let Err(e) = run_loop(session.as_ref().unwrap()) {
@@ -785,7 +824,7 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                     thread::sleep(Duration::from_secs(2));
                 }
             }
-            21 => {
+            23 => {
                 // Run Sequence (using config) (only if logged in and SAP connected)
                 if sap_connected && is_logged_in {
                     if let Err(e) = run_sequence(session.as_ref().unwrap()) {
@@ -800,42 +839,42 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                     thread::sleep(Duration::from_secs(2));
                 }
             }
-            22 => {
+            24 => {
                 // Configure Reports Directory (available regardless of SAP connection)
                 if let Err(e) = handle_configure_reports_dir() {
                     eprintln!("Error configuring reports directory: {}", e);
                     thread::sleep(Duration::from_secs(2));
                 }
             }
-            23 => {
+            25 => {
                 // Configure SAP Parameters (available regardless of SAP connection)
                 if let Err(e) = utils::config_handlers::handle_configure_sap_params() {
                     eprintln!("Error configuring SAP parameters: {}", e);
                     thread::sleep(Duration::from_secs(2));
                 }
             }
-            24 => {
+            26 => {
                 // Configure Loop (available regardless of SAP connection)
                 if let Err(e) = handle_configure_loop() {
                     eprintln!("Error configuring loop: {}", e);
                     thread::sleep(Duration::from_secs(2));
                 }
             }
-            25 => {
+            27 => {
                 // Configure Sequence (available regardless of SAP connection)
                 if let Err(e) = handle_configure_sequence() {
                     eprintln!("Error configuring sequence: {}", e);
                     thread::sleep(Duration::from_secs(2));
                 }
             }
-            26 => {
+            28 => {
                 // Read Excel File (available regardless of SAP connection)
                 if let Err(e) = handle_read_excel_file() {
                     eprintln!("Error reading Excel file: {}", e);
                     thread::sleep(Duration::from_secs(2));
                 }
             }
-            27 => {
+            29 => {
                 // Log out of SAP (only if logged in and SAP connected)
                 if sap_connected && is_logged_in {
                     if let Err(e) = handle_logout(session.as_ref().unwrap()) {
@@ -850,7 +889,7 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                     thread::sleep(Duration::from_secs(2));
                 }
             }
-            28 => {
+            30 => {
                 // Exit application
                 clear_screen();
                 println!("Exiting application...");

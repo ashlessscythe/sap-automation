@@ -66,6 +66,13 @@ struct ZMDESNRParams {
     serial_number: String,
 }
 
+#[derive(Debug, Default, PartialEq, Clone)]
+struct LX03Params {
+    sap_variant_name: Option<String>,
+    layout_row: Option<String>,
+    export_type: Option<u8>,
+}
+
 fn vl06o_from_map(m: &HashMap<String, String>) -> VL06OParams {
     let mut p = VL06OParams::default();
     if let Some(v) = m.get("variant") {
@@ -127,6 +134,20 @@ fn zmdesnr_from_map(m: &HashMap<String, String>) -> ZMDESNRParams {
     }
     if let Some(v) = m.get("serial_number") {
         p.serial_number = v.clone();
+    }
+    p
+}
+
+fn lx03_from_map(m: &HashMap<String, String>) -> LX03Params {
+    let mut p = LX03Params::default();
+    if let Some(v) = m.get("variant") {
+        p.sap_variant_name = Some(v.clone());
+    }
+    if let Some(v) = m.get("layout") {
+        p.layout_row = Some(v.clone());
+    }
+    if let Some(v) = m.get("export_type") {
+        p.export_type = v.parse::<u8>().ok();
     }
     p
 }
@@ -211,6 +232,26 @@ serial_number = "123456789"
     assert_eq!(p.sap_variant_name.as_deref(), Some("ZMD_VARIANT"));
     assert_eq!(p.layout_row.as_deref(), Some("ZMD_LAYOUT"));
     assert_eq!(p.serial_number, "123456789");
+}
+
+#[test]
+fn lx03_full_config_round_trips() {
+    let (_tmp, path) = write_temp_config(
+        r#"
+[tcode.LX03]
+variant = "LX03_VARIANT"
+layout = "test_bin"
+export_type = 1
+"#,
+    );
+
+    let cfg = load(&path);
+    let map = cfg.get_tcode_config("LX03", None).unwrap();
+    let p = lx03_from_map(&map);
+
+    assert_eq!(p.sap_variant_name.as_deref(), Some("LX03_VARIANT"));
+    assert_eq!(p.layout_row.as_deref(), Some("test_bin"));
+    assert_eq!(p.export_type, Some(1));
 }
 
 #[test]

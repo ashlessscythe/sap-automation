@@ -157,10 +157,7 @@ pub fn get_sap_text_errors(
 /// Cell type prefix for SAP multi-value paste tables (`ctxt` vs `txt`).
 /// VL06O/VT11 use `ctxtRSCSEL_255-SLOW_I`; y_dn3_47000149 delivery multi uses `txtRSCSEL_255-SLOW_I`.
 fn multi_paste_cell_id(table_id: &str, cell_prefix: &str, row: i32) -> String {
-    format!(
-        "{}/{}RSCSEL_255-SLOW_I[1,{}]",
-        table_id, cell_prefix, row
-    )
+    format!("{}/{}RSCSEL_255-SLOW_I[1,{}]", table_id, cell_prefix, row)
 }
 
 fn read_multi_paste_cell(session: &GuiSession, full_field_id: &str) -> Result<Option<String>> {

@@ -521,10 +521,7 @@ pub fn try_select_layout_149(
         return Ok(false);
     }
 
-    eprintln!(
-        "DEBUG: try_select_layout_149 for layout: {}",
-        layout_name
-    );
+    eprintln!("DEBUG: try_select_layout_149 for layout: {}", layout_name);
 
     if let Ok(button) = session.find_by_id("wnd[0]/tbar[1]/btn[33]".to_string()) {
         if let Some(btn) = button.downcast::<GuiButton>() {
@@ -590,8 +587,7 @@ fn open_change_layout_149(session: &GuiSession) -> windows::core::Result<bool> {
     Ok(false)
 }
 
-const LAYOUT_149_BASE: &str =
-    "/usr/tabsG_TS_ALV/tabpALV_M_R1/ssubSUB_DYN0510:SAPLSKBH:0620";
+const LAYOUT_149_BASE: &str = "/usr/tabsG_TS_ALV/tabpALV_M_R1/ssubSUB_DYN0510:SAPLSKBH:0620";
 
 /// Ensure 149 has the inbond layout: select if present, otherwise set up default columns and save.
 ///

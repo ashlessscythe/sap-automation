@@ -7,7 +7,13 @@ use aes_gcm::{
 };
 use base64::{engine::general_purpose, Engine as _};
 use rand::Rng;
-use windows::core::Result;
+use windows::core::{Error, Result};
+
+/// Format a `windows::core::Error` without calling `Display`/`Debug` (which can panic
+/// in windows-core 0.52 when `FormatMessageW` returns no text for the HRESULT).
+pub fn format_windows_error(error: &Error) -> String {
+    format!("HRESULT 0x{:08X}", error.code().0 as u32)
+}
 
 // keyfile
 pub const KEY_FILE_SUFFIX: &str = "_key.bin";

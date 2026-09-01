@@ -164,20 +164,14 @@ pub fn persist_inbond_layout_149(layout_name: &str) -> anyhow::Result<()> {
         config.save()?;
 
         if prev.is_empty() {
-            println!(
-                "Wrote [inbond].layout_149 = \"{}\" to {}",
-                name, path
-            );
+            println!("Wrote [inbond].layout_149 = \"{}\" to {}", name, path);
         } else if prev != name {
             println!(
                 "Updated [inbond].layout_149 in {}: \"{}\" → \"{}\"",
                 path, prev, name
             );
         } else {
-            println!(
-                "Confirmed [inbond].layout_149 = \"{}\" in {}",
-                name, path
-            );
+            println!("Confirmed [inbond].layout_149 = \"{}\" in {}", name, path);
         }
     } else {
         anyhow::bail!("[inbond] section in config is not a table");
@@ -193,10 +187,7 @@ pub fn run_vl06o_by_shipment(
     variant: &str,
     export_type: u8,
 ) -> Result<Option<String>> {
-    println!(
-        "Inbond VL06O: shipment={}, variant={}",
-        shipment, variant
-    );
+    println!("Inbond VL06O: shipment={}, variant={}", shipment, variant);
 
     if !assert_tcode(session, "VL06O", Some(0))? {
         println!("Failed to activate VL06O");
@@ -331,10 +322,7 @@ pub fn parse_delivery_numbers_deduped(file_path: &str) -> std::io::Result<Vec<St
     }
 
     let (Some(h_idx), Some(col_idx)) = (header_idx, delivery_col) else {
-        println!(
-            "Could not find a Delivery Number column in {}",
-            file_path
-        );
+        println!("Could not find a Delivery Number column in {}", file_path);
         return Ok(Vec::new());
     };
 
@@ -458,7 +446,10 @@ pub fn normalize_paste_ready(source_path: &str, shipment: &str) -> std::io::Resu
         body.push_str("\r\n");
     }
     fs::write(&out_path, body)?;
-    println!("Wrote paste-ready file (tabs preserved): {}", out_path.display());
+    println!(
+        "Wrote paste-ready file (tabs preserved): {}",
+        out_path.display()
+    );
     Ok(out_path)
 }
 

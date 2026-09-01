@@ -162,7 +162,10 @@ pub fn show_selection_menu(
     res
 }
 
-fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App) -> io::Result<Option<usize>> {
+fn run_app(
+    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+    app: &mut App,
+) -> io::Result<Option<usize>> {
     loop {
         terminal.draw(|f| ui(f, app))?;
 

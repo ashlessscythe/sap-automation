@@ -129,7 +129,9 @@ fn get_lx03_parameters() -> Result<LX03Params> {
     };
 
     let export_type: u8 = Input::new()
-        .with_prompt("Export type (0=unconverted, 1=text with tabs, 2=rich text, 3=HTML, 4=clipboard)")
+        .with_prompt(
+            "Export type (0=unconverted, 1=text with tabs, 2=rich text, 3=HTML, 4=clipboard)",
+        )
         .default(1)
         .interact_text()
         .unwrap();

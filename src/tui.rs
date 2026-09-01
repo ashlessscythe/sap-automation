@@ -8,7 +8,7 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, Clear, ClearType},
 };
 use ratatui::{
-    backend::{Backend, CrosstermBackend},
+    backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
@@ -162,7 +162,7 @@ pub fn show_selection_menu(
     res
 }
 
-fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<Option<usize>> {
+fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App) -> io::Result<Option<usize>> {
     loop {
         terminal.draw(|f| ui(f, app))?;
 
@@ -418,8 +418,8 @@ pub fn show_grid_menu(
 }
 
 #[allow(dead_code)]
-fn run_grid_app<B: Backend>(
-    terminal: &mut Terminal<B>,
+fn run_grid_app(
+    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     app: &mut App,
 ) -> io::Result<Option<usize>> {
     loop {
@@ -587,8 +587,8 @@ pub fn show_input_dialog(prompt: &str, default_value: Option<&str>) -> io::Resul
     res
 }
 
-fn run_input_app<B: Backend>(
-    terminal: &mut Terminal<B>,
+fn run_input_app(
+    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     prompt: &str,
     input: &mut String,
     cursor_pos: &mut usize,

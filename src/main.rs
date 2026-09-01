@@ -33,6 +33,7 @@ mod zvt11_module;
 use app::*;
 use inbond_shipment_module::run_inbond_shipment_module;
 use utils::config_types::get_default_menu_option;
+use utils::utils::format_windows_error;
 use utils::excel_file_ops::handle_read_excel_file;
 use utils::loop_config::{handle_configure_loop, run_loop};
 use utils::sequence_config::{handle_configure_sequence, run_sequence};
@@ -236,14 +237,20 @@ fn connect_interactive_sap() -> (
 ) {
     match SAPComInstance::new() {
         Err(e) => {
-            eprintln!("Warning: Couldn't initialize COM environment: {}", e);
+            eprintln!(
+                "Warning: Couldn't initialize COM environment: {}",
+                format_windows_error(&e)
+            );
             (None, None, None, None, None, false)
         }
         Ok(instance) => {
             let com_instance = Some(instance);
             match com_instance.as_ref().unwrap().sap_wrapper() {
                 Err(e) => {
-                    eprintln!("Warning: Error getting SAP wrapper: {}", e);
+                    eprintln!(
+                        "Warning: Error getting SAP wrapper: {}",
+                        format_windows_error(&e)
+                    );
                     eprintln!("Make sure SAP GUI is installed and properly configured.");
                     (com_instance, None, None, None, None, false)
                 }
@@ -251,7 +258,10 @@ fn connect_interactive_sap() -> (
                     let wrapper = Some(w);
                     match wrapper.as_ref().unwrap().scripting_engine() {
                         Err(e) => {
-                            eprintln!("Warning: Error getting SAP scripting engine: {}", e);
+                            eprintln!(
+                                "Warning: Error getting SAP scripting engine: {}",
+                                format_windows_error(&e)
+                            );
                             eprintln!("Make sure SAP GUI is running and scripting is enabled.");
                             (com_instance, wrapper, None, None, None, false)
                         }
@@ -259,14 +269,20 @@ fn connect_interactive_sap() -> (
                             let engine = Some(engine);
                             match get_or_create_connection(engine.as_ref().unwrap()) {
                                 Err(e) => {
-                                    eprintln!("Warning: Error getting SAP connection: {}", e);
+                                    eprintln!(
+                                        "Warning: Error getting SAP connection: {}",
+                                        format_windows_error(&e)
+                                    );
                                     (com_instance, wrapper, engine, None, None, false)
                                 }
                                 Ok(conn) => {
                                     let connection = Some(conn);
                                     match GuiConnectionExt::children(connection.as_ref().unwrap()) {
                                         Err(e) => {
-                                            eprintln!("Warning: Failed to get SAP session: {}", e);
+                                            eprintln!(
+                                                "Warning: Failed to get SAP session: {}",
+                                                format_windows_error(&e)
+                                            );
                                             (com_instance, wrapper, engine, connection, None, false)
                                         }
                                         Ok(children) => {

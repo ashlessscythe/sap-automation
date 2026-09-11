@@ -112,8 +112,9 @@ pub fn run_149_auto(session: &GuiSession) -> Result<()> {
 
 fn create_149_params_from_config(config: &SapConfig) -> Report149Params {
     let mut params = Report149Params::default();
+    let mut plants_from_merged = false;
 
-    // Get the tcode config for y_dn3_47000149
+    // Get the tcode config for y_dn3_47000149 (case-insensitive; CLI already merged)
     if let Some(tcode_config) = config.get_tcode_config("y_dn3_47000149", Some(true)) {
         // Set variant if available
         if let Some(variant) = tcode_config.get("variant") {
@@ -125,6 +126,16 @@ fn create_149_params_from_config(config: &SapConfig) -> Report149Params {
                 params.export_type = v;
             }
         }
+        // Plants from merged TcodeConfig (CLI --plants already applied in load).
+        // Key present (even as "") means plants were set — do not fall back to raw.
+        if let Some(plants_str) = tcode_config.get("plants") {
+            plants_from_merged = true;
+            params.plants = plants_str
+                .split(',')
+                .map(|p| p.trim().to_string())
+                .filter(|p| !p.is_empty())
+                .collect();
+        }
     }
 
     // If tcode didn't specify an export type, fall back to global default
@@ -134,20 +145,27 @@ fn create_149_params_from_config(config: &SapConfig) -> Report149Params {
         }
     }
 
-    // Plants: CLI --plants wins over config.toml plants array.
-    if let Some(cli_plants) = &crate::utils::cli_overrides::cli_overrides().plants {
-        params.plants = cli_plants.clone();
-    } else if let Some(raw_config) = &config.raw_config {
-        // Set plants if available - we need to get this from the raw config since it's an array
-        if let Some(tcode_section) = raw_config.get("tcode") {
-            if let Some(y_dn3_section) = tcode_section.get("y_dn3_47000149") {
-                if let Some(plants_array) = y_dn3_section.get("plants") {
-                    if let Some(plants_vec) = plants_array.as_array() {
-                        params.plants = plants_vec
-                            .iter()
-                            .filter_map(|v| v.as_str())
-                            .map(|s| s.to_string())
-                            .collect();
+    // Fallback: plants only present on raw TOML (older load paths / partial maps)
+    if !plants_from_merged {
+        if let Some(raw_config) = &config.raw_config {
+            if let Some(tcode_section) = raw_config.get("tcode") {
+                if let Some(y_dn3_section) = tcode_section
+                    .as_table()
+                    .and_then(|t| {
+                        t.iter()
+                            .find(|(k, _)| k.eq_ignore_ascii_case("y_dn3_47000149"))
+                            .map(|(_, v)| v)
+                    })
+                    .or_else(|| tcode_section.get("y_dn3_47000149"))
+                {
+                    if let Some(plants_array) = y_dn3_section.get("plants") {
+                        if let Some(plants_vec) = plants_array.as_array() {
+                            params.plants = plants_vec
+                                .iter()
+                                .filter_map(|v| v.as_str())
+                                .map(|s| s.to_string())
+                                .collect();
+                        }
                     }
                 }
             }

@@ -107,7 +107,8 @@ The application also supports command-line operation for automation scenarios. T
 # Override loop timing + iterations from CLI; flags win over config
 ./sap_automation.exe --run-loop --tcode=vt11 --iterations=3 --delay-seconds=30
 
-# 149 report (requires --tcode-run-type)
+# 149 regular plant-loop (omit run-type / none); or rcv|mat|tsp for sub-flows
+./sap_automation.exe --tcode=y_dn3_47000149 --plants=FV50,plt2
 ./sap_automation.exe --run-loop --tcode=y_dn3_47000149 --tcode-run-type=rcv
 
 # Filter VT11 by an arbitrary delivery list and date range
@@ -127,7 +128,7 @@ CLI flags **always win** over `config.toml`, and they work even when `config.tom
 
 - **No User Interaction**: Runs completely automatically
 - **Configuration Driven**: Uses your existing `config.toml` settings; CLI flags can override any value
-- **Error Handling**: Clear error messages and exit codes; missing required flags fail fast (e.g. `Missing flag for tcode-run-type, enter with --tcode-run-type=rcv|mat|tsp`)
+- **Error Handling**: Clear error messages and exit codes; missing required flags fail fast (e.g. missing `--tcode` for loop runs)
 - **Logging**: All output goes to console for easy logging
 - **Backward Compatible**: Interactive mode remains unchanged
 

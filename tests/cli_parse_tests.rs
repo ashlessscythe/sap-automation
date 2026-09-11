@@ -46,6 +46,7 @@ fn omitted_flags_yield_all_none() {
     assert!(o.interval_seconds.is_none());
     assert!(o.delay_seconds.is_none());
     assert!(o.tcode_run_type.is_none());
+    assert!(o.plants.is_none());
     assert!(o.date_format.is_none());
     assert!(o.timezone.is_none());
     assert!(o.reports_dir.is_none());
@@ -167,6 +168,29 @@ fn string_flags_round_trip() {
     assert_eq!(o.delivery_col.as_deref(), Some("Delivery"));
     assert_eq!(o.shipment_file.as_deref(), Some("vl06o"));
     assert_eq!(o.shipment_col.as_deref(), Some("Shipment Number"));
+}
+
+#[test]
+fn plants_comma_separated_parses_and_trims() {
+    let cli = parse(&["--plants=FV50, plt2, ,plant3"]).unwrap();
+    let o = cli.to_overrides().unwrap();
+    assert_eq!(
+        o.plants,
+        Some(vec![
+            "FV50".to_string(),
+            "plt2".to_string(),
+            "plant3".to_string()
+        ])
+    );
+}
+
+#[test]
+fn plants_in_summary_and_per_tcode_flags() {
+    let cli = parse(&["--plants=A,B"]).unwrap();
+    let o = cli.to_overrides().unwrap();
+    assert!(o.per_tcode_flag_names().contains(&"--plants"));
+    let line = o.summary_line().expect("summary when plants set");
+    assert!(line.contains("--plants=A,B"));
 }
 
 // ---------- top-level mode flags ----------

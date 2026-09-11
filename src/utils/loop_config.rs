@@ -470,7 +470,11 @@ pub fn run_loop(session: &GuiSession) -> Result<()> {
             }
             "y_dn3_47000149" | "Y_DN3_47000149" => {
                 // Handle 149 report with different run types
-                match config.tcode_run_type.as_deref() {
+                let run_type = config
+                    .tcode_run_type
+                    .as_deref()
+                    .map(|s| s.to_ascii_lowercase());
+                match run_type.as_deref() {
                     Some("rcv") => {
                         println!("Running 149 RCV auto...");
                         crate::y_149_rcv_module::run_149_rcv_auto(session)?;
@@ -479,7 +483,7 @@ pub fn run_loop(session: &GuiSession) -> Result<()> {
                         println!("Running 149 Material Not TSP auto...");
                         crate::y_149_material_module::run_149_material_auto(session)?;
                     }
-                    Some("") | None => {
+                    Some("none") | Some("") | None => {
                         println!("Running 149 regular auto...");
                         crate::y_149_module::run_149_auto(session)?;
                     }

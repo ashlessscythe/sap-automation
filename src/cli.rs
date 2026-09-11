@@ -45,9 +45,15 @@ pub struct Cli {
     #[arg(long)]
     pub export_type: Option<u8>,
 
-    /// Override TCode run-type (rcv | mat | tsp). Required when running 149 reports.
+    /// Override TCode run-type for 149 reports: `rcv` | `mat` | `tsp` | `none`.
+    /// Optional; omit or `none` runs the regular plant-loop 149 flow.
     #[arg(long)]
     pub tcode_run_type: Option<String>,
+
+    /// Comma-separated plant list for regular 149 (e.g. `FV50,plt2`).
+    /// Overrides `[tcode.y_dn3_47000149].plants` in config.toml.
+    #[arg(long, value_name = "LIST")]
+    pub plants: Option<String>,
 
     /// Override iterations for --run-loop / --run-sequence (0 = infinite).
     #[arg(long)]
@@ -179,6 +185,7 @@ impl Cli {
             interval_seconds: self.interval_seconds,
             delay_seconds: self.delay_seconds,
             tcode_run_type: self.tcode_run_type.clone(),
+            plants: parse_plants_opt(self.plants.as_deref()),
             date_format: self.date_format.clone(),
             timezone: self.timezone.clone(),
             reports_dir: self.reports_dir.clone(),
@@ -212,4 +219,15 @@ fn parse_iso_date_opt(flag: &str, raw: Option<&str>) -> Result<Option<NaiveDate>
             }),
         None => Ok(None),
     }
+}
+
+/// Parse `--plants=a,b,c` into a trimmed non-empty list. `None` when the flag
+/// was not passed; `Some(vec![])` when passed but empty after trimming.
+fn parse_plants_opt(raw: Option<&str>) -> Option<Vec<String>> {
+    raw.map(|s| {
+        s.split(',')
+            .map(|p| p.trim().to_string())
+            .filter(|p| !p.is_empty())
+            .collect()
+    })
 }

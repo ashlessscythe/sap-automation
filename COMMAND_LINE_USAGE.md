@@ -46,13 +46,7 @@ CLI overrides applied (these win over config.toml): --tcode=VT11 --iterations=3
 | Flag | Required? | Notes |
 | --- | --- | --- |
 | `--tcode=<NAME>` | Required for loop / single-shot if `[loop].tcode` is unset | Case-insensitive (`vt11` → `VT11`). Supported in single-shot: `VT11`, `ZVT11`, `VL06O`, `ZMDESNR`, `Y_DN3_47000149`. |
-| `--tcode-run-type=<rcv\|mat\|tsp>` | Required for 149 reports | Selects the 149 sub-flow. |
-
-If `--tcode-run-type` is missing for a 149 run you'll see:
-
-```
-Missing flag for tcode-run-type, enter with --tcode-run-type=rcv|mat|tsp ...
-```
+| `--tcode-run-type=<rcv\|mat\|tsp\|none>` | Optional for 149 | Selects the 149 sub-flow. Omit or `none` = regular plant-loop 149. |
 
 If `--tcode` (and `[loop].tcode`) are both missing for a loop run:
 
@@ -67,6 +61,7 @@ Missing flag for tcode, enter with --tcode (or set [loop].tcode in config.toml)
 | `--layout=<NAME>` | The TCode under `--tcode` | Overrides `[tcode.X].layout`. |
 | `--variant=<NAME>` | The TCode under `--tcode` | Overrides `[tcode.X].variant`. |
 | `--export-type=<0..4>` | The TCode under `--tcode` | 0=unconverted, 1=text-tabs, 2=rich-text, 3=HTML, 4=clipboard. |
+| `--plants=<LIST>` | Regular 149 only | Comma-separated plants (e.g. `FV50,plt2`). Overrides `[tcode.y_dn3_47000149].plants`. Empty list / omitted flag falls back to config; empty after both → one `ALL` export. |
 
 ### Loop / sequence timing
 
@@ -159,13 +154,13 @@ The file extension drives the parser:
 | `--tab-number` with `--tcode!=ZMDESNR` | `--tab-number is only supported for ZMDESNR ...` |
 | `--date-start` / `--date-end` not ISO | `Invalid --date-start value '...': expected ISO YYYY-MM-DD ...` |
 | Loop run, no `--tcode` and no `[loop].tcode` | `Missing flag for tcode, enter with --tcode ...` |
-| 149 loop run, no `--tcode-run-type` | `Missing flag for tcode-run-type, enter with --tcode-run-type=rcv\|mat\|tsp ...` |
+| 149 single-shot with unknown `--tcode-run-type` | `Unknown --tcode-run-type='...'. Use rcv \| mat \| tsp \| none ...` |
 | `--run-sequence` with any per-tcode flag | `<flag> can't be used with --run-sequence; sequence uses config.toml ...` |
 
 The full list of per-tcode flags rejected by `--run-sequence`:
 
 ```
---tcode --layout --variant --export-type --tcode-run-type
+--tcode --layout --variant --export-type --tcode-run-type --plants
 --by-date --by-delivery --by-shipment --limiter
 --date-start --date-end
 --delivery-file --delivery-col --shipment-file --shipment-col
@@ -257,6 +252,28 @@ Disables the post-export back-send (which `[tcode.ZMDESNR].pre_export_back = "tr
 ```bash
 ./sap_automation.exe --run-sequence --iterations=5 --interval-seconds=10
 ```
+
+### Regular 149 plant loop (omit run-type or use `none`)
+
+Config plants under `[tcode.y_dn3_47000149]`:
+
+```toml
+[tcode.y_dn3_47000149]
+variant = "mg_int_var"
+layout = "mg_view"
+export_type = 1
+plants = ["FV50", "plt2"]
+```
+
+CLI override (wins over config):
+
+```bash
+./sap_automation.exe --tcode=Y_DN3_47000149 --plants=FV50,plt2
+# equivalent:
+./sap_automation.exe --tcode=Y_DN3_47000149 --tcode-run-type=none --plants=FV50,plt2
+```
+
+Each plant exports as `{timestamp}_y_149-{plant}.txt` under `<reports_dir>\y_149\`.
 
 ### Smoke test without SAP
 

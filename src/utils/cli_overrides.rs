@@ -35,8 +35,11 @@ pub struct CliOverrides {
     /// Loop / sequence: seconds between iterations.
     pub delay_seconds: Option<u64>,
 
-    /// 149-report run type (rcv | mat | tsp).
+    /// 149-report run type (rcv | mat | tsp | none). Omit / none = regular.
     pub tcode_run_type: Option<String>,
+
+    /// Regular 149 plant list (from `--plants=a,b`). Wins over config `plants`.
+    pub plants: Option<Vec<String>>,
 
     /// Global date format string.
     pub date_format: Option<String>,
@@ -112,6 +115,9 @@ impl CliOverrides {
         if self.tcode_run_type.is_some() {
             v.push("--tcode-run-type");
         }
+        if self.plants.is_some() {
+            v.push("--plants");
+        }
         if self.by_date.is_some() {
             v.push("--by-date");
         }
@@ -169,6 +175,9 @@ impl CliOverrides {
         }
         if let Some(v) = &self.tcode_run_type {
             parts.push(format!("--tcode-run-type={}", v));
+        }
+        if let Some(v) = &self.plants {
+            parts.push(format!("--plants={}", v.join(",")));
         }
         if let Some(v) = self.iterations {
             parts.push(format!("--iterations={}", v));

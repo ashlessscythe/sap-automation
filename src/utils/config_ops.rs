@@ -13,6 +13,15 @@ use std::time::Duration;
 use crate::utils::cli_overrides::CliOverrides;
 use crate::utils::config_types::*;
 
+/// Find an existing `[tcode.X]` map key that matches `wanted` case-insensitively.
+/// Falls back to an upper-cased key when no entry exists yet (CLI-only configs).
+fn resolve_tcode_map_key(map: &HashMap<String, TcodeConfig>, wanted: &str) -> String {
+    map.keys()
+        .find(|k| k.eq_ignore_ascii_case(wanted))
+        .cloned()
+        .unwrap_or_else(|| wanted.to_uppercase())
+}
+
 impl Default for SapConfig {
     fn default() -> Self {
         Self {
@@ -234,6 +243,18 @@ impl SapConfig {
                                                 .collect()
                                         });
 
+                                    // Parse plants as Vec<String> if present (149 report)
+                                    tcode_config.plants = tcode_table
+                                        .get("plants")
+                                        .and_then(|v| v.as_array())
+                                        .map(|arr| {
+                                            arr.iter()
+                                                .filter_map(|val| {
+                                                    val.as_str().map(|s| s.to_string())
+                                                })
+                                                .collect()
+                                        });
+
                                     // Extract additional parameters
                                     for (key, value) in tcode_table {
                                         if ![
@@ -249,6 +270,7 @@ impl SapConfig {
                                             "export_type",
                                             "add_layout_columns",
                                             "layout_columns",
+                                            "plants",
                                         ]
                                         .contains(&key.as_str())
                                         {
@@ -409,8 +431,11 @@ impl SapConfig {
 
         // ----- [tcode.X] overrides (per --tcode <X>) -----
         if let Some(tc_name) = &o.tcode {
-            let key = tc_name.to_uppercase();
             let map = self.tcode.get_or_insert_with(HashMap::new);
+            // Match the on-disk key case-insensitively so `--tcode=Y_DN3_...`
+            // updates `[tcode.y_dn3_...]` instead of creating a parallel entry.
+            let key = resolve_tcode_map_key(map, tc_name);
+            let key_upper = key.to_uppercase();
             let entry = map.entry(key.clone()).or_default();
 
             if let Some(layout) = &o.layout {
@@ -421,6 +446,9 @@ impl SapConfig {
             }
             if let Some(et) = o.export_type {
                 entry.export_type = Some(et);
+            }
+            if let Some(plants) = &o.plants {
+                entry.plants = Some(plants.clone());
             }
 
             // Filter toggles. Stored as `"true"`/`"false"` strings to match the
@@ -440,7 +468,7 @@ impl SapConfig {
                 // VL06O activates the shipment path when `column_name` is set, so
                 // pre-fill it with a sensible default when --by-shipment=true and
                 // no explicit --shipment-col was provided.
-                if b && key == "VL06O" && entry.column_name.is_none() {
+                if b && key_upper == "VL06O" && entry.column_name.is_none() {
                     let default_col = o
                         .shipment_col
                         .clone()
@@ -492,7 +520,7 @@ impl SapConfig {
             }
 
             // ZMDESNR-only knobs.
-            if key == "ZMDESNR" {
+            if key_upper == "ZMDESNR" {
                 // pre_export_back: read by `create_zmdesnr_params_from_config`
                 // as a string and compared to "true"; mirror the on-disk format.
                 if let Some(b) = o.pre_export_back {
@@ -810,6 +838,17 @@ impl SapConfig {
                     content.push_str("]\n");
                 }
 
+                if let Some(plants) = &tcode_config.plants {
+                    content.push_str("plants = [\n");
+                    for (i, plant) in plants.iter().enumerate() {
+                        if i > 0 {
+                            content.push_str(",\n");
+                        }
+                        content.push_str(&format!("  \"{}\"", plant));
+                    }
+                    content.push_str("]\n");
+                }
+
                 // Add additional tcode parameters
                 for (key, value) in &tcode_config.additional_params {
                     content.push_str(&format!("{} = \"{}\"\n", key, value));
@@ -904,9 +943,20 @@ impl SapConfig {
             config.insert("tcode".to_string(), t.clone());
         }
 
-        // Get tcode-specific configuration
+        // Get tcode-specific configuration (case-insensitive key match so
+        // `y_dn3_47000149` and `Y_DN3_47000149` resolve to the same entry).
         if let Some(tcode_configs) = &self.tcode {
-            if let Some(tcode_config) = tcode_configs.get(tcode) {
+            if let Some(tcode_config) = tcode_configs
+                .iter()
+                .find(|(k, _)| k.eq_ignore_ascii_case(tcode))
+                .map(|(_, v)| v)
+            {
+                // Additional params first, then first-class fields — so CLI /
+                // typed fields always win if a key appears in both places.
+                for (key, value) in &tcode_config.additional_params {
+                    config.insert(key.clone(), value.clone());
+                }
+
                 // Add standard fields if they exist
                 if let Some(variant) = &tcode_config.variant {
                     config.insert("variant".to_string(), variant.clone());
@@ -953,10 +1003,8 @@ impl SapConfig {
                 if let Some(by_delivery) = &tcode_config.by_delivery {
                     config.insert("by_delivery".to_string(), by_delivery.clone());
                 }
-
-                // Add additional parameters
-                for (key, value) in &tcode_config.additional_params {
-                    config.insert(key.clone(), value.clone());
+                if let Some(plants) = &tcode_config.plants {
+                    config.insert("plants".to_string(), plants.join(","));
                 }
 
                 return Some(config);

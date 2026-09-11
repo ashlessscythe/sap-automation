@@ -438,6 +438,95 @@ fn delivery_file_and_col_land_in_additional_params() {
     );
 }
 
+// ---------- Case-insensitive tcode key: CLI must update on-disk entry ----------
+
+#[test]
+fn cli_overrides_lowercase_149_section_case_insensitively() {
+    let (_tmp, path) = write_temp_config(
+        r#"
+[tcode.y_dn3_47000149]
+variant = "FILE_VARIANT"
+layout = "FILE_LAYOUT"
+export_type = 1
+plants = ["FROM_FILE"]
+"#,
+    );
+
+    let mut cfg = load(&path);
+    // CLI stores tcode upper-cased (as Cli::to_overrides does).
+    let overrides = CliOverrides {
+        tcode: Some("Y_DN3_47000149".into()),
+        variant: Some("CLI_VARIANT".into()),
+        layout: Some("CLI_LAYOUT".into()),
+        export_type: Some(0),
+        plants: Some(vec!["CLI_PLT".into()]),
+        ..Default::default()
+    };
+    cfg.apply_overrides_with(&overrides);
+
+    // Must update the existing lowercase key — not create a parallel uppercase entry.
+    let keys: Vec<_> = cfg.tcode.as_ref().unwrap().keys().cloned().collect();
+    assert_eq!(keys, vec!["y_dn3_47000149".to_string()]);
+
+    let merged = cfg
+        .get_tcode_config("y_dn3_47000149", Some(true))
+        .expect("149 config present");
+    assert_eq!(
+        merged.get("variant").map(String::as_str),
+        Some("CLI_VARIANT")
+    );
+    assert_eq!(merged.get("layout").map(String::as_str), Some("CLI_LAYOUT"));
+    assert_eq!(merged.get("export_type").map(String::as_str), Some("0"));
+    assert_eq!(merged.get("plants").map(String::as_str), Some("CLI_PLT"));
+
+    // Lookup with either casing must see CLI values.
+    let upper = cfg.get_tcode_config("Y_DN3_47000149", Some(true)).unwrap();
+    assert_eq!(
+        upper.get("variant").map(String::as_str),
+        Some("CLI_VARIANT")
+    );
+}
+
+#[test]
+fn plants_cli_overrides_file_plants() {
+    let (_tmp, path) = write_temp_config(
+        r#"
+[tcode.y_dn3_47000149]
+plants = ["FILE_A", "FILE_B"]
+"#,
+    );
+
+    let mut cfg = load(&path);
+    let overrides = CliOverrides {
+        tcode: Some("y_dn3_47000149".into()),
+        plants: Some(vec!["CLI_ONLY".into()]),
+        ..Default::default()
+    };
+    cfg.apply_overrides_with(&overrides);
+
+    let entry = cfg
+        .tcode
+        .as_ref()
+        .unwrap()
+        .get("y_dn3_47000149")
+        .expect("lowercase key preserved");
+    assert_eq!(entry.plants, Some(vec!["CLI_ONLY".into()]));
+}
+
+#[test]
+fn plants_loaded_from_file_when_no_cli() {
+    let (_tmp, path) = write_temp_config(
+        r#"
+[tcode.y_dn3_47000149]
+plants = ["A", "B"]
+"#,
+    );
+
+    let cfg = load(&path);
+    let entry = cfg.tcode.as_ref().unwrap().get("y_dn3_47000149").unwrap();
+    assert_eq!(entry.plants, Some(vec!["A".into(), "B".into()]));
+}
+
 // ---------- Idempotency ----------
 
 #[test]

@@ -134,8 +134,11 @@ fn create_149_params_from_config(config: &SapConfig) -> Report149Params {
         }
     }
 
-    // Set plants if available - we need to get this from the raw config since it's an array
-    if let Some(raw_config) = &config.raw_config {
+    // Plants: CLI --plants wins over config.toml plants array.
+    if let Some(cli_plants) = &crate::utils::cli_overrides::cli_overrides().plants {
+        params.plants = cli_plants.clone();
+    } else if let Some(raw_config) = &config.raw_config {
+        // Set plants if available - we need to get this from the raw config since it's an array
         if let Some(tcode_section) = raw_config.get("tcode") {
             if let Some(y_dn3_section) = tcode_section.get("y_dn3_47000149") {
                 if let Some(plants_array) = y_dn3_section.get("plants") {

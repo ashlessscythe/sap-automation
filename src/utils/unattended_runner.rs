@@ -11,11 +11,6 @@ use sap_scripting::*;
 use std::thread;
 use std::time::Duration;
 
-/// Returns true when `tcode` matches the 149 report (case-insensitive).
-fn is_149_tcode(tcode: &str) -> bool {
-    tcode.eq_ignore_ascii_case("y_dn3_47000149")
-}
-
 /// Run the loop configuration unattended
 pub fn run_loop_unattended(session: &GuiSession, skip_sap_check: bool) -> Result<()> {
     println!("Starting unattended loop execution...");
@@ -54,12 +49,7 @@ fn run_loop_unattended_internal(session: &GuiSession) -> Result<()> {
             "Missing flag for tcode, enter with --tcode (or set [loop].tcode in config.toml)"
         ));
     }
-    if is_149_tcode(&config.tcode) && config.tcode_run_type.as_deref().unwrap_or("").is_empty() {
-        return Err(anyhow::anyhow!(
-            "Missing flag for tcode-run-type, enter with --tcode-run-type=rcv|mat|tsp \
-             (or set [loop].tcode_run_type in config.toml; required for 149 reports)"
-        ));
-    }
+    // 149 tcode_run_type is optional: omitted / empty / "none" → regular plant-loop flow.
 
     if let Some(line) = cli_overrides().summary_line() {
         println!(
@@ -133,7 +123,11 @@ fn run_loop_unattended_internal(session: &GuiSession) -> Result<()> {
             }
             "y_dn3_47000149" | "Y_DN3_47000149" => {
                 // Handle 149 report with different run types
-                match config.tcode_run_type.as_deref() {
+                let run_type = config
+                    .tcode_run_type
+                    .as_deref()
+                    .map(|s| s.to_ascii_lowercase());
+                match run_type.as_deref() {
                     Some("rcv") => {
                         println!("Running 149 RCV auto...");
                         crate::y_149_rcv_module::run_149_rcv_auto(session)?;
@@ -142,7 +136,7 @@ fn run_loop_unattended_internal(session: &GuiSession) -> Result<()> {
                         println!("Running 149 Material Not TSP auto...");
                         crate::y_149_material_module::run_149_material_auto(session)?;
                     }
-                    Some("") | None => {
+                    Some("none") | Some("") | None => {
                         println!("Running 149 regular auto...");
                         crate::y_149_module::run_149_auto(session)?;
                     }
@@ -323,7 +317,8 @@ fn run_sequence_unattended_internal(session: &GuiSession) -> Result<()> {
 /// is passed without `--run-loop` or `--run-sequence`).
 ///
 /// `tcode` should be the resolved (already uppercased) TCode name from CLI
-/// overrides. `tcode_run_type` is required for 149 reports.
+/// overrides. For 149, `tcode_run_type` is optional: omitted / empty / `none`
+/// runs the regular plant-loop flow; `rcv` / `mat` / `tsp` select sub-flows.
 pub fn run_single_tcode_unattended(
     session: &GuiSession,
     tcode: &str,
@@ -337,13 +332,6 @@ pub fn run_single_tcode_unattended(
         if transaction.contains("S000") {
             return Err(anyhow::anyhow!("Not logged into SAP. Please log in first."));
         }
-    }
-
-    if is_149_tcode(tcode) && tcode_run_type.unwrap_or("").is_empty() {
-        return Err(anyhow::anyhow!(
-            "Missing flag for tcode-run-type, enter with --tcode-run-type=rcv|mat|tsp \
-             (required for 149 reports)"
-        ));
     }
 
     if let Some(line) = cli_overrides().summary_line() {
@@ -367,23 +355,30 @@ pub fn run_single_tcode_unattended(
         "ZVT11" => crate::zvt11_module::run_zvt11_auto(session)?,
         "ZMDESNR" => crate::zmdesnr_module::run_zmdesnr_auto(session)?,
         "LX03" => crate::lx03_module::run_lx03_auto(session)?,
-        "Y_DN3_47000149" => match tcode_run_type {
-            Some("rcv") => {
-                println!("Running 149 RCV auto...");
-                crate::y_149_rcv_module::run_149_rcv_auto(session)?;
+        "Y_DN3_47000149" => {
+            let run_type = tcode_run_type.map(|s| s.to_ascii_lowercase());
+            match run_type.as_deref() {
+                Some("rcv") => {
+                    println!("Running 149 RCV auto...");
+                    crate::y_149_rcv_module::run_149_rcv_auto(session)?;
+                }
+                Some("mat") | Some("tsp") => {
+                    println!("Running 149 Material Not TSP auto...");
+                    crate::y_149_material_module::run_149_material_auto(session)?;
+                }
+                Some("none") | Some("") | None => {
+                    println!("Running 149 regular auto...");
+                    crate::y_149_module::run_149_auto(session)?;
+                }
+                Some(other) => {
+                    return Err(anyhow::anyhow!(
+                        "Unknown --tcode-run-type='{}'. Use rcv | mat | tsp | none \
+                         (omit or none = regular plant-loop 149).",
+                        other
+                    ));
+                }
             }
-            Some("mat") | Some("tsp") => {
-                println!("Running 149 Material Not TSP auto...");
-                crate::y_149_material_module::run_149_material_auto(session)?;
-            }
-            Some(other) => {
-                return Err(anyhow::anyhow!(
-                    "Unknown --tcode-run-type='{}'. Use rcv | mat | tsp.",
-                    other
-                ));
-            }
-            None => unreachable!("validated above"),
-        },
+        }
         other => {
             return Err(anyhow::anyhow!(
                 "Single-shot mode does not support TCode '{}'. Supported: \

@@ -221,7 +221,7 @@ fn ui(f: &mut Frame, app: &App) {
         .split(f.area());
 
     // Add version display in lower right corner
-    let version_text = format!("v{}", VERSION);
+    let version_text = format!("v{VERSION}");
     let version_span = Span::styled(
         &version_text,
         Style::default().fg(Color::Gray).add_modifier(Modifier::DIM),
@@ -287,7 +287,7 @@ fn ui(f: &mut Frame, app: &App) {
             };
 
             ListItem::new(vec![Line::from(vec![Span::styled(
-                format!("  {}", item),
+                format!("  {item}"),
                 style,
             )])])
         })
@@ -665,7 +665,7 @@ fn input_ui(f: &mut Frame, prompt: &str, input: &str, _cursor_pos: usize) {
     f.render_widget(title, chunks[0]);
 
     // Input area
-    let input_text = format!("{}: {}", prompt, input);
+    let input_text = format!("{prompt}: {input}");
     let input_para = Paragraph::new(input_text)
         .style(Style::default().fg(Color::White))
         .block(

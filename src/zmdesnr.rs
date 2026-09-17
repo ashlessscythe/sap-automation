@@ -63,7 +63,7 @@ fn add_layout_columns(session: &GuiSession, params: &ZMDESNRParams) -> Result<bo
         }
     };
 
-    println!("Adding columns: {:?}", add_layout_columns);
+    println!("Adding columns: {add_layout_columns:?}");
 
     // Select menu option 4/0/0 (Change Layout)
     if let Ok(menu) = session.find_by_id("wnd[0]/mbar/menu[4]/menu[0]/menu[0]".to_string()) {
@@ -83,7 +83,7 @@ fn add_layout_columns(session: &GuiSession, params: &ZMDESNRParams) -> Result<bo
         false,
     );
     if let Err(e) = layout_result {
-        println!("Error setting up layout columns: {}", e);
+        println!("Error setting up layout columns: {e}");
     } else if !layout_result.unwrap() {
         println!("setup_layout returned false, layout columns may not have been added");
     }
@@ -126,7 +126,7 @@ pub fn run_export(session: &GuiSession, params: &ZMDESNRParams) -> Result<bool> 
     let tab_number = params.tab_number.unwrap_or(2);
 
     // Select the specified tab based on tab_number
-    let tab_id = format!("wnd[0]/usr/tabsTABSTRIP_TABB1/tabpUCOMM{}", tab_number);
+    let tab_id = format!("wnd[0]/usr/tabsTABSTRIP_TABB1/tabpUCOMM{tab_number}");
     if let Ok(tab) = session.find_by_id(tab_id) {
         if let Some(tab_strip) = tab.downcast::<GuiTab>() {
             tab_strip.select()?;
@@ -139,7 +139,7 @@ pub fn run_export(session: &GuiSession, params: &ZMDESNRParams) -> Result<bool> 
         handle_tab2_operations(session, params)?
     } else {
         // Default operations for unspecified tabs
-        println!("Tab number {} not specifically handled", tab_number);
+        println!("Tab number {tab_number} not specifically handled");
         // For now, we'll just execute the query
         if let Ok(btn) = session.find_by_id("wnd[0]/tbar[1]/btn[8]".to_string()) {
             if let Some(button) = btn.downcast::<GuiButton>() {
@@ -193,13 +193,13 @@ pub fn run_export(session: &GuiSession, params: &ZMDESNRParams) -> Result<bool> 
             return Ok(false);
         }
         _ => {
-            println!("Statusbar message: {}", bar_msg);
+            println!("Statusbar message: {bar_msg}");
         }
     }
 
     // Add layout columns if configured
     if let Err(e) = add_layout_columns(session, params) {
-        println!("Error adding layout columns: {}", e);
+        println!("Error adding layout columns: {e}");
         // Continue with export even if adding columns failed
     }
 
@@ -304,7 +304,7 @@ fn handle_tab2_operations(session: &GuiSession, params: &ZMDESNRParams) -> Resul
     // Paste delivery numbers
     let mut j = 0;
     for delivery_number in &params.delivery_numbers {
-        let input_field_id = format!("wnd[1]/usr/tabsTAB_STRIP/tabpSIVA/ssubSCREEN_HEADER:SAPLALDB:3010/tblSAPLALDBSINGLE/txtRSCSEL_255-SLOW_I[1,{}]", j);
+        let input_field_id = format!("wnd[1]/usr/tabsTAB_STRIP/tabpSIVA/ssubSCREEN_HEADER:SAPLALDB:3010/tblSAPLALDBSINGLE/txtRSCSEL_255-SLOW_I[1,{j}]");
         if let Ok(txt) = session.find_by_id(input_field_id) {
             if let Some(text_field) = txt.downcast::<GuiTextField>() {
                 text_field.set_text(delivery_number.clone())?;
@@ -356,7 +356,7 @@ fn handle_tab2_operations(session: &GuiSession, params: &ZMDESNRParams) -> Resul
             // Paste exclude serials
             let mut j = 0;
             for serial in exclude_serials {
-                let input_field_id = format!("wnd[1]/usr/tabsTAB_STRIP/tabpNOSV/ssubSCREEN_HEADER:SAPLALDB:3030/tblSAPLALDBSINGLE_E/txtRSCSEL_255-SLOW_E[1,{}]", j);
+                let input_field_id = format!("wnd[1]/usr/tabsTAB_STRIP/tabpNOSV/ssubSCREEN_HEADER:SAPLALDB:3030/tblSAPLALDBSINGLE_E/txtRSCSEL_255-SLOW_E[1,{j}]");
                 if let Ok(txt) = session.find_by_id(input_field_id) {
                     if let Some(text_field) = txt.downcast::<GuiTextField>() {
                         text_field.set_text(serial.clone())?;
@@ -405,11 +405,11 @@ fn apply_layout(session: &GuiSession, layout_row: &str) -> Result<bool> {
     let layout_select = check_select_layout(session, "ZMDESNR", layout_row, None);
     match layout_select {
         Ok(_) => {
-            println!("Layout selected: {}", layout_row);
+            println!("Layout selected: {layout_row}");
             Ok(true)
         }
         Err(e) => {
-            eprintln!("Error selecting layout ({}): {}", layout_row, e);
+            eprintln!("Error selecting layout ({layout_row}): {e}");
             // If layout selection failed, close any open layout selection windows
             close_popups(session, None, None)?;
             println!("Layout selection failed. Exporting as-is.");
@@ -423,7 +423,7 @@ fn apply_layout(session: &GuiSession, layout_row: &str) -> Result<bool> {
 /// This is a helper function for run_export
 fn check_sn_paste(session: &GuiSession, tcode: &str, wnd_idx: i32, row_idx: i32) -> Result<bool> {
     // Check if the first row has a value
-    let input_field_id = format!("wnd[{}]/usr/tabsTAB_STRIP/tabpNOSV/ssubSCREEN_HEADER:SAPLALDB:3030/tblSAPLALDBSINGLE_E/txtRSCSEL_255-SLOW_E[1,{}]", wnd_idx, row_idx);
+    let input_field_id = format!("wnd[{wnd_idx}]/usr/tabsTAB_STRIP/tabpNOSV/ssubSCREEN_HEADER:SAPLALDB:3030/tblSAPLALDBSINGLE_E/txtRSCSEL_255-SLOW_E[1,{row_idx}]");
 
     if let Ok(txt) = session.find_by_id(input_field_id) {
         if let Some(text_field) = txt.downcast::<GuiTextField>() {
@@ -434,10 +434,7 @@ fn check_sn_paste(session: &GuiSession, tcode: &str, wnd_idx: i32, row_idx: i32)
         }
     }
 
-    println!(
-        "No items found in multi-selection window for tcode: {}",
-        tcode
-    );
+    println!("No items found in multi-selection window for tcode: {tcode}");
     Ok(false)
 }
 
@@ -451,7 +448,7 @@ fn check_delivery_paste(
     row_idx: i32,
 ) -> Result<bool> {
     // Check if the first row has a value
-    let input_field_id = format!("wnd[{}]/usr/tabsTAB_STRIP/tabpSIVA/ssubSCREEN_HEADER:SAPLALDB:3010/tblSAPLALDBSINGLE/txtRSCSEL_255-SLOW_I[1,{}]", wnd_idx, row_idx);
+    let input_field_id = format!("wnd[{wnd_idx}]/usr/tabsTAB_STRIP/tabpSIVA/ssubSCREEN_HEADER:SAPLALDB:3010/tblSAPLALDBSINGLE/txtRSCSEL_255-SLOW_I[1,{row_idx}]");
 
     if let Ok(txt) = session.find_by_id(input_field_id) {
         if let Some(text_field) = txt.downcast::<GuiTextField>() {
@@ -462,9 +459,6 @@ fn check_delivery_paste(
         }
     }
 
-    println!(
-        "No items found in multi-selection window for tcode: {}",
-        tcode
-    );
+    println!("No items found in multi-selection window for tcode: {tcode}");
     Ok(false)
 }

@@ -73,7 +73,7 @@ pub fn run_export(session: &GuiSession, params: &Report149Params) -> Result<bool
             if let Some(tcode_cfg) = cfg.get_tcode_config("y_dn3_47000149", Some(true)) {
                 if let Some(layout) = tcode_cfg.get("layout") {
                     if let Err(e) = choose_layout_149(session, layout) {
-                        println!("Error choosing layout: {}", e);
+                        println!("Error choosing layout: {e}");
                         return Ok(false);
                     }
                 }
@@ -82,14 +82,14 @@ pub fn run_export(session: &GuiSession, params: &Report149Params) -> Result<bool
 
         // Export to file
         if let Err(e) = export_to_file(session, "ALL", params.export_type) {
-            println!("Error exporting data: {}", e);
+            println!("Error exporting data: {e}");
             return Ok(false);
         }
         println!("Successfully exported data for all plants");
     } else {
         // Process each plant individually
         for plant in &params.plants {
-            println!("Processing plant: {}", plant);
+            println!("Processing plant: {plant}");
 
             // Start tcode for each plant (ensures clean state)
             if !assert_tcode(session, "y_dn3_47000149", Some(0))? {
@@ -113,7 +113,7 @@ pub fn run_export(session: &GuiSession, params: &Report149Params) -> Result<bool
                 println!("[DEBUG] Attempt {} to find plant field...", attempt + 1);
                 if let Ok(txt) = session.find_by_id("wnd[0]/usr/ctxtS_WERKS-LOW".to_string()) {
                     if let Some(text_field) = txt.downcast::<GuiCTextField>() {
-                        println!("[DEBUG] Found plant field, setting value to: {}", plant);
+                        println!("[DEBUG] Found plant field, setting value to: {plant}");
                         text_field.set_text(plant.clone())?;
                         plant_set = true;
                         break;
@@ -128,10 +128,7 @@ pub fn run_export(session: &GuiSession, params: &Report149Params) -> Result<bool
                 std::thread::sleep(std::time::Duration::from_millis(500));
             }
             if !plant_set {
-                println!(
-                    "[DEBUG] Could not find or set plant field for plant: {}",
-                    plant
-                );
+                println!("[DEBUG] Could not find or set plant field for plant: {plant}");
                 continue;
             }
             println!("[DEBUG] Plant field set, pressing Enter...");
@@ -161,7 +158,7 @@ pub fn run_export(session: &GuiSession, params: &Report149Params) -> Result<bool
                 if let Some(tcode_cfg) = cfg.get_tcode_config("y_dn3_47000149", Some(true)) {
                     if let Some(layout) = tcode_cfg.get("layout") {
                         if let Err(e) = choose_layout_149(session, layout) {
-                            println!("Error choosing layout: {}", e);
+                            println!("Error choosing layout: {e}");
                             continue;
                         }
                     }
@@ -170,10 +167,10 @@ pub fn run_export(session: &GuiSession, params: &Report149Params) -> Result<bool
 
             // Export to file
             if let Err(e) = export_to_file(session, plant, params.export_type) {
-                println!("Error exporting data: {}", e);
+                println!("Error exporting data: {e}");
                 continue;
             }
-            println!("Successfully exported data for plant: {}", plant);
+            println!("Successfully exported data for plant: {plant}");
 
             // Return to main screen (simulate /n or /o or go back)
             if let Ok(wnd) = session.find_by_id("wnd[0]".to_string()) {
@@ -303,13 +300,13 @@ pub fn run_export_by_delivery(
     // Status bar only (ignore trailing wnd[1] popup per plan)
     if let Ok(s) = crate::utils::sap_ctrl_utils::hit_ctrl(session, 0, "/sbar", "Text", "Get", "") {
         if !s.is_empty() {
-            eprintln!("149 status bar: {}", s);
+            eprintln!("149 status bar: {s}");
             let lower = s.to_lowercase();
             if lower.contains("no data")
                 || lower.contains("not found")
                 || lower.contains("no items")
             {
-                println!("149 returned no data: {}", s);
+                println!("149 returned no data: {s}");
                 return Ok(None);
             }
         }
@@ -320,8 +317,7 @@ pub fn run_export_by_delivery(
         Ok((true, Some(saved_name))) => {
             if let Err(e) = crate::inbond_shipment::persist_inbond_layout_149(&saved_name) {
                 println!(
-                    "Layout saved in SAP as '{}', but failed to update config.toml: {}",
-                    saved_name, e
+                    "Layout saved in SAP as '{saved_name}', but failed to update config.toml: {e}"
                 );
             }
         }
@@ -348,7 +344,7 @@ pub fn run_export_by_delivery(
     let suffix = params.filename_suffix.as_deref();
     match export_local_file(session, "y_149", params.export_type, suffix) {
         Ok(path) if !path.is_empty() => {
-            println!("149 by-delivery export completed: {}", path);
+            println!("149 by-delivery export completed: {path}");
             Ok(Some(path))
         }
         Ok(_) => {
@@ -356,7 +352,7 @@ pub fn run_export_by_delivery(
             Ok(None)
         }
         Err(e) => {
-            println!("Error exporting 149 data: {}", e);
+            println!("Error exporting 149 data: {e}");
             Ok(None)
         }
     }

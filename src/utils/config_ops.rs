@@ -374,7 +374,7 @@ impl SapConfig {
                         }
                     }
                 }
-                Err(e) => return Err(anyhow!("Failed to parse config: {}", e)),
+                Err(e) => return Err(anyhow!("Failed to parse config: {e}")),
             }
         }
 
@@ -663,10 +663,10 @@ impl SapConfig {
                             let param_name = key.replacen("loop_", "", 1);
                             loop_config.params.insert(param_name, val_str.to_string());
                         } else if !default_tcode.is_empty()
-                            && key.starts_with(&format!("{}_", default_tcode))
+                            && key.starts_with(&format!("{default_tcode}_"))
                         {
                             // TCode-specific parameters
-                            let param_name = key.replacen(&format!("{}_", default_tcode), "", 1);
+                            let param_name = key.replacen(&format!("{default_tcode}_"), "", 1);
                             tcode_config
                                 .additional_params
                                 .insert(param_name, val_str.to_string());
@@ -726,13 +726,13 @@ impl SapConfig {
             for key in preserved_keys {
                 if let Some(section) = raw_config.get(key) {
                     if let Some(table) = section.as_table() {
-                        content.push_str(&format!("[{}]\n", key));
+                        content.push_str(&format!("[{key}]\n"));
                         for (k, v) in table {
                             if let Some(val_str) = v.as_str() {
-                                content.push_str(&format!("{} = \"{}\"\n", k, val_str));
+                                content.push_str(&format!("{k} = \"{val_str}\"\n"));
                             } else {
                                 // For non-string values, use the TOML representation
-                                content.push_str(&format!("{} = {}\n", k, v));
+                                content.push_str(&format!("{k} = {v}\n"));
                             }
                         }
                         content.push('\n');
@@ -748,7 +748,7 @@ impl SapConfig {
 
             // Add additional build parameters
             for (key, value) in &build.additional_params {
-                content.push_str(&format!("{} = \"{}\"\n", key, value));
+                content.push_str(&format!("{key} = \"{value}\"\n"));
             }
 
             content.push('\n');
@@ -763,20 +763,20 @@ impl SapConfig {
             content.push_str(&format!("timezone = \"{}\"\n", global.timezone));
 
             if let Some(default_tcode) = &global.default_tcode {
-                content.push_str(&format!("default_tcode = \"{}\"\n", default_tcode));
+                content.push_str(&format!("default_tcode = \"{default_tcode}\"\n"));
             }
 
             if let Some(default_menu_option) = &global.default_menu_option {
-                content.push_str(&format!("default_menu_option = {}\n", default_menu_option));
+                content.push_str(&format!("default_menu_option = {default_menu_option}\n"));
             }
 
             if let Some(default_export_type) = &global.default_export_type {
-                content.push_str(&format!("default_export_type = {}\n", default_export_type));
+                content.push_str(&format!("default_export_type = {default_export_type}\n"));
             }
 
             // Add additional global parameters
             for (key, value) in &global.additional_params {
-                content.push_str(&format!("{} = \"{}\"\n", key, value));
+                content.push_str(&format!("{key} = \"{value}\"\n"));
             }
 
             content.push('\n');
@@ -785,46 +785,46 @@ impl SapConfig {
         // Add tcode sections
         if let Some(tcode_configs) = &self.tcode {
             for (tcode_name, tcode_config) in tcode_configs {
-                content.push_str(&format!("[tcode.{}]\n", tcode_name));
+                content.push_str(&format!("[tcode.{tcode_name}]\n"));
 
                 if let Some(variant) = &tcode_config.variant {
-                    content.push_str(&format!("variant = \"{}\"\n", variant));
+                    content.push_str(&format!("variant = \"{variant}\"\n"));
                 }
 
                 if let Some(layout) = &tcode_config.layout {
-                    content.push_str(&format!("layout = \"{}\"\n", layout));
+                    content.push_str(&format!("layout = \"{layout}\"\n"));
                 }
 
                 if let Some(column_name) = &tcode_config.column_name {
-                    content.push_str(&format!("column_name = \"{}\"\n", column_name));
+                    content.push_str(&format!("column_name = \"{column_name}\"\n"));
                 }
 
                 if let Some(date_range_start) = &tcode_config.date_range_start {
-                    content.push_str(&format!("date_range_start = \"{}\"\n", date_range_start));
+                    content.push_str(&format!("date_range_start = \"{date_range_start}\"\n"));
                 }
 
                 if let Some(date_range_end) = &tcode_config.date_range_end {
-                    content.push_str(&format!("date_range_end = \"{}\"\n", date_range_end));
+                    content.push_str(&format!("date_range_end = \"{date_range_end}\"\n"));
                 }
 
                 if let Some(by_date) = &tcode_config.by_date {
-                    content.push_str(&format!("by_date = \"{}\"\n", by_date));
+                    content.push_str(&format!("by_date = \"{by_date}\"\n"));
                 }
 
                 if let Some(by_delivery) = &tcode_config.by_delivery {
-                    content.push_str(&format!("by_delivery = \"{}\"\n", by_delivery));
+                    content.push_str(&format!("by_delivery = \"{by_delivery}\"\n"));
                 }
 
                 if let Some(serial_number) = &tcode_config.serial_number {
-                    content.push_str(&format!("serial_number = \"{}\"\n", serial_number));
+                    content.push_str(&format!("serial_number = \"{serial_number}\"\n"));
                 }
 
                 if let Some(tab_number) = &tcode_config.tab_number {
-                    content.push_str(&format!("tab_number = \"{}\"\n", tab_number));
+                    content.push_str(&format!("tab_number = \"{tab_number}\"\n"));
                 }
 
                 if let Some(export_type) = &tcode_config.export_type {
-                    content.push_str(&format!("export_type = {}\n", export_type));
+                    content.push_str(&format!("export_type = {export_type}\n"));
                 }
 
                 if let Some(layout_columns) = &tcode_config.layout_columns {
@@ -833,7 +833,7 @@ impl SapConfig {
                         if i > 0 {
                             content.push_str(",\n");
                         }
-                        content.push_str(&format!("  \"{}\"", col));
+                        content.push_str(&format!("  \"{col}\""));
                     }
                     content.push_str("]\n");
                 }
@@ -844,14 +844,14 @@ impl SapConfig {
                         if i > 0 {
                             content.push_str(",\n");
                         }
-                        content.push_str(&format!("  \"{}\"", plant));
+                        content.push_str(&format!("  \"{plant}\""));
                     }
                     content.push_str("]\n");
                 }
 
                 // Add additional tcode parameters
                 for (key, value) in &tcode_config.additional_params {
-                    content.push_str(&format!("{} = \"{}\"\n", key, value));
+                    content.push_str(&format!("{key} = \"{value}\"\n"));
                 }
 
                 content.push('\n');
@@ -870,7 +870,7 @@ impl SapConfig {
 
             // Add additional loop parameters
             for (key, value) in &loop_config.params {
-                content.push_str(&format!("param_{} = \"{}\"\n", key, value));
+                content.push_str(&format!("param_{key} = \"{value}\"\n"));
             }
 
             content.push('\n');
@@ -887,7 +887,7 @@ impl SapConfig {
                     if i > 0 {
                         content.push_str(", ");
                     }
-                    content.push_str(&format!("\"{}\"", option));
+                    content.push_str(&format!("\"{option}\""));
                 }
                 content.push_str("]\n");
             }
@@ -907,7 +907,7 @@ impl SapConfig {
 
             // Add additional sequence parameters
             for (key, value) in &sequence_config.params {
-                content.push_str(&format!("param_{} = \"{}\"\n", key, value));
+                content.push_str(&format!("param_{key} = \"{value}\"\n"));
             }
 
             content.push('\n');
@@ -1016,8 +1016,8 @@ impl SapConfig {
             if let Some(loop_config) = self.loop_config.as_ref() {
                 // Add loop parameters with tcode-specific prefix
                 for (key, value) in &loop_config.params {
-                    if key.starts_with(&format!("{}_", tcode)) {
-                        let param_name = key.replacen(&format!("{}_", tcode), "", 1);
+                    if key.starts_with(&format!("{tcode}_")) {
+                        let param_name = key.replacen(&format!("{tcode}_"), "", 1);
                         config.insert(param_name, value.clone());
                     } else {
                         config.insert(key.clone(), value.clone());
@@ -1175,7 +1175,7 @@ pub fn handle_configure_reports_dir() -> Result<()> {
     // Get current reports directory
     let mut config = SapConfig::load()?;
     let current_dir = config.get_reports_dir();
-    println!("Current reports directory: {}", current_dir);
+    println!("Current reports directory: {current_dir}");
 
     // Present options to the user
     let options = vec![
@@ -1220,22 +1220,22 @@ pub fn handle_configure_reports_dir() -> Result<()> {
                         .unwrap_or("");
 
                     new_dir = format!("{}\\{}", parent.to_string_lossy(), rest_of_path);
-                    println!("Using parent directory path: {}", new_dir);
+                    println!("Using parent directory path: {new_dir}");
                 }
             }
             // Handle slug (no path separators)
             else {
                 let needles = ["\\", "/", "\\\\"];
                 if !needles.iter().any(|n| new_dir.contains(n)) {
-                    println!("Attempting to use relative path: {}", new_dir);
-                    new_dir = format!("{}\\{}", current_dir, new_dir);
+                    println!("Attempting to use relative path: {new_dir}");
+                    new_dir = format!("{current_dir}\\{new_dir}");
                 }
             }
         }
         1 => {
             // User wants to reset to default
             new_dir = get_default_reports_dir();
-            println!("Resetting to default reports directory: {}", new_dir);
+            println!("Resetting to default reports directory: {new_dir}");
         }
         _ => {
             // User wants to cancel
@@ -1254,7 +1254,7 @@ pub fn handle_configure_reports_dir() -> Result<()> {
 
         if create_choice.trim().to_lowercase() == "y" {
             if let Err(e) = fs::create_dir_all(&new_dir) {
-                eprintln!("Failed to create directory: {}", e);
+                eprintln!("Failed to create directory: {e}");
                 thread::sleep(Duration::from_secs(2));
                 return Ok(());
             }
@@ -1268,12 +1268,12 @@ pub fn handle_configure_reports_dir() -> Result<()> {
     // Update config
     config.set_reports_dir(&new_dir);
     if let Err(e) = config.save() {
-        eprintln!("Failed to update config file: {}", e);
+        eprintln!("Failed to update config file: {e}");
         thread::sleep(Duration::from_secs(2));
-        return Err(anyhow!("Failed to update config file: {}", e));
+        return Err(anyhow!("Failed to update config file: {e}"));
     }
 
-    println!("Reports directory updated to: {}", new_dir);
+    println!("Reports directory updated to: {new_dir}");
     thread::sleep(Duration::from_secs(2));
 
     Ok(())

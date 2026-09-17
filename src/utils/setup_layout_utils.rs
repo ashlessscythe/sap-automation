@@ -28,12 +28,12 @@ pub fn setup_layout(
     limit: i32,
     no_save: bool,
 ) -> windows::core::Result<bool> {
-    println!("Setting up layout: {}", layout_name);
+    println!("Setting up layout: {layout_name}");
 
-    let obj_name = format!("wnd[{}]{}", n_wnd, base_obj_name);
-    let obj_list_left = format!("{}/cntlCONTAINER2_LAYO/shellcont/shell", obj_name);
-    let obj_list_right = format!("{}/cntlCONTAINER1_LAYO/shellcont/shell", obj_name);
-    let obj_button_to_right = format!("{}/btnAPP_FL_SING", obj_name);
+    let obj_name = format!("wnd[{n_wnd}]{base_obj_name}");
+    let obj_list_left = format!("{obj_name}/cntlCONTAINER2_LAYO/shellcont/shell");
+    let obj_list_right = format!("{obj_name}/cntlCONTAINER1_LAYO/shellcont/shell");
+    let obj_button_to_right = format!("{obj_name}/btnAPP_FL_SING");
 
     // Get the left grid
     let left_grid = session.find_by_id(obj_list_left.clone())?;
@@ -72,7 +72,7 @@ pub fn setup_layout(
             let mut found = false;
             for i in 0..limit {
                 if let Ok(name) = grid_right.get_cell_value(i, "SELTEXT".to_string()) {
-                    println!("Checking: {}", name);
+                    println!("Checking: {name}");
                     if item.to_uppercase() == name.to_uppercase() {
                         grid_right.set_current_cell_row(i)?;
                         grid_right.double_click_current_cell()?;
@@ -84,7 +84,7 @@ pub fn setup_layout(
             }
 
             if !found {
-                println!("Item ({}) not found, skipping", item);
+                println!("Item ({item}) not found, skipping");
             }
         }
 
@@ -154,10 +154,7 @@ pub fn setup_layout(
 
         // Get status bar message
         let status_msg = hit_ctrl(session, 0, "/sbar", "Text", "Get", "")?;
-        println!(
-            "Layout ({}) Successfully Setup: {}",
-            layout_name, status_msg
-        );
+        println!("Layout ({layout_name}) Successfully Setup: {status_msg}");
 
         return Ok(true);
     }

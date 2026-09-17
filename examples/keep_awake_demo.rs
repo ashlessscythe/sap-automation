@@ -13,7 +13,7 @@ fn main() {
     match keep_awake::enable_keep_awake(true) {
         Ok(_) => println!("✓ Keep-awake enabled - system will stay awake"),
         Err(e) => {
-            eprintln!("✗ Failed to enable keep-awake: {}", e);
+            eprintln!("✗ Failed to enable keep-awake: {e}");
             return;
         }
     }

@@ -49,10 +49,7 @@ pub fn run_export(session: &GuiSession, params: &Report149MaterialParams) -> Res
     // Use variant if provided
     if let Some(ref variant) = params.variant {
         if !variant_select(session, "y_dn3_47000149", variant.as_str())? {
-            println!(
-                "Failed to select variant '{}' for tCode 'y_dn3_47000149'",
-                variant
-            );
+            println!("Failed to select variant '{variant}' for tCode 'y_dn3_47000149'");
             return Ok(false);
         }
         println!("[DEBUG] Variant selection complete");
@@ -125,27 +122,26 @@ pub fn run_export(session: &GuiSession, params: &Report149MaterialParams) -> Res
             if let Some(statusbar) = status.downcast::<GuiStatusbar>() {
                 if let Ok(status_text) = statusbar.text() {
                     if status_text.contains("Error") || status_text.contains("No data") {
-                        println!("DEBUG: Error detected in status bar: '{}'", status_text);
+                        println!("DEBUG: Error detected in status bar: '{status_text}'");
                         error_detected = true;
                     }
 
                     // Check for date format errors specifically
                     if crate::utils::config_ops::is_date_format_error(&status_text) {
                         println!(
-                            "ERROR: Date format error detected in status bar: '{}'",
-                            status_text
+                            "ERROR: Date format error detected in status bar: '{status_text}'"
                         );
 
                         // Try to determine what format SAP expects
                         if let Some(sap_format) =
                             crate::utils::config_ops::get_sap_expected_date_format(&status_text)
                         {
-                            println!("SAP expects date format: {}", sap_format);
+                            println!("SAP expects date format: {sap_format}");
 
                             // Load config to see what format we're using
                             if let Ok(config) = crate::utils::config_types::SapConfig::load() {
                                 let our_format = config.get_date_format();
-                                println!("Our config is set to: {}", our_format);
+                                println!("Our config is set to: {our_format}");
                                 println!("SUGGESTION: Update your config.toml date_format setting to match SAP's expected format.");
 
                                 // Provide specific conversion suggestions
@@ -182,7 +178,7 @@ pub fn run_export(session: &GuiSession, params: &Report149MaterialParams) -> Res
     // Use layout if provided
     if let Some(layout) = &params.layout {
         if let Err(e) = choose_layout_149(session, layout) {
-            println!("Error choosing layout: {}", e);
+            println!("Error choosing layout: {e}");
         }
     }
 
@@ -190,7 +186,7 @@ pub fn run_export(session: &GuiSession, params: &Report149MaterialParams) -> Res
 
     // Export to file
     if let Err(e) = export_material_to_file(session, &params.material, params.export_type) {
-        println!("Error exporting material data: {}", e);
+        println!("Error exporting material data: {e}");
         return Ok(false);
     }
 

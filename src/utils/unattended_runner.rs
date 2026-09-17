@@ -39,7 +39,7 @@ fn run_loop_unattended_internal(session: &GuiSession) -> Result<()> {
     let config = match LoopConfig::load() {
         Ok(cfg) => cfg,
         Err(e) => {
-            return Err(anyhow::anyhow!("Error loading loop configuration: {}", e));
+            return Err(anyhow::anyhow!("Error loading loop configuration: {e}"));
         }
     };
 
@@ -52,10 +52,7 @@ fn run_loop_unattended_internal(session: &GuiSession) -> Result<()> {
     // 149 tcode_run_type is optional: omitted / empty / "none" → regular plant-loop flow.
 
     if let Some(line) = cli_overrides().summary_line() {
-        println!(
-            "CLI overrides applied (these win over config.toml): {}",
-            line
-        );
+        println!("CLI overrides applied (these win over config.toml): {line}");
     }
 
     println!(
@@ -63,7 +60,7 @@ fn run_loop_unattended_internal(session: &GuiSession) -> Result<()> {
         config.tcode
     );
     if let Some(run_type) = &config.tcode_run_type {
-        println!("TCode Run Type: {}", run_type);
+        println!("TCode Run Type: {run_type}");
     } else {
         println!("TCode Run Type: (default)");
     }
@@ -77,7 +74,7 @@ fn run_loop_unattended_internal(session: &GuiSession) -> Result<()> {
     if !config.params.is_empty() {
         println!("\nParameters:");
         for (key, value) in &config.params {
-            println!("  {}: {}", key, value);
+            println!("  {key}: {value}");
         }
     }
 
@@ -88,10 +85,7 @@ fn run_loop_unattended_internal(session: &GuiSession) -> Result<()> {
     loop {
         // Display iteration information
         if config.iterations == 0 {
-            println!(
-                "\nIteration {} (infinite loop, press Ctrl+C to stop)",
-                iteration
-            );
+            println!("\nIteration {iteration} (infinite loop, press Ctrl+C to stop)");
         } else {
             println!("\nIteration {}/{}", iteration, config.iterations);
         }
@@ -141,7 +135,7 @@ fn run_loop_unattended_internal(session: &GuiSession) -> Result<()> {
                         crate::y_149_module::run_149_auto(session)?;
                     }
                     Some(unknown_type) => {
-                        println!("Unknown run type '{}', using default", unknown_type);
+                        println!("Unknown run type '{unknown_type}', using default");
                         crate::y_149_module::run_149_auto(session)?;
                     }
                 }
@@ -200,10 +194,7 @@ fn run_sequence_unattended_internal(session: &GuiSession) -> Result<()> {
     let config = match SequenceConfig::load() {
         Ok(cfg) => cfg,
         Err(e) => {
-            return Err(anyhow::anyhow!(
-                "Error loading sequence configuration: {}",
-                e
-            ));
+            return Err(anyhow::anyhow!("Error loading sequence configuration: {e}"));
         }
     };
 
@@ -218,10 +209,7 @@ fn run_sequence_unattended_internal(session: &GuiSession) -> Result<()> {
     }
 
     if let Some(line) = cli_overrides().summary_line() {
-        println!(
-            "CLI overrides applied (these win over config.toml): {}",
-            line
-        );
+        println!("CLI overrides applied (these win over config.toml): {line}");
     }
 
     println!("Running sequence with the following configuration:");
@@ -248,7 +236,7 @@ fn run_sequence_unattended_internal(session: &GuiSession) -> Result<()> {
     if !config.params.is_empty() {
         println!("\nParameters:");
         for (key, value) in &config.params {
-            println!("  {}: {}", key, value);
+            println!("  {key}: {value}");
         }
     }
 
@@ -259,10 +247,7 @@ fn run_sequence_unattended_internal(session: &GuiSession) -> Result<()> {
     loop {
         // Display iteration information
         if config.iterations == 0 {
-            println!(
-                "\nIteration {} (infinite loop, press Ctrl+C to stop)",
-                iteration
-            );
+            println!("\nIteration {iteration} (infinite loop, press Ctrl+C to stop)");
         } else {
             println!("\nIteration {}/{}", iteration, config.iterations);
         }
@@ -279,7 +264,7 @@ fn run_sequence_unattended_internal(session: &GuiSession) -> Result<()> {
             // Execute the selected option
             println!("Running: {}", get_menu_option_name(option));
             if let Err(e) = execute_menu_option(session, option) {
-                eprintln!("Error executing option: {}", e);
+                eprintln!("Error executing option: {e}");
             }
 
             // If this is not the last step, wait for the interval
@@ -335,18 +320,15 @@ pub fn run_single_tcode_unattended(
     }
 
     if let Some(line) = cli_overrides().summary_line() {
-        println!(
-            "CLI overrides applied (these win over config.toml): {}",
-            line
-        );
+        println!("CLI overrides applied (these win over config.toml): {line}");
     }
 
-    println!("Running TCode '{}' once...", tcode);
+    println!("Running TCode '{tcode}' once...");
 
     // Activate the TCode (start_at_main=true, exit_existing=true) just like the
     // loop runner does so we don't pile up sessions.
     if !crate::utils::sap_tcode_utils::check_tcode(session, tcode, Some(true), Some(true))? {
-        return Err(anyhow::anyhow!("Failed to activate TCode '{}'", tcode));
+        return Err(anyhow::anyhow!("Failed to activate TCode '{tcode}'"));
     }
 
     match tcode {
@@ -372,18 +354,16 @@ pub fn run_single_tcode_unattended(
                 }
                 Some(other) => {
                     return Err(anyhow::anyhow!(
-                        "Unknown --tcode-run-type='{}'. Use rcv | mat | tsp | none \
-                         (omit or none = regular plant-loop 149).",
-                        other
+                        "Unknown --tcode-run-type='{other}'. Use rcv | mat | tsp | none \
+                         (omit or none = regular plant-loop 149)."
                     ));
                 }
             }
         }
         other => {
             return Err(anyhow::anyhow!(
-                "Single-shot mode does not support TCode '{}'. Supported: \
-                 VT11, ZVT11, VL06O, ZMDESNR, LX03, Y_DN3_47000149.",
-                other
+                "Single-shot mode does not support TCode '{other}'. Supported: \
+                 VT11, ZVT11, VL06O, ZMDESNR, LX03, Y_DN3_47000149."
             ));
         }
     }

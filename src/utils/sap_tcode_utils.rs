@@ -16,7 +16,7 @@ pub fn assert_tcode(session: &GuiSession, tcode: &str, wnd: Option<i32>) -> Resu
     let err_msg = hit_ctrl(session, wnd_num, "/sbar", "Text", "Get", "")?;
 
     if err_msg.contains("exist") || err_msg.contains("autho") {
-        println!("Error: {}", err_msg);
+        println!("Error: {err_msg}");
         return Ok(false);
     }
 
@@ -25,7 +25,7 @@ pub fn assert_tcode(session: &GuiSession, tcode: &str, wnd: Option<i32>) -> Resu
     }
 
     // Log error message
-    println!("{}{}{}", STR_FORM, err_msg, STR_FORM);
+    println!("{STR_FORM}{err_msg}{STR_FORM}");
 
     Ok(false)
 }
@@ -39,7 +39,7 @@ pub fn check_tcode(
     let run_val = run.unwrap_or(false);
     let b_kill_popups = _kill_popups.unwrap_or(false);
 
-    println!("Checking if tCode ({}) is active", tcode);
+    println!("Checking if tCode ({tcode}) is active");
 
     if b_kill_popups {
         close_popups(session, None, None)?;
@@ -50,27 +50,24 @@ pub fn check_tcode(
 
     // Check if on tCode
     if current.contains(tcode) {
-        println!("tCode ({}) is active", tcode);
+        println!("tCode ({tcode}) is active");
         Ok(true)
     } else if run_val {
         // Run if requested
-        println!("tCode mismatch, attempting to run tCode ({})", tcode);
+        println!("tCode mismatch, attempting to run tCode ({tcode})");
         let _ = assert_tcode(session, tcode, None)?;
         thread::sleep(Duration::from_millis(500)); // Time_Event equivalent
 
         // Recursive call to check again
         check_tcode(session, tcode, Some(false), Some(false))
     } else {
-        println!(
-            "tCode mismatch. Current tCode is ({}), need ({})",
-            current, tcode
-        );
+        println!("tCode mismatch. Current tCode is ({current}), need ({tcode})");
         Ok(false)
     }
 }
 
 pub fn variant_select(session: &GuiSession, tcode: &str, variant_name: &str) -> Result<bool> {
-    println!("Selecting variant '{}' for tCode '{}'", variant_name, tcode);
+    println!("Selecting variant '{variant_name}' for tCode '{tcode}'");
 
     // Choose variant
     if let Ok(btn) = session.find_by_id("wnd[0]/tbar[1]/btn[17]".to_string()) {
@@ -81,14 +78,14 @@ pub fn variant_select(session: &GuiSession, tcode: &str, variant_name: &str) -> 
             return Ok(false);
         }
     } else {
-        println!("Variant button not found for tCode '{}'", tcode);
+        println!("Variant button not found for tCode '{tcode}'");
         return Ok(false);
     }
 
     // Check if variant selection window opened
     let err_msg = hit_ctrl(session, 0, "/sbar", "Text", "Get", "")?;
     if err_msg.contains("error") || err_msg.contains("not found") {
-        println!("Error opening variant selection: {}", err_msg);
+        println!("Error opening variant selection: {err_msg}");
         return Ok(false);
     }
 
@@ -131,13 +128,10 @@ pub fn variant_select(session: &GuiSession, tcode: &str, variant_name: &str) -> 
     // Check for errors in status bar after variant selection
     let err_msg = hit_ctrl(session, 0, "/sbar", "Text", "Get", "")?;
     if !err_msg.is_empty() && (err_msg.contains("error") || err_msg.contains("not found")) {
-        println!("Error selecting variant: {}", err_msg);
+        println!("Error selecting variant: {err_msg}");
         return Ok(false);
     }
 
-    println!(
-        "Variant '{}' selected successfully for tCode '{}'",
-        variant_name, tcode
-    );
+    println!("Variant '{variant_name}' selected successfully for tCode '{tcode}'");
     Ok(true)
 }

@@ -21,7 +21,7 @@ pub fn run_lx03_module(session: &GuiSession) -> Result<()> {
     match run_export(session, &params) {
         Ok(true) => println!("LX03 export completed successfully!"),
         Ok(false) => println!("LX03 export failed or was cancelled."),
-        Err(e) => println!("Error running LX03 export: {}", e),
+        Err(e) => println!("Error running LX03 export: {e}"),
     }
 
     println!("\nPress Enter to return to main menu...");
@@ -39,7 +39,7 @@ pub fn run_lx03_auto(session: &GuiSession) -> Result<()> {
     let config = match SapConfig::load() {
         Ok(cfg) => cfg,
         Err(e) => {
-            println!("Error loading configuration: {}", e);
+            println!("Error loading configuration: {e}");
             println!("\nPress Enter to return to main menu...");
             let mut input = String::new();
             io::stdin().read_line(&mut input).unwrap();
@@ -71,7 +71,7 @@ pub fn run_lx03_auto(session: &GuiSession) -> Result<()> {
     match run_export(session, &params) {
         Ok(true) => println!("LX03 export completed successfully!"),
         Ok(false) => println!("LX03 export failed or was cancelled."),
-        Err(e) => println!("Error running LX03 export: {}", e),
+        Err(e) => println!("Error running LX03 export: {e}"),
     }
 
     Ok(())
@@ -140,7 +140,7 @@ fn get_lx03_parameters() -> Result<LX03Params> {
 
     clear_screen();
     println!("-------------------------------");
-    println!("Running LX03 with params: {:#?}", params);
+    println!("Running LX03 with params: {params:#?}");
     println!("-------------------------------");
 
     Ok(params)

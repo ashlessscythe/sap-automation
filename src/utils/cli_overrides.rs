@@ -162,52 +162,52 @@ impl CliOverrides {
     pub fn summary_line(&self) -> Option<String> {
         let mut parts: Vec<String> = Vec::new();
         if let Some(v) = &self.tcode {
-            parts.push(format!("--tcode={}", v));
+            parts.push(format!("--tcode={v}"));
         }
         if let Some(v) = &self.layout {
-            parts.push(format!("--layout={}", v));
+            parts.push(format!("--layout={v}"));
         }
         if let Some(v) = &self.variant {
-            parts.push(format!("--variant={}", v));
+            parts.push(format!("--variant={v}"));
         }
         if let Some(v) = self.export_type {
-            parts.push(format!("--export-type={}", v));
+            parts.push(format!("--export-type={v}"));
         }
         if let Some(v) = &self.tcode_run_type {
-            parts.push(format!("--tcode-run-type={}", v));
+            parts.push(format!("--tcode-run-type={v}"));
         }
         if let Some(v) = &self.plants {
             parts.push(format!("--plants={}", v.join(",")));
         }
         if let Some(v) = self.iterations {
-            parts.push(format!("--iterations={}", v));
+            parts.push(format!("--iterations={v}"));
         }
         if let Some(v) = self.interval_seconds {
-            parts.push(format!("--interval-seconds={}", v));
+            parts.push(format!("--interval-seconds={v}"));
         }
         if let Some(v) = self.delay_seconds {
-            parts.push(format!("--delay-seconds={}", v));
+            parts.push(format!("--delay-seconds={v}"));
         }
         if let Some(v) = &self.reports_dir {
-            parts.push(format!("--reports-dir={}", v));
+            parts.push(format!("--reports-dir={v}"));
         }
         if let Some(v) = &self.date_format {
-            parts.push(format!("--date-format={}", v));
+            parts.push(format!("--date-format={v}"));
         }
         if let Some(v) = &self.timezone {
-            parts.push(format!("--timezone={}", v));
+            parts.push(format!("--timezone={v}"));
         }
         if let Some(v) = self.by_date {
-            parts.push(format!("--by-date={}", v));
+            parts.push(format!("--by-date={v}"));
         }
         if let Some(v) = self.by_delivery {
-            parts.push(format!("--by-delivery={}", v));
+            parts.push(format!("--by-delivery={v}"));
         }
         if let Some(v) = self.by_shipment {
-            parts.push(format!("--by-shipment={}", v));
+            parts.push(format!("--by-shipment={v}"));
         }
         if let Some(v) = &self.limiter {
-            parts.push(format!("--limiter={}", v));
+            parts.push(format!("--limiter={v}"));
         }
         if let Some(v) = self.date_start {
             parts.push(format!("--date-start={}", v.format("%Y-%m-%d")));
@@ -216,22 +216,22 @@ impl CliOverrides {
             parts.push(format!("--date-end={}", v.format("%Y-%m-%d")));
         }
         if let Some(v) = &self.delivery_file {
-            parts.push(format!("--delivery-file={}", v));
+            parts.push(format!("--delivery-file={v}"));
         }
         if let Some(v) = &self.delivery_col {
-            parts.push(format!("--delivery-col={}", v));
+            parts.push(format!("--delivery-col={v}"));
         }
         if let Some(v) = &self.shipment_file {
-            parts.push(format!("--shipment-file={}", v));
+            parts.push(format!("--shipment-file={v}"));
         }
         if let Some(v) = &self.shipment_col {
-            parts.push(format!("--shipment-col={}", v));
+            parts.push(format!("--shipment-col={v}"));
         }
         if let Some(v) = self.pre_export_back {
-            parts.push(format!("--pre-export-back={}", v));
+            parts.push(format!("--pre-export-back={v}"));
         }
         if let Some(v) = self.tab_number {
-            parts.push(format!("--tab-number={}", v));
+            parts.push(format!("--tab-number={v}"));
         }
         if parts.is_empty() {
             None

@@ -50,7 +50,7 @@ pub fn handle_login(session: &GuiSession) -> anyhow::Result<()> {
     // Check if already logged in
     let transaction = session.info()?.transaction()?;
     if !transaction.contains("S000") {
-        println!("Already logged in. Current transaction: {}", transaction);
+        println!("Already logged in. Current transaction: {transaction}");
         thread::sleep(Duration::from_secs(2));
         // ask if refresh session (close popups)
         let options = vec!["Y", "N"];
@@ -78,7 +78,7 @@ pub fn handle_login(session: &GuiSession) -> anyhow::Result<()> {
 
 pub fn handle_logout(session: &GuiSession) -> anyhow::Result<()> {
     if let Err(e) = session.end_transaction() {
-        eprintln!("Error ending transaction: {}", e);
+        eprintln!("Error ending transaction: {e}");
         return Err(e.into());
     }
     println!("Logged out of SAP");
@@ -107,7 +107,7 @@ pub fn get_or_create_connection(engine: &GuiApplication) -> windows::core::Resul
     let connection_name =
         env::var("SAP_CONNECTION_NAME").unwrap_or_else(|_| "Production Instance".to_string());
 
-    println!("Opening connection: {}", connection_name);
+    println!("Opening connection: {connection_name}");
 
     // Open the connection
     let component = engine.open_connection(connection_name)?;
@@ -136,7 +136,7 @@ pub fn get_login_parameters() -> windows::core::Result<LoginParams> {
     let config = match SapConfig::load() {
         Ok(cfg) => cfg,
         Err(e) => {
-            eprintln!("Failed to load configuration: {}", e);
+            eprintln!("Failed to load configuration: {e}");
             return Err(windows::core::Error::from_win32());
         }
     };
@@ -146,7 +146,7 @@ pub fn get_login_parameters() -> windows::core::Result<LoginParams> {
 
     // Try to read from auth file
     let auth_path = match env::var("USERPROFILE") {
-        Ok(profile) => format!("{}\\Documents\\SAP\\", profile),
+        Ok(profile) => format!("{profile}\\Documents\\SAP\\"),
         Err(_) => {
             eprintln!("Could not determine user profile directory");
             String::from(".\\")
@@ -303,11 +303,11 @@ pub fn login(session: &GuiSession, params: &LoginParams) -> windows::core::Resul
 
             match message {
                 msg if msg.contains("incorrect") => {
-                    eprintln!("Login failed: {}", msg);
+                    eprintln!("Login failed: {msg}");
                     return Err(windows::core::Error::from_win32());
                 }
                 msg if msg.contains("new password") => {
-                    eprintln!("Password update required: {}", msg);
+                    eprintln!("Password update required: {msg}");
                     return Err(windows::core::Error::from_win32());
                 }
 
@@ -355,11 +355,11 @@ pub fn save_credentials(
     };
 
     // Encrypt and save credentials
-    let content = format!("{}\n{}", username, password);
+    let content = format!("{username}\n{password}");
     match encrypt_data(&content, &key) {
         Ok(encrypted) => {
             std::fs::write(auth_file, encrypted).map_err(|_| windows::core::Error::from_win32())?;
-            println!("Encrypted credentials saved to {}", auth_file);
+            println!("Encrypted credentials saved to {auth_file}");
             Ok(())
         }
         Err(_) => {

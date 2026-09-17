@@ -78,7 +78,7 @@ pub fn exist_ctrl(
     };
 
     // Try to find the control
-    let control_path = format!("wnd[{}]{}", n_wnd, control_id);
+    let control_path = format!("wnd[{n_wnd}]{control_id}");
     let ret_id = session.find_by_id(control_path.clone());
 
     if let Ok(component) = ret_id {
@@ -106,7 +106,7 @@ pub fn hit_ctrl(
     event_id_value: &str,
 ) -> Result<String> {
     let mut aux_str = String::new();
-    let control_path = format!("wnd[{}]{}", n_wnd, control_id);
+    let control_path = format!("wnd[{n_wnd}]{control_id}");
 
     if let Ok(component) = session.find_by_id(control_path) {
         match event_id {

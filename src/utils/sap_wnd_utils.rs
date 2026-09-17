@@ -38,7 +38,7 @@ pub fn close_popups(
             }
             Some(idx) if idx > 0 => {
                 // Close only the specified popup
-                println!("Closing popup at index {}", idx);
+                println!("Closing popup at index {idx}");
                 close_specific_popup(session, idx)?;
             }
             _ => {
@@ -62,10 +62,10 @@ fn close_specific_popup(session: &GuiSession, i: i32) -> Result<bool> {
     while j < max_tries {
         let err_wnd = exist_ctrl(session, i, "", true)?;
         if err_wnd.cband {
-            println!("Closing window ({})", i);
+            println!("Closing window ({i})");
 
             // First attempt: try to close the window using close()
-            if let Ok(component) = session.find_by_id(format!("wnd[{}]", i)) {
+            if let Ok(component) = session.find_by_id(format!("wnd[{i}]")) {
                 if let Some(window) = component.downcast::<GuiModalWindow>() {
                     window.close()?;
                 }
@@ -75,7 +75,7 @@ fn close_specific_popup(session: &GuiSession, i: i32) -> Result<bool> {
             let still_open = exist_ctrl(session, i, "", true)?;
             if still_open.cband {
                 // Second attempt: try to close the window using F12
-                if let Ok(component) = session.find_by_id(format!("wnd[{}]", i)) {
+                if let Ok(component) = session.find_by_id(format!("wnd[{i}]")) {
                     if let Some(window) = component.downcast::<GuiModalWindow>() {
                         window.send_v_key(0)?; // Send Enter key
                     } else if let Some(modal_window) = component.downcast::<GuiModalWindow>() {
@@ -86,9 +86,9 @@ fn close_specific_popup(session: &GuiSession, i: i32) -> Result<bool> {
                 // Check if window is still open after second attempt
                 let still_open_after_second = exist_ctrl(session, i, "", true)?;
                 if still_open_after_second.cband {
-                    println!("Window {} still open, trying vkey0 (Enter)", i);
+                    println!("Window {i} still open, trying vkey0 (Enter)");
                     // Third attempt: try to close using vkey0 (Enter key)
-                    if let Ok(component) = session.find_by_id(format!("wnd[{}]", i)) {
+                    if let Ok(component) = session.find_by_id(format!("wnd[{i}]")) {
                         if let Some(window) = component.downcast::<GuiModalWindow>() {
                             window.send_v_key(0)?; // Send Enter key
                         } else if let Some(modal_window) = component.downcast::<GuiModalWindow>() {
@@ -135,10 +135,7 @@ fn close_specific_popup(session: &GuiSession, i: i32) -> Result<bool> {
             // Check if the window is still open after all attempts
             let final_check = exist_ctrl(session, i, "", true)?;
             if final_check.cband {
-                println!(
-                    "Warning: Window {} still open after multiple close attempts",
-                    i
-                );
+                println!("Warning: Window {i} still open after multiple close attempts");
             }
         }
 
@@ -155,7 +152,7 @@ fn close_specific_popup(session: &GuiSession, i: i32) -> Result<bool> {
 pub fn check_export_window(session: &GuiSession, tcode: &str, correct_title: &str) -> Result<bool> {
     // Check if tcode is active
     if !check_tcode(session, tcode, Some(false), Some(false))? {
-        println!("tCode ({}) not active, exiting....", tcode);
+        println!("tCode ({tcode}) not active, exiting....");
         return Ok(false);
     }
 
@@ -164,7 +161,7 @@ pub fn check_export_window(session: &GuiSession, tcode: &str, correct_title: &st
         let err_wnd = exist_ctrl(session, 1, "", true)?;
 
         if err_wnd.cband {
-            println!("Looking for: {}", correct_title);
+            println!("Looking for: {correct_title}");
 
             if err_wnd.ctext.contains("Select Spreadsheet") {
                 // Press Excel button
@@ -219,7 +216,7 @@ pub fn check_export_window(session: &GuiSession, tcode: &str, correct_title: &st
                 }
                 "MB51" => {
                     base_obj_id = "/usr/cntlGRID1/shellcont/shell";
-                    obj_id = format!("wnd[0]{}", base_obj_id);
+                    obj_id = format!("wnd[0]{base_obj_id}");
                     let err_wnd = exist_ctrl(session, 0, base_obj_id, true)?;
 
                     if err_wnd.cband {
@@ -245,7 +242,7 @@ pub fn check_export_window(session: &GuiSession, tcode: &str, correct_title: &st
                 }
                 "ZWM_MDE_COMPARE" => {
                     base_obj_id = "/usr/cntlGRID1/shellcont/shell";
-                    obj_id = format!("wnd[0]{}", base_obj_id);
+                    obj_id = format!("wnd[0]{base_obj_id}");
                     let err_wnd = exist_ctrl(session, 0, base_obj_id, true)?;
 
                     if err_wnd.cband {
@@ -272,7 +269,7 @@ pub fn check_export_window(session: &GuiSession, tcode: &str, correct_title: &st
                 }
                 "ZMDESNR" => {
                     base_obj_id = "/usr/cntlGRID1/shellcont/shell/shellcont[1]/shell";
-                    obj_id = format!("wnd[0]{}", base_obj_id);
+                    obj_id = format!("wnd[0]{base_obj_id}");
                     let err_wnd = exist_ctrl(session, 0, base_obj_id, true)?;
 
                     if err_wnd.cband {
@@ -298,10 +295,7 @@ pub fn check_export_window(session: &GuiSession, tcode: &str, correct_title: &st
                     }
                 }
                 _ => {
-                    println!(
-                        "Grid for TCODE ({}) needs to be set up in Check_Export_Window",
-                        tcode
-                    );
+                    println!("Grid for TCODE ({tcode}) needs to be set up in Check_Export_Window");
                 }
             }
         }

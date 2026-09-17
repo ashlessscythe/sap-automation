@@ -43,13 +43,13 @@ impl Default for ZVT11Params {
 /// Get delivery numbers from the latest ZMDESNR export file (same as VT11 delivery module)
 fn get_delivery_numbers_from_zmdesnr() -> Result<Vec<String>> {
     let reports_dir = get_reports_dir();
-    let zmdesnr_dir = format!("{}\\zmdesnr", reports_dir);
+    let zmdesnr_dir = format!("{reports_dir}\\zmdesnr");
 
     // Load configuration to get ZMDESNR effective export type
     let config = match crate::utils::config_types::SapConfig::load() {
         Ok(cfg) => cfg,
         Err(e) => {
-            println!("Error loading configuration: {}", e);
+            println!("Error loading configuration: {e}");
             return Ok(Vec::new());
         }
     };
@@ -66,17 +66,17 @@ fn get_delivery_numbers_from_zmdesnr() -> Result<Vec<String>> {
         _ => "txt", // Default to text
     };
 
-    println!("Looking for ZMDESNR files with extension: .{}", ext);
+    println!("Looking for ZMDESNR files with extension: .{ext}");
 
     // Get the newest file in the ZMDESNR directory with the chosen extension
     let newest_path = get_newest_file(&zmdesnr_dir, ext)?;
 
     if newest_path.is_empty() {
-        println!("No ZMDESNR export files found in: {}", zmdesnr_dir);
+        println!("No ZMDESNR export files found in: {zmdesnr_dir}");
         return Ok(Vec::new());
     }
 
-    println!("Reading delivery numbers from: {}", newest_path);
+    println!("Reading delivery numbers from: {newest_path}");
 
     // Read delivery numbers trying multiple header variants
     let header_candidates = ["Delivery", "delivery", "delivery number", "delivery_number"];
@@ -101,7 +101,7 @@ fn get_delivery_numbers_from_zmdesnr() -> Result<Vec<String>> {
                     }
                 }
                 Err(e) => {
-                    println!("Error reading text file: {}", e);
+                    println!("Error reading text file: {e}");
                     return Ok(Vec::new());
                 }
             }
@@ -119,7 +119,7 @@ fn get_delivery_numbers_from_zmdesnr() -> Result<Vec<String>> {
             }
         }
         if nums.is_empty() {
-            println!("Failed to read file with extension .{}", ext);
+            println!("Failed to read file with extension .{ext}");
         }
         nums
     };
@@ -138,7 +138,7 @@ fn get_delivery_numbers_from_listcheck() -> Result<Vec<String>> {
     let mut results: Vec<String> = Vec::new();
 
     let reports_dir = get_reports_dir();
-    let subdir = format!("{}\\vt11_listcheck", reports_dir);
+    let subdir = format!("{reports_dir}\\vt11_listcheck");
 
     // Find newest CSV that is NOT already marked as used (filename not ending with "_.csv")
     let mut newest_path = String::new();
@@ -168,7 +168,7 @@ fn get_delivery_numbers_from_listcheck() -> Result<Vec<String>> {
     }
 
     if newest_path.is_empty() {
-        println!("No unused VT11 ListCheck CSV found in {}", subdir);
+        println!("No unused VT11 ListCheck CSV found in {subdir}");
         return Ok(results);
     }
 
@@ -297,10 +297,7 @@ pub fn run_export(session: &GuiSession, params: &ZVT11Params) -> Result<bool> {
                     delivery_numbers
                 }
                 Err(e) => {
-                    println!(
-                        "CLI delivery-source error: {}; falling back to legacy merge",
-                        e
-                    );
+                    println!("CLI delivery-source error: {e}; falling back to legacy merge");
                     let mut delivery_numbers = get_delivery_numbers_from_zmdesnr()?;
                     let listcheck_numbers = get_delivery_numbers_from_listcheck()?;
                     if !listcheck_numbers.is_empty() {
@@ -397,7 +394,7 @@ pub fn run_export(session: &GuiSession, params: &ZVT11Params) -> Result<bool> {
                     }
                 }
                 _ => {
-                    println!("Unknown limiter type: {}", limiter);
+                    println!("Unknown limiter type: {limiter}");
                 }
             }
         }
@@ -418,10 +415,7 @@ pub fn run_export(session: &GuiSession, params: &ZVT11Params) -> Result<bool> {
             if let Some(text_field) = txt.downcast::<GuiTextField>() {
                 let error_text = text_field.text()?;
                 if error_text.contains("No shipments were found for the selection criteria") {
-                    println!(
-                        "No shipments found from dates ({} to {})",
-                        start_date_str, end_date_str
-                    );
+                    println!("No shipments found from dates ({start_date_str} to {end_date_str})");
 
                     // Close window
                     if let Ok(window) = session.find_by_id("wnd[1]".to_string()) {
@@ -439,7 +433,7 @@ pub fn run_export(session: &GuiSession, params: &ZVT11Params) -> Result<bool> {
     // Check if layout exists and select it
     if let Some(layout_row) = &params.layout_row {
         if !layout_row.is_empty() {
-            println!("Selecting layout: {}", layout_row);
+            println!("Selecting layout: {layout_row}");
 
             // Use the choose_layout function which will automatically use the ZVT11-specific method
             let msg = choose_layout(session, &params.t_code, layout_row);
@@ -448,10 +442,10 @@ pub fn run_export(session: &GuiSession, params: &ZVT11Params) -> Result<bool> {
                     println!("Layout selected successfully");
                 }
                 Ok(message) => {
-                    println!("Layout selection result: {}", message);
+                    println!("Layout selection result: {message}");
                 }
                 Err(e) => {
-                    eprintln!("Error selecting layout {}: {:?}", layout_row, e);
+                    eprintln!("Error selecting layout {layout_row}: {e:?}");
                     println!("Continuing without layout selection...");
                 }
             }

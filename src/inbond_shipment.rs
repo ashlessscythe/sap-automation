@@ -164,14 +164,11 @@ pub fn persist_inbond_layout_149(layout_name: &str) -> anyhow::Result<()> {
         config.save()?;
 
         if prev.is_empty() {
-            println!("Wrote [inbond].layout_149 = \"{}\" to {}", name, path);
+            println!("Wrote [inbond].layout_149 = \"{name}\" to {path}");
         } else if prev != name {
-            println!(
-                "Updated [inbond].layout_149 in {}: \"{}\" → \"{}\"",
-                path, prev, name
-            );
+            println!("Updated [inbond].layout_149 in {path}: \"{prev}\" → \"{name}\"");
         } else {
-            println!("Confirmed [inbond].layout_149 = \"{}\" in {}", name, path);
+            println!("Confirmed [inbond].layout_149 = \"{name}\" in {path}");
         }
     } else {
         anyhow::bail!("[inbond] section in config is not a table");
@@ -187,7 +184,7 @@ pub fn run_vl06o_by_shipment(
     variant: &str,
     export_type: u8,
 ) -> Result<Option<String>> {
-    println!("Inbond VL06O: shipment={}, variant={}", shipment, variant);
+    println!("Inbond VL06O: shipment={shipment}, variant={variant}");
 
     if !assert_tcode(session, "VL06O", Some(0))? {
         println!("Failed to activate VL06O");
@@ -201,7 +198,7 @@ pub fn run_vl06o_by_shipment(
     }
 
     if !variant.is_empty() && !variant_select(session, "VL06O", variant)? {
-        println!("Failed to select VL06O variant '{}'", variant);
+        println!("Failed to select VL06O variant '{variant}'");
         // continue — blank selection screen may still work
     }
 
@@ -239,14 +236,14 @@ pub fn run_vl06o_by_shipment(
 
     let sbar = hit_ctrl(session, 0, "/sbar", "Text", "Get", "")?;
     if !sbar.is_empty() {
-        eprintln!("VL06O status bar: {}", sbar);
+        eprintln!("VL06O status bar: {sbar}");
         let lower = sbar.to_lowercase();
         if lower.contains("no shipment")
             || lower.contains("no data")
             || lower.contains("not found")
             || lower.contains("no items")
         {
-            println!("VL06O returned no data for shipment {}", shipment);
+            println!("VL06O returned no data for shipment {shipment}");
             return Ok(None);
         }
     }
@@ -268,7 +265,7 @@ pub fn run_vl06o_by_shipment(
         Ok(path) if !path.is_empty() => Ok(Some(path)),
         Ok(_) => Ok(None),
         Err(e) => {
-            println!("VL06O export failed: {}", e);
+            println!("VL06O export failed: {e}");
             Ok(None)
         }
     }
@@ -322,7 +319,7 @@ pub fn parse_delivery_numbers_deduped(file_path: &str) -> std::io::Result<Vec<St
     }
 
     let (Some(h_idx), Some(col_idx)) = (header_idx, delivery_col) else {
-        println!("Could not find a Delivery Number column in {}", file_path);
+        println!("Could not find a Delivery Number column in {file_path}");
         return Ok(Vec::new());
     };
 
@@ -487,7 +484,7 @@ pub fn run_inbond_shipment_flow(
     let deliveries = match parse_delivery_numbers_deduped(&vl06o_path) {
         Ok(d) => d,
         Err(e) => {
-            println!("Failed to parse VL06O export: {}", e);
+            println!("Failed to parse VL06O export: {e}");
             return Ok(None);
         }
     };
@@ -502,7 +499,7 @@ pub fn run_inbond_shipment_flow(
         layout_columns: settings.layout_columns.clone(),
         delivery_numbers: deliveries,
         export_type: settings.export_type,
-        filename_suffix: Some(format!("inbond-{}", shipment)),
+        filename_suffix: Some(format!("inbond-{shipment}")),
     };
 
     let export_149 = match run_export_by_delivery(session, &params)? {
@@ -516,7 +513,7 @@ pub fn run_inbond_shipment_flow(
     let paste_path = match normalize_paste_ready(&export_149, shipment) {
         Ok(p) => p,
         Err(e) => {
-            println!("Failed to normalize paste-ready file: {}", e);
+            println!("Failed to normalize paste-ready file: {e}");
             // Fall back to raw 149 export
             PathBuf::from(&export_149)
         }
@@ -524,14 +521,14 @@ pub fn run_inbond_shipment_flow(
 
     println!("========================================");
     println!("Inbond paste file: {}", paste_path.display());
-    println!("Shipment for #shipmentInput: {}", shipment);
+    println!("Shipment for #shipmentInput: {shipment}");
     println!("Paste file contents into material.php #clipboard,");
     println!("enter the shipment number, then click splitBtn.");
     println!("========================================");
 
     if settings.open_notepad {
         if let Err(e) = open_in_notepad(&paste_path) {
-            println!("Could not open Notepad: {}", e);
+            println!("Could not open Notepad: {e}");
         }
     }
 

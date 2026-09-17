@@ -32,7 +32,7 @@ pub fn start_keep_awake_thread() -> Result<(), String> {
         loop {
             thread::sleep(Duration::from_secs(60)); // Refresh every minute
             if let Err(e) = prevent_sleep() {
-                eprintln!("Warning: Failed to refresh keep-awake state: {}", e);
+                eprintln!("Warning: Failed to refresh keep-awake state: {e}");
             }
         }
     });
@@ -74,13 +74,13 @@ mod tests {
         // This test might fail in some environments, so we'll just check it doesn't panic
         let result = prevent_sleep();
         // We don't assert the result since it depends on system permissions
-        println!("prevent_sleep result: {:?}", result);
+        println!("prevent_sleep result: {result:?}");
     }
 
     #[test]
     fn test_enable_keep_awake() {
         let result = enable_keep_awake(false);
         // We don't assert the result since it depends on system permissions
-        println!("enable_keep_awake result: {:?}", result);
+        println!("enable_keep_awake result: {result:?}");
     }
 }

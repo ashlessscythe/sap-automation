@@ -16,14 +16,14 @@ fn list_files_with_extensions(dir_path: &str, extensions: &[&str]) -> io::Result
     if !path.exists() {
         return Err(Error::new(
             ErrorKind::NotFound,
-            format!("Directory not found: {}", dir_path),
+            format!("Directory not found: {dir_path}"),
         ));
     }
 
     if !path.is_dir() {
         return Err(Error::new(
             ErrorKind::InvalidInput,
-            format!("Not a directory: {}", dir_path),
+            format!("Not a directory: {dir_path}"),
         ));
     }
 
@@ -67,7 +67,7 @@ fn list_files_with_extensions(dir_path: &str, extensions: &[&str]) -> io::Result
 pub fn list_excel_files(dir_path: &str) -> Result<Vec<DirEntry>> {
     // Use the helper function with Excel extensions
     list_files_with_extensions(dir_path, &["xlsx", "xls"])
-        .with_context(|| format!("Failed to list Excel files in directory: {}", dir_path))
+        .with_context(|| format!("Failed to list Excel files in directory: {dir_path}"))
 }
 
 /// Gets the newest file with the specified extension in a directory
@@ -76,10 +76,7 @@ pub fn get_newest_file(dir_path: &str, extension: &str) -> core::Result<String> 
     match list_files_with_extensions(dir_path, &[extension]) {
         Ok(files) => {
             if files.is_empty() {
-                println!(
-                    "No files with extension .{} found in directory: {}",
-                    extension, dir_path
-                );
+                println!("No files with extension .{extension} found in directory: {dir_path}");
                 Ok(String::new())
             } else {
                 // Return the path of the newest file
@@ -88,7 +85,7 @@ pub fn get_newest_file(dir_path: &str, extension: &str) -> core::Result<String> 
             }
         }
         Err(e) => {
-            println!("Error listing files in {}: {}", dir_path, e);
+            println!("Error listing files in {dir_path}: {e}");
             Ok(String::new())
         }
     }
@@ -104,7 +101,7 @@ pub fn select_excel_file(dir_path: &str) -> Result<String> {
     if entries.is_empty() {
         return Err(Error::new(
             ErrorKind::NotFound,
-            format!("No Excel files found in directory: {}", dir_path),
+            format!("No Excel files found in directory: {dir_path}"),
         )
         .into());
     }
@@ -137,7 +134,7 @@ pub fn select_excel_file(dir_path: &str) -> Result<String> {
                 .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
                 .unwrap_or_else(|| "Unknown date".to_string());
 
-            format!("{} ({})", filename, datetime)
+            format!("{filename} ({datetime})")
         })
         .collect::<Vec<_>>();
 
@@ -146,12 +143,9 @@ pub fn select_excel_file(dir_path: &str) -> Result<String> {
 
     // Add message about limited display if needed
     let prompt = if show_limited {
-        format!(
-            "Select an Excel file [showing 10 newest files from {}]",
-            dir_path
-        )
+        format!("Select an Excel file [showing 10 newest files from {dir_path}]")
     } else {
-        format!("Select an Excel file from {}", dir_path)
+        format!("Select an Excel file from {dir_path}")
     };
 
     // Show selection dialog
@@ -183,7 +177,7 @@ pub fn select_excel_file(dir_path: &str) -> Result<String> {
         if !path_buf.exists() {
             return Err(Error::new(
                 ErrorKind::NotFound,
-                format!("File not found: {}", resolved_path),
+                format!("File not found: {resolved_path}"),
             )
             .into());
         }
@@ -191,7 +185,7 @@ pub fn select_excel_file(dir_path: &str) -> Result<String> {
         if !path_buf.is_file() {
             return Err(Error::new(
                 ErrorKind::InvalidInput,
-                format!("Not a file: {}", resolved_path),
+                format!("Not a file: {resolved_path}"),
             )
             .into());
         }
@@ -202,14 +196,14 @@ pub fn select_excel_file(dir_path: &str) -> Result<String> {
             if ext_str != "xlsx" && ext_str != "xls" {
                 return Err(Error::new(
                     ErrorKind::InvalidInput,
-                    format!("Not an Excel file: {}", resolved_path),
+                    format!("Not an Excel file: {resolved_path}"),
                 )
                 .into());
             }
         } else {
             return Err(Error::new(
                 ErrorKind::InvalidInput,
-                format!("Not an Excel file (no extension): {}", resolved_path),
+                format!("Not an Excel file (no extension): {resolved_path}"),
             )
             .into());
         }
@@ -250,7 +244,7 @@ pub fn resolve_path(path_str: &str) -> String {
                 .unwrap_or("");
 
             let resolved_path = format!("{}\\{}", parent_dir.to_string_lossy(), rest_of_path);
-            println!("Attempting to use parent directory path: {}", resolved_path);
+            println!("Attempting to use parent directory path: {resolved_path}");
             return resolved_path;
         }
     }
@@ -260,8 +254,8 @@ pub fn resolve_path(path_str: &str) -> String {
     if !needles.iter().any(|&n| path_str.contains(n)) {
         // It's a slug, try to resolve it relative to the reports directory
         let reports_dir = get_reports_dir();
-        let resolved_path = format!("{}\\{}", reports_dir, path_str);
-        println!("Attempting to use relative path: {}", resolved_path);
+        let resolved_path = format!("{reports_dir}\\{path_str}");
+        println!("Attempting to use relative path: {resolved_path}");
         return resolved_path;
     }
 
@@ -288,28 +282,28 @@ pub fn get_excel_file_path(path_or_dir: &str) -> Result<String> {
                 } else {
                     Err(Error::new(
                         ErrorKind::InvalidInput,
-                        format!("Not an Excel file: {}", resolved_path),
+                        format!("Not an Excel file: {resolved_path}"),
                     )
                     .into())
                 }
             } else {
                 Err(Error::new(
                     ErrorKind::InvalidInput,
-                    format!("Not an Excel file (no extension): {}", resolved_path),
+                    format!("Not an Excel file (no extension): {resolved_path}"),
                 )
                 .into())
             }
         } else {
             Err(Error::new(
                 ErrorKind::InvalidInput,
-                format!("Not a file or directory: {}", resolved_path),
+                format!("Not a file or directory: {resolved_path}"),
             )
             .into())
         }
     } else {
         Err(Error::new(
             ErrorKind::NotFound,
-            format!("Path not found: {}", resolved_path),
+            format!("Path not found: {resolved_path}"),
         )
         .into())
     }

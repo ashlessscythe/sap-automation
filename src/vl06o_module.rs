@@ -36,7 +36,7 @@ pub fn run_vl06o_module(session: &GuiSession) -> Result<()> {
             println!("VL06O export failed or was cancelled.");
         }
         Err(e) => {
-            println!("Error running VL06O export: {}", e);
+            println!("Error running VL06O export: {e}");
         }
     }
 
@@ -57,7 +57,7 @@ pub fn run_vl06o_auto(session: &GuiSession) -> Result<()> {
     let config = match SapConfig::load() {
         Ok(cfg) => cfg,
         Err(e) => {
-            println!("Error loading configuration: {}", e);
+            println!("Error loading configuration: {e}");
             println!("\nPress Enter to return to main menu...");
             let mut input = String::new();
             io::stdin().read_line(&mut input).unwrap();
@@ -68,7 +68,7 @@ pub fn run_vl06o_auto(session: &GuiSession) -> Result<()> {
     // Get VL06O specific configuration
     let tcode_config = match config.get_tcode_config("VL06O", Some(false)) {
         Some(cfg) => {
-            println!("VL06O configuration found: {:?}", cfg);
+            println!("VL06O configuration found: {cfg:?}");
             cfg
         }
         None => {
@@ -105,10 +105,7 @@ pub fn run_vl06o_auto(session: &GuiSession) -> Result<()> {
                 Ok(Some(nums)) => Some(nums),
                 Ok(None) => None,
                 Err(e) => {
-                    println!(
-                        "CLI delivery-source error: {}; falling back to legacy merge",
-                        e
-                    );
+                    println!("CLI delivery-source error: {e}; falling back to legacy merge");
                     None
                 }
             };
@@ -121,7 +118,7 @@ pub fn run_vl06o_auto(session: &GuiSession) -> Result<()> {
                 let (listcheck_numbers, listcheck_path_opt) =
                     get_delivery_numbers_from_listcheck_for_vl06o()?;
                 if let Some(ref p) = listcheck_path_opt {
-                    println!("Using VT11 ListCheck deliveries from: {}", p);
+                    println!("Using VT11 ListCheck deliveries from: {p}");
                 }
                 if !listcheck_numbers.is_empty() {
                     println!(
@@ -166,16 +163,14 @@ pub fn run_vl06o_auto(session: &GuiSession) -> Result<()> {
                     if let Some(dot) = path.rfind('.') {
                         let (prefix, suffix) = path.split_at(dot);
                         if suffix.eq_ignore_ascii_case(".csv") {
-                            let new_path = format!("{}_.csv", prefix);
+                            let new_path = format!("{prefix}_.csv");
                             match std::fs::rename(&path, &new_path) {
-                                Ok(_) => println!(
-                                    "Marked VT11 ListCheck as used: {} -> {}",
-                                    path, new_path
-                                ),
-                                Err(e) => eprintln!(
-                                    "Failed to mark VT11 ListCheck as used ({}): {}",
-                                    path, e
-                                ),
+                                Ok(_) => {
+                                    println!("Marked VT11 ListCheck as used: {path} -> {new_path}")
+                                }
+                                Err(e) => {
+                                    eprintln!("Failed to mark VT11 ListCheck as used ({path}): {e}")
+                                }
                             }
                         }
                     }
@@ -185,7 +180,7 @@ pub fn run_vl06o_auto(session: &GuiSession) -> Result<()> {
                 println!("VL06O (by_delivery) export failed or was cancelled.");
             }
             Err(e) => {
-                println!("Error running VL06O (by_delivery) export: {}", e);
+                println!("Error running VL06O (by_delivery) export: {e}");
             }
         }
 
@@ -202,10 +197,7 @@ pub fn run_vl06o_auto(session: &GuiSession) -> Result<()> {
         Ok(Some(nums)) => Some(nums),
         Ok(None) => None,
         Err(e) => {
-            println!(
-                "CLI shipment-source error: {}; falling back to default lookup",
-                e
-            );
+            println!("CLI shipment-source error: {e}; falling back to default lookup");
             None
         }
     };
@@ -218,20 +210,17 @@ pub fn run_vl06o_auto(session: &GuiSession) -> Result<()> {
         }
         params.shipment_numbers = nums;
     } else if let Some(column_name) = &params.column_name {
-        println!(
-            "Reading shipment numbers from Excel column: {}",
-            column_name
-        );
+        println!("Reading shipment numbers from Excel column: {column_name}");
 
         let reports_dir = get_reports_dir();
-        let vl06o_dir = format!("{}\\vl06o", reports_dir);
+        let vl06o_dir = format!("{reports_dir}\\vl06o");
 
         let vl06o_path = Path::new(&vl06o_dir);
         if !vl06o_path.exists() {
-            println!("VL06O directory not found: {}", vl06o_dir);
+            println!("VL06O directory not found: {vl06o_dir}");
             println!("Creating directory...");
             if let Err(e) = fs::create_dir_all(&vl06o_dir) {
-                println!("Error creating directory: {}", e);
+                println!("Error creating directory: {e}");
             }
         }
 
@@ -242,7 +231,7 @@ pub fn run_vl06o_auto(session: &GuiSession) -> Result<()> {
             println!("No Excel files found in VT11 directory.");
             println!("Please run VT11 export first to generate an Excel file.");
         } else {
-            println!("Using newest Excel file: {}", excel_path);
+            println!("Using newest Excel file: {excel_path}");
 
             match read_excel_column(&excel_path, "Sheet1", column_name) {
                 Ok(shipment_numbers) => {
@@ -257,7 +246,7 @@ pub fn run_vl06o_auto(session: &GuiSession) -> Result<()> {
                     }
                 }
                 Err(e) => {
-                    println!("Error reading Excel file: {}", e);
+                    println!("Error reading Excel file: {e}");
                 }
             }
         }
@@ -301,7 +290,7 @@ pub fn run_vl06o_auto(session: &GuiSession) -> Result<()> {
             println!("VL06O export failed or was cancelled.");
         }
         Err(e) => {
-            println!("Error running VL06O export: {}", e);
+            println!("Error running VL06O export: {e}");
         }
     }
 
@@ -311,13 +300,13 @@ pub fn run_vl06o_auto(session: &GuiSession) -> Result<()> {
 /// Read deliveries from latest ZMDESNR export for VL06O (with header fallbacks)
 fn get_delivery_numbers_from_zmdesnr_for_vl06o() -> Result<Vec<String>> {
     let reports_dir = get_reports_dir();
-    let zmdesnr_dir = format!("{}\\zmdesnr", reports_dir);
+    let zmdesnr_dir = format!("{reports_dir}\\zmdesnr");
 
     // Load configuration to get ZMDESNR effective export type
     let config = match SapConfig::load() {
         Ok(cfg) => cfg,
         Err(e) => {
-            println!("Error loading configuration: {}", e);
+            println!("Error loading configuration: {e}");
             return Ok(Vec::new());
         }
     };
@@ -335,7 +324,7 @@ fn get_delivery_numbers_from_zmdesnr_for_vl06o() -> Result<Vec<String>> {
 
     let newest_path = get_newest_file(&zmdesnr_dir, ext)?;
     if newest_path.is_empty() {
-        println!("No ZMDESNR export files found in: {}", zmdesnr_dir);
+        println!("No ZMDESNR export files found in: {zmdesnr_dir}");
         return Ok(Vec::new());
     }
 
@@ -362,7 +351,7 @@ fn get_delivery_numbers_from_zmdesnr_for_vl06o() -> Result<Vec<String>> {
                     }
                 }
                 Err(e) => {
-                    println!("Error reading text file: {}", e);
+                    println!("Error reading text file: {e}");
                     return Ok(Vec::new());
                 }
             }
@@ -379,7 +368,7 @@ fn get_delivery_numbers_from_zmdesnr_for_vl06o() -> Result<Vec<String>> {
             }
         }
         if out.is_empty() {
-            println!("Failed to read file with extension .{}", ext);
+            println!("Failed to read file with extension .{ext}");
         }
         out
     };
@@ -391,7 +380,7 @@ fn get_delivery_numbers_from_zmdesnr_for_vl06o() -> Result<Vec<String>> {
 fn get_delivery_numbers_from_listcheck_for_vl06o() -> Result<(Vec<String>, Option<String>)> {
     let mut results: Vec<String> = Vec::new();
     let reports_dir = get_reports_dir();
-    let subdir = format!("{}\\vt11_listcheck", reports_dir);
+    let subdir = format!("{reports_dir}\\vt11_listcheck");
 
     // Find newest CSV that is not marked used (no "_.csv" suffix)
     let mut newest_path = String::new();
@@ -420,7 +409,7 @@ fn get_delivery_numbers_from_listcheck_for_vl06o() -> Result<(Vec<String>, Optio
     }
 
     if newest_path.is_empty() {
-        println!("No unused VT11 ListCheck CSV found in {}", subdir);
+        println!("No unused VT11 ListCheck CSV found in {subdir}");
         return Ok((results, None));
     }
 
@@ -502,7 +491,7 @@ pub fn run_vl06o_date_update_module(session: &GuiSession) -> Result<()> {
     match run_date_update(session, &params) {
         Ok((count, changes)) => {
             println!("VL06O date update completed successfully!");
-            println!("Processed {} deliveries", count);
+            println!("Processed {count} deliveries");
             println!("Changed {} delivery dates", changes.len());
 
             // Display changes
@@ -520,7 +509,7 @@ pub fn run_vl06o_date_update_module(session: &GuiSession) -> Result<()> {
             }
         }
         Err(e) => {
-            println!("Error running VL06O date update: {}", e);
+            println!("Error running VL06O date update: {e}");
         }
     }
 
@@ -612,7 +601,7 @@ fn get_vl06o_parameters() -> Result<VL06OParams> {
 
     // Get start date
     let start_date_str: String = Input::new()
-        .with_prompt(format!("Start date ({})", prompt_format))
+        .with_prompt(format!("Start date ({prompt_format})"))
         .default(chrono::Local::now().format(format_str).to_string())
         .interact_text()
         .unwrap();
@@ -622,7 +611,7 @@ fn get_vl06o_parameters() -> Result<VL06OParams> {
 
     // Get end date
     let end_date_str: String = Input::new()
-        .with_prompt(format!("End date ({})", prompt_format))
+        .with_prompt(format!("End date ({prompt_format})"))
         .default(chrono::Local::now().format(format_str).to_string())
         .interact_text()
         .unwrap();
@@ -632,7 +621,7 @@ fn get_vl06o_parameters() -> Result<VL06OParams> {
 
     // Get variant name
     let variant_prompt = match &params.sap_variant_name {
-        Some(variant) => format!("SAP variant name (default: {})", variant),
+        Some(variant) => format!("SAP variant name (default: {variant})"),
         None => "SAP variant name (leave empty for none)".to_string(),
     };
 
@@ -653,7 +642,7 @@ fn get_vl06o_parameters() -> Result<VL06OParams> {
 
     // Get layout row
     let layout_prompt = match &params.layout_row {
-        Some(layout) => format!("Layout row (default: {})", layout),
+        Some(layout) => format!("Layout row (default: {layout})"),
         None => "Layout row (leave empty for default)".to_string(),
     };
 
@@ -699,7 +688,7 @@ fn get_vl06o_parameters() -> Result<VL06OParams> {
 
     // If column name is provided, ask how to input shipment numbers
     if let Some(col_name) = &params.column_name {
-        println!("Column name provided: {}", col_name);
+        println!("Column name provided: {col_name}");
 
         // Ask how to input shipment numbers
         let input_options = vec![
@@ -779,14 +768,11 @@ fn get_vl06o_parameters() -> Result<VL06OParams> {
 
                 // Get the reports directory as the default starting point
                 let reports_dir = get_reports_dir();
-                println!("Current reports directory: {}", reports_dir);
+                println!("Current reports directory: {reports_dir}");
 
                 // Ask if user wants to use a subdirectory
                 println!("You can enter a subdirectory name to navigate to a specific folder.");
-                println!(
-                    "For example, entering 'subpath' will navigate to {}\\subpath",
-                    reports_dir
-                );
+                println!("For example, entering 'subpath' will navigate to {reports_dir}\\subpath");
                 println!("Or press Enter to use the current reports directory.");
 
                 let subdir: String = Input::new()
@@ -800,9 +786,9 @@ fn get_vl06o_parameters() -> Result<VL06OParams> {
                     reports_dir.clone()
                 } else {
                     // Handle the case where the user entered a subdirectory
-                    let mut path = format!("{}\\{}", reports_dir, subdir);
+                    let mut path = format!("{reports_dir}\\{subdir}");
                     path = resolve_path(&path);
-                    println!("Using directory: {}", path);
+                    println!("Using directory: {path}");
                     path
                 };
 
@@ -814,7 +800,7 @@ fn get_vl06o_parameters() -> Result<VL06OParams> {
 
                 match get_excel_file_path(&dir_to_use) {
                     Ok(excel_path) => {
-                        println!("Selected Excel file: {}", excel_path);
+                        println!("Selected Excel file: {excel_path}");
 
                         // Loop until we get a valid column name or user chooses to exit
                         let mut column_valid = false;
@@ -846,13 +832,13 @@ fn get_vl06o_parameters() -> Result<VL06OParams> {
                                 }
                                 // Otherwise, loop continues for another attempt
                             } else {
-                                println!("Reading from column: {}", column_name);
+                                println!("Reading from column: {column_name}");
 
                                 // Read the shipment numbers from the Excel file
                                 match read_excel_column(&excel_path, "Sheet1", &column_name) {
                                     Ok(shipment_numbers) => {
                                         if shipment_numbers.is_empty() {
-                                            println!("No shipment numbers found in column '{}' of the Excel file.", column_name);
+                                            println!("No shipment numbers found in column '{column_name}' of the Excel file.");
 
                                             // Ask if user wants to try again or return to main menu
                                             let options =
@@ -880,10 +866,9 @@ fn get_vl06o_parameters() -> Result<VL06OParams> {
                                         }
                                     }
                                     Err(e) => {
-                                        println!("Error reading Excel file: {}", e);
+                                        println!("Error reading Excel file: {e}");
                                         println!(
-                                            "Column '{}' may not exist in the Excel file.",
-                                            column_name
+                                            "Column '{column_name}' may not exist in the Excel file."
                                         );
 
                                         // Ask if user wants to try again or return to main menu
@@ -913,8 +898,8 @@ fn get_vl06o_parameters() -> Result<VL06OParams> {
                         io::stdin().read_line(&mut input).unwrap();
                     }
                     Err(e) => {
-                        println!("Error selecting Excel file: {}", e);
-                        println!("Error details: {}", e);
+                        println!("Error selecting Excel file: {e}");
+                        println!("Error details: {e}");
 
                         // Wait for user to acknowledge before continuing
                         println!("Press Enter to continue...");
@@ -937,7 +922,7 @@ fn get_vl06o_parameters() -> Result<VL06OParams> {
     clear_screen();
 
     println!("-------------------------------");
-    println!("Running VL06O with params: {:#?}", params);
+    println!("Running VL06O with params: {params:#?}");
     println!("-------------------------------");
 
     Ok(params)
@@ -973,7 +958,7 @@ fn get_vl06o_date_update_parameters() -> Result<VL06ODateUpdateParams> {
 
     // Get target date
     let target_date_str: String = Input::new()
-        .with_prompt(format!("Target date ({})", prompt_format))
+        .with_prompt(format!("Target date ({prompt_format})"))
         .default(
             chrono::Local::now()
                 .date_naive()
@@ -993,7 +978,7 @@ fn get_vl06o_date_update_parameters() -> Result<VL06ODateUpdateParams> {
         .sap_variant_name
         .clone()
         .unwrap_or_else(|| "blank_".to_string());
-    let variant_prompt = format!("SAP variant name (default: {})", variant_value);
+    let variant_prompt = format!("SAP variant name (default: {variant_value})");
 
     let variant_name: String = Input::new()
         .with_prompt(&variant_prompt)
@@ -1024,8 +1009,7 @@ fn get_vl06o_date_update_parameters() -> Result<VL06ODateUpdateParams> {
     let input_options = vec!["Read from Excel file", "Enter manually"];
     let input_choice = Select::new()
         .with_prompt(format!(
-            "How would you like to input {} numbers?",
-            item_type_name
+            "How would you like to input {item_type_name} numbers?"
         ))
         .items(&input_options)
         .default(1)
@@ -1037,8 +1021,7 @@ fn get_vl06o_date_update_parameters() -> Result<VL06ODateUpdateParams> {
             // Enter manually
             let numbers_str: String = Input::new()
                 .with_prompt(format!(
-                    "Enter {} numbers (space or comma-separated)",
-                    item_type_name
+                    "Enter {item_type_name} numbers (space or comma-separated)"
                 ))
                 .interact_text()
                 .unwrap();
@@ -1060,7 +1043,7 @@ fn get_vl06o_date_update_parameters() -> Result<VL06ODateUpdateParams> {
             };
 
             if numbers.is_empty() {
-                println!("No {} numbers entered.", item_type_name);
+                println!("No {item_type_name} numbers entered.");
             } else {
                 println!("Found {} {} numbers.", numbers.len(), item_type_name);
                 params.entries = numbers;
@@ -1069,21 +1052,15 @@ fn get_vl06o_date_update_parameters() -> Result<VL06ODateUpdateParams> {
         }
         0 => {
             // Read from Excel file
-            println!(
-                "Select an Excel file containing {} numbers:",
-                item_type_name
-            );
+            println!("Select an Excel file containing {item_type_name} numbers:");
 
             // Get the reports directory as the default starting point
             let reports_dir = get_reports_dir();
-            println!("Current reports directory: {}", reports_dir);
+            println!("Current reports directory: {reports_dir}");
 
             // Ask if user wants to use a subdirectory
             println!("You can enter a subdirectory name to navigate to a specific folder.");
-            println!(
-                "For example, entering 'subpath' will navigate to {}\\subpath",
-                reports_dir
-            );
+            println!("For example, entering 'subpath' will navigate to {reports_dir}\\subpath");
             println!("Or press Enter to use the current reports directory.");
 
             let subdir: String = Input::new()
@@ -1097,9 +1074,9 @@ fn get_vl06o_date_update_parameters() -> Result<VL06ODateUpdateParams> {
                 reports_dir.clone()
             } else {
                 // Handle the case where the user entered a subdirectory
-                let mut path = format!("{}\\{}", reports_dir, subdir);
+                let mut path = format!("{reports_dir}\\{subdir}");
                 path = resolve_path(&path);
-                println!("Using directory: {}", path);
+                println!("Using directory: {path}");
                 path
             };
 
@@ -1111,7 +1088,7 @@ fn get_vl06o_date_update_parameters() -> Result<VL06ODateUpdateParams> {
 
             match get_excel_file_path(&dir_to_use) {
                 Ok(excel_path) => {
-                    println!("Selected Excel file: {}", excel_path);
+                    println!("Selected Excel file: {excel_path}");
 
                     // Loop until we get a valid column name or user chooses to exit
                     let mut column_valid = false;
@@ -1120,8 +1097,7 @@ fn get_vl06o_date_update_parameters() -> Result<VL06ODateUpdateParams> {
                         // Get the column name
                         let column_name: String = Input::new()
                             .with_prompt(format!(
-                                "Enter column name containing {} numbers",
-                                item_type_name
+                                "Enter column name containing {item_type_name} numbers"
                             ))
                             .interact_text()
                             .unwrap();
@@ -1145,15 +1121,14 @@ fn get_vl06o_date_update_parameters() -> Result<VL06ODateUpdateParams> {
                             }
                             // Otherwise, loop continues for another attempt
                         } else {
-                            println!("Reading from column: {}", column_name);
+                            println!("Reading from column: {column_name}");
 
                             // Read the numbers from the Excel file
                             match read_excel_column(&excel_path, "Sheet1", &column_name) {
                                 Ok(numbers) => {
                                     if numbers.is_empty() {
                                         println!(
-                                            "No {} numbers found in column '{}' of the Excel file.",
-                                            item_type_name, column_name
+                                            "No {item_type_name} numbers found in column '{column_name}' of the Excel file."
                                         );
 
                                         // Ask if user wants to try again or return to main menu
@@ -1184,10 +1159,9 @@ fn get_vl06o_date_update_parameters() -> Result<VL06ODateUpdateParams> {
                                     }
                                 }
                                 Err(e) => {
-                                    println!("Error reading Excel file: {}", e);
+                                    println!("Error reading Excel file: {e}");
                                     println!(
-                                        "Column '{}' may not exist in the Excel file.",
-                                        column_name
+                                        "Column '{column_name}' may not exist in the Excel file."
                                     );
 
                                     // Ask if user wants to try again or return to main menu
@@ -1216,8 +1190,8 @@ fn get_vl06o_date_update_parameters() -> Result<VL06ODateUpdateParams> {
                     io::stdin().read_line(&mut input).unwrap();
                 }
                 Err(e) => {
-                    println!("Error selecting Excel file: {}", e);
-                    println!("Error details: {}", e);
+                    println!("Error selecting Excel file: {e}");
+                    println!("Error details: {e}");
 
                     // Wait for user to acknowledge before continuing
                     println!("Press Enter to continue...");
@@ -1239,7 +1213,7 @@ fn get_vl06o_date_update_parameters() -> Result<VL06ODateUpdateParams> {
     clear_screen();
 
     println!("-------------------------------");
-    println!("Running VL06O Date Update with params: {:#?}", params);
+    println!("Running VL06O Date Update with params: {params:#?}");
     println!("-------------------------------");
 
     Ok(params)

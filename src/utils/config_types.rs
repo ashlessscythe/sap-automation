@@ -156,7 +156,7 @@ pub struct SequenceConfig {
 // return double backslash based on userprofile
 pub fn get_default_reports_dir() -> String {
     let user_profile = env::var("USERPROFILE").unwrap_or_else(|_| ".".to_string());
-    let formatted_path = format!("{}\\Documents\\Reports", user_profile); // Ensure double backslashes
+    let formatted_path = format!("{user_profile}\\Documents\\Reports"); // Ensure double backslashes
 
     formatted_path.replace("\\", "\\\\") // Replace single backslashes with double backslashes
 }

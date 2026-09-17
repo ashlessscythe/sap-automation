@@ -29,7 +29,7 @@ pub fn run_149_material_module(session: &GuiSession) -> Result<()> {
             println!("149 material report export failed or was cancelled.");
         }
         Err(e) => {
-            println!("Error running 149 material report export: {}", e);
+            println!("Error running 149 material report export: {e}");
         }
     }
 
@@ -50,7 +50,7 @@ pub fn run_149_material_auto(session: &GuiSession) -> Result<()> {
     let config = match SapConfig::load() {
         Ok(cfg) => cfg,
         Err(e) => {
-            println!("Error loading configuration: {}", e);
+            println!("Error loading configuration: {e}");
             println!("\nPress Enter to return to main menu...");
             let mut input = String::new();
             io::stdin().read_line(&mut input).unwrap();
@@ -131,7 +131,7 @@ pub fn run_149_material_auto(session: &GuiSession) -> Result<()> {
             println!("149 Material report export failed or was cancelled.");
         }
         Err(e) => {
-            println!("Error running 149 Material report export: {}", e);
+            println!("Error running 149 Material report export: {e}");
         }
     }
 
@@ -235,7 +235,7 @@ fn get_149_material_parameters() -> Result<Report149MaterialParams> {
         if let Some(tcode_config) = config.get_tcode_config("y_dn3_47000149", Some(true)) {
             if let Some(variant) = tcode_config.get("mat_variant") {
                 params.variant = Some(variant.clone());
-                println!("Using variant from config: {}", variant);
+                println!("Using variant from config: {variant}");
             }
             // get export_type from config - now using the proper field
             if let Some(export_type) = tcode_config.get("export_type") {
@@ -358,7 +358,7 @@ fn get_149_material_parameters() -> Result<Report149MaterialParams> {
     clear_screen();
 
     println!("----------------------------------------");
-    println!("Running 149 material report with params: {:#?}", params);
+    println!("Running 149 material report with params: {params:#?}");
     println!("----------------------------------------");
 
     Ok(params)

@@ -41,7 +41,7 @@ impl Default for VL06OParams {
         // Debug the config loading result
         match &config {
             Ok(_cfg) => println!("Config loaded successfully"),
-            Err(e) => println!("Failed to load config: {}", e),
+            Err(e) => println!("Failed to load config: {e}"),
         }
 
         let config = config.ok();
@@ -77,10 +77,7 @@ impl Default for VL06OParams {
         let layout = tcode_config.and_then(|c| c.layout.clone());
         let column = tcode_config.and_then(|c| c.column_name.clone());
 
-        println!(
-            "Using variant={:?}, layout={:?}, column={:?}",
-            variant, layout, column
-        );
+        println!("Using variant={variant:?}, layout={layout:?}, column={column:?}");
 
         Self {
             sap_variant_name: variant,
@@ -119,7 +116,7 @@ impl Default for VL06ODeliveryParams {
         // Debug the config loading result
         match &config {
             Ok(_cfg) => println!("Config loaded successfully"),
-            Err(e) => println!("Failed to load config: {}", e),
+            Err(e) => println!("Failed to load config: {e}"),
         }
 
         let config = config.ok();
@@ -175,10 +172,7 @@ impl Default for VL06ODeliveryParams {
             })
             .or_else(|| Some("bruh".to_string()));
 
-        println!(
-            "Using variant={:?}, layout={:?}, column={:?}",
-            variant, layout, column
-        );
+        println!("Using variant={variant:?}, layout={layout:?}, column={column:?}");
 
         Self {
             sap_variant_name: variant,
@@ -216,7 +210,7 @@ impl Default for VL06ODateUpdateParams {
         // Debug the config loading result
         match &config {
             Ok(_cfg) => println!("Config loaded successfully"),
-            Err(e) => println!("Failed to load config: {}", e),
+            Err(e) => println!("Failed to load config: {e}"),
         }
 
         let config = config.ok();
@@ -249,7 +243,7 @@ impl Default for VL06ODateUpdateParams {
             .and_then(|c| c.variant.clone())
             .or_else(|| Some("blank_".to_string()));
 
-        println!("Using variant={:?}", variant);
+        println!("Using variant={variant:?}");
 
         Self {
             entries: Vec::new(),
@@ -404,11 +398,11 @@ pub fn run_export(session: &GuiSession, params: &VL06OParams) -> Result<bool> {
     match sbar {
         Ok(s) => {
             if !s.is_empty() {
-                eprintln!("status bar message: {}", s);
+                eprintln!("status bar message: {s}");
             }
         }
         Err(e) => {
-            eprintln!("ERror getting sbar message: {}", e);
+            eprintln!("ERror getting sbar message: {e}");
         }
     }
 
@@ -429,7 +423,7 @@ pub fn run_export(session: &GuiSession, params: &VL06OParams) -> Result<bool> {
 
     // Get statusbar message
     let err_msg = hit_ctrl(session, 0, "/sbar", "Text", "Get", "")?;
-    println!("Statusbar message: ({})", err_msg);
+    println!("Statusbar message: ({err_msg})");
 
     // Export preference: try local file export if configured; otherwise Excel
     if let Ok(config) = SapConfig::load() {
@@ -558,27 +552,27 @@ pub fn run_export_delivery_packages(
     // Write pasted deliveries to CSV in zmdesnr dir
     {
         let timestamp = Local::now().format("%Y%m%d-%H%M%S").to_string();
-        let csv_filename = format!("{}-deliveries.csv", timestamp);
+        let csv_filename = format!("{timestamp}-deliveries.csv");
         let (zmdesnr_dir, _) = get_tcode_file_path("ZMDESNR", "xlsx");
         let mut csv_path = PathBuf::from(zmdesnr_dir);
         csv_path.push(csv_filename);
         let mut file = File::create(&csv_path).map_err(|e| {
             windows::core::Error::new(
                 windows::core::HRESULT(0),
-                format!("CSV create error: {}", e).into(),
+                format!("CSV create error: {e}").into(),
             )
         })?;
         writeln!(file, "delivery_number").map_err(|e| {
             windows::core::Error::new(
                 windows::core::HRESULT(0),
-                format!("CSV write error: {}", e).into(),
+                format!("CSV write error: {e}").into(),
             )
         })?;
         for dn in &delivery_numbers {
-            writeln!(file, "{}", dn).map_err(|e| {
+            writeln!(file, "{dn}").map_err(|e| {
                 windows::core::Error::new(
                     windows::core::HRESULT(0),
-                    format!("CSV write error: {}", e).into(),
+                    format!("CSV write error: {e}").into(),
                 )
             })?;
         }
@@ -867,7 +861,7 @@ pub fn run_date_update(
             "Unknown".to_string()
         };
 
-        println!("Working with delivery ({})", delivery_number);
+        println!("Working with delivery ({delivery_number})");
 
         /* pause */
         pause(None);
@@ -894,10 +888,7 @@ pub fn run_date_update(
         };
 
         if !date_changeable {
-            println!(
-                "Delivery date not changeable for delivery {}",
-                delivery_number
-            );
+            println!("Delivery date not changeable for delivery {delivery_number}");
 
             // F3 back
             if let Ok(window) = session.find_by_id("wnd[0]".to_string()) {
@@ -930,10 +921,7 @@ pub fn run_date_update(
                 }
             }
 
-            println!(
-                "Changing date from ({}) to ({})",
-                original_date, target_date_str
-            );
+            println!("Changing date from ({original_date}) to ({target_date_str})");
 
             /* pause */
             pause(None);
@@ -951,7 +939,7 @@ pub fn run_date_update(
                 // Get status bar message
                 let status_msg = hit_ctrl(session, 0, "/sbar", "Text", "Get", "")?;
                 if !status_msg.is_empty() {
-                    println!("Status bar: {}", status_msg);
+                    println!("Status bar: {status_msg}");
                 } else if status_msg.contains("date in the format") {
                     // handle this
                 } else if status_msg.is_empty() {
@@ -974,7 +962,7 @@ pub fn run_date_update(
             if let Ok(wnd) = session.find_by_id("wnd[0]".to_string()) {
                 if let Some(main_window) = wnd.downcast::<GuiMainWindow>() {
                     main_window.send_v_key(11)?; // Ctrl+S to save
-                    println!("Saved changes for delivery {}", delivery_number);
+                    println!("Saved changes for delivery {delivery_number}");
                 }
             }
 
@@ -998,7 +986,7 @@ pub fn run_date_update(
 
         // Increment counter
         if counter > params.entries.len() as i32 {
-            println!("Done with {} items", counter);
+            println!("Done with {counter} items");
             break;
         } else {
             counter += 1;
@@ -1015,7 +1003,7 @@ pub fn run_date_update(
     // Check for any final status bar message
     let bar_msg = hit_ctrl(session, 0, "/sbar", "Text", "Get", "")?;
     if bar_msg.contains("restricted") {
-        println!("Error: ({})", bar_msg);
+        println!("Error: ({bar_msg})");
 
         // F3 to exit
         if let Ok(wnd) = session.find_by_id("wnd[0]".to_string()) {
@@ -1026,7 +1014,7 @@ pub fn run_date_update(
         }
     }
 
-    println!("Done... with ({}) items.", counter);
+    println!("Done... with ({counter}) items.");
 
     Ok((counter, changes))
 }
@@ -1041,7 +1029,7 @@ fn check_multi_paste(
     row_idx: i32,
 ) -> Result<bool> {
     // Check if the first row has a value
-    let input_field_id = format!("wnd[{}]/usr/tabsTAB_STRIP/tabpSIVA/ssubSCREEN_HEADER:SAPLALDB:3010/tblSAPLALDBSINGLE/ctxtRSCSEL_255-SLOW_I[1,{}]", wnd_idx, row_idx);
+    let input_field_id = format!("wnd[{wnd_idx}]/usr/tabsTAB_STRIP/tabpSIVA/ssubSCREEN_HEADER:SAPLALDB:3010/tblSAPLALDBSINGLE/ctxtRSCSEL_255-SLOW_I[1,{row_idx}]");
 
     if let Ok(txt) = session.find_by_id(input_field_id) {
         if let Some(text_field) = txt.downcast::<GuiCTextField>() {
@@ -1052,9 +1040,6 @@ fn check_multi_paste(
         }
     }
 
-    println!(
-        "No items found in multi-selection window for tcode: {}",
-        tcode
-    );
+    println!("No items found in multi-selection window for tcode: {tcode}");
     Ok(false)
 }

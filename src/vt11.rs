@@ -51,13 +51,13 @@ impl Default for VT11Params {
 /// Get delivery numbers from the latest ZMDESNR export file (same as VL06O delivery module)
 fn get_delivery_numbers_from_zmdesnr() -> Result<Vec<String>> {
     let reports_dir = get_reports_dir();
-    let zmdesnr_dir = format!("{}\\zmdesnr", reports_dir);
+    let zmdesnr_dir = format!("{reports_dir}\\zmdesnr");
 
     // Load configuration to get ZMDESNR effective export type
     let config = match crate::utils::config_types::SapConfig::load() {
         Ok(cfg) => cfg,
         Err(e) => {
-            println!("Error loading configuration: {}", e);
+            println!("Error loading configuration: {e}");
             return Ok(Vec::new());
         }
     };
@@ -74,17 +74,17 @@ fn get_delivery_numbers_from_zmdesnr() -> Result<Vec<String>> {
         _ => "txt", // Default to text
     };
 
-    println!("Looking for ZMDESNR files with extension: .{}", ext);
+    println!("Looking for ZMDESNR files with extension: .{ext}");
 
     // Get the newest file in the ZMDESNR directory with the chosen extension
     let newest_path = get_newest_file(&zmdesnr_dir, ext)?;
 
     if newest_path.is_empty() {
-        println!("No ZMDESNR export files found in: {}", zmdesnr_dir);
+        println!("No ZMDESNR export files found in: {zmdesnr_dir}");
         return Ok(Vec::new());
     }
 
-    println!("Reading delivery numbers from: {}", newest_path);
+    println!("Reading delivery numbers from: {newest_path}");
 
     // Read delivery numbers trying multiple header variants
     let header_candidates = ["Delivery", "delivery", "delivery number", "delivery_number"];
@@ -109,7 +109,7 @@ fn get_delivery_numbers_from_zmdesnr() -> Result<Vec<String>> {
                     }
                 }
                 Err(e) => {
-                    println!("Error reading text file: {}", e);
+                    println!("Error reading text file: {e}");
                     return Ok(Vec::new());
                 }
             }
@@ -127,7 +127,7 @@ fn get_delivery_numbers_from_zmdesnr() -> Result<Vec<String>> {
             }
         }
         if nums.is_empty() {
-            println!("Failed to read file with extension .{}", ext);
+            println!("Failed to read file with extension .{ext}");
         }
         nums
     };
@@ -146,7 +146,7 @@ fn get_delivery_numbers_from_listcheck() -> Result<Vec<String>> {
     let mut results: Vec<String> = Vec::new();
 
     let reports_dir = get_reports_dir();
-    let subdir = format!("{}\\vt11_listcheck", reports_dir);
+    let subdir = format!("{reports_dir}\\vt11_listcheck");
 
     // Find newest CSV that is NOT already marked as used (filename not ending with "_.csv")
     let mut newest_path = String::new();
@@ -176,7 +176,7 @@ fn get_delivery_numbers_from_listcheck() -> Result<Vec<String>> {
     }
 
     if newest_path.is_empty() {
-        println!("No unused VT11 ListCheck CSV found in {}", subdir);
+        println!("No unused VT11 ListCheck CSV found in {subdir}");
         return Ok(results);
     }
 
@@ -304,10 +304,7 @@ pub fn run_export(session: &GuiSession, params: &VT11Params) -> Result<bool> {
                 delivery_numbers
             }
             Err(e) => {
-                println!(
-                    "CLI delivery-source error: {}; falling back to legacy merge",
-                    e
-                );
+                println!("CLI delivery-source error: {e}; falling back to legacy merge");
                 let mut delivery_numbers = get_delivery_numbers_from_zmdesnr()?;
                 let listcheck_numbers = get_delivery_numbers_from_listcheck()?;
                 if !listcheck_numbers.is_empty() {
@@ -401,7 +398,7 @@ pub fn run_export(session: &GuiSession, params: &VT11Params) -> Result<bool> {
                     }
                 }
                 _ => {
-                    println!("Unknown limiter type: {}", limiter);
+                    println!("Unknown limiter type: {limiter}");
                 }
             }
         }
@@ -422,10 +419,7 @@ pub fn run_export(session: &GuiSession, params: &VT11Params) -> Result<bool> {
             if let Some(text_field) = txt.downcast::<GuiTextField>() {
                 let error_text = text_field.text()?;
                 if error_text.contains("No shipments were found for the selection criteria") {
-                    println!(
-                        "No shipments found from dates ({} to {})",
-                        start_date_str, end_date_str
-                    );
+                    println!("No shipments found from dates ({start_date_str} to {end_date_str})");
 
                     // Close window
                     if let Ok(window) = session.find_by_id("wnd[1]".to_string()) {
@@ -460,10 +454,10 @@ pub fn run_export(session: &GuiSession, params: &VT11Params) -> Result<bool> {
                 match msg {
                     Ok(message) if message.is_empty() => {} // no-op
                     Ok(message) => {
-                        eprintln!("Message after choosing layout {}: {}", layout_row, message);
+                        eprintln!("Message after choosing layout {layout_row}: {message}");
                     }
                     Err(e) => {
-                        eprintln!("Error after choosing layout {}: {:?}", layout_row, e);
+                        eprintln!("Error after choosing layout {layout_row}: {e:?}");
                     }
                 }
 
@@ -476,7 +470,7 @@ pub fn run_export(session: &GuiSession, params: &VT11Params) -> Result<bool> {
                         }
                     }
 
-                    println!("Layout ({}) not found. Setting up layout...", layout_row);
+                    println!("Layout ({layout_row}) not found. Setting up layout...");
                     // Setup layout functionality would be implemented here
                 }
             }
@@ -672,7 +666,7 @@ pub fn run_listcheck(session: &GuiSession, params: &VT11Params) -> Result<Vec<St
         // Walk down visible rows until a row is not found
         let mut row = 4;
         loop {
-            let lbl_path = format!("wnd[0]/usr/lbl[8,{}]", row);
+            let lbl_path = format!("wnd[0]/usr/lbl[8,{row}]");
             if let Ok(lbl) = session.find_by_id(lbl_path.clone()) {
                 if let Some(label) = lbl.downcast::<GuiLabel>() {
                     let _ = label.set_focus();
@@ -881,10 +875,10 @@ pub fn run_listcheck(session: &GuiSession, params: &VT11Params) -> Result<Vec<St
 
     // Write CSV if we captured any (shipment, delivery, user) rows
     let reports_dir = get_reports_dir();
-    let subdir = format!("{}\\vt11_listcheck", reports_dir);
+    let subdir = format!("{reports_dir}\\vt11_listcheck");
     let _ = create_dir_all(&subdir);
     let ts = Local::now().format("%Y%m%d_%H%M%S");
-    let csv_path = format!("{}\\vt11_listcheck_{}.csv", subdir, ts);
+    let csv_path = format!("{subdir}\\vt11_listcheck_{ts}.csv");
     if let Ok(mut f) = File::create(&csv_path) {
         let _ = writeln!(f, "Shipment,Delivery,User");
         for (ship, deliv, user) in rows {
@@ -892,10 +886,10 @@ pub fn run_listcheck(session: &GuiSession, params: &VT11Params) -> Result<Vec<St
             let deliv_s = deliv.trim();
             let user_s = user.trim();
             if !ship_s.is_empty() && !deliv_s.is_empty() {
-                let _ = writeln!(f, "{},{},{}", ship_s, deliv_s, user_s);
+                let _ = writeln!(f, "{ship_s},{deliv_s},{user_s}");
             }
         }
-        println!("VT11 ListCheck CSV written: {}", csv_path);
+        println!("VT11 ListCheck CSV written: {csv_path}");
     } else {
         eprintln!("Failed to create VT11 ListCheck CSV file");
     }
@@ -936,16 +930,14 @@ pub fn run_listcheck(session: &GuiSession, params: &VT11Params) -> Result<Vec<St
                     timestamp: timestamp.clone(),
                 });
             }
-        } else {
-            if !seen_unblocked.contains(&shipment) {
-                seen_unblocked.insert(shipment.clone());
-                unblocked_shipments_dedup.push(ShipmentInfo {
-                    shipment: shipment.clone(),
-                    delivery: delivery.clone(),
-                    user: user.clone(),
-                    timestamp: timestamp.clone(),
-                });
-            }
+        } else if !seen_unblocked.contains(&shipment) {
+            seen_unblocked.insert(shipment.clone());
+            unblocked_shipments_dedup.push(ShipmentInfo {
+                shipment: shipment.clone(),
+                delivery: delivery.clone(),
+                user: user.clone(),
+                timestamp: timestamp.clone(),
+            });
         }
     }
 
@@ -958,11 +950,11 @@ pub fn run_listcheck(session: &GuiSession, params: &VT11Params) -> Result<Vec<St
         timestamp: Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
     };
 
-    let json_path = format!("{}\\vt11_listcheck_{}.json", subdir, ts);
+    let json_path = format!("{subdir}\\vt11_listcheck_{ts}.json");
     if let Ok(json_content) = serde_json::to_string_pretty(&stats) {
         if let Ok(mut f) = File::create(&json_path) {
-            if writeln!(f, "{}", json_content).is_ok() {
-                println!("VT11 ListCheck stats written: {}", json_path);
+            if writeln!(f, "{json_content}").is_ok() {
+                println!("VT11 ListCheck stats written: {json_path}");
             } else {
                 eprintln!("Failed to write VT11 ListCheck stats JSON file");
             }
@@ -973,10 +965,7 @@ pub fn run_listcheck(session: &GuiSession, params: &VT11Params) -> Result<Vec<St
         eprintln!("Failed to serialize VT11 ListCheck stats");
     }
 
-    println!(
-        "Found {} blocked shipments out of {} total attempted",
-        blocked_count, total_attempted
-    );
+    println!("Found {blocked_count} blocked shipments out of {total_attempted} total attempted");
     println!("Found {} blocked deliveries", deliveries.len());
     Ok(deliveries)
 }

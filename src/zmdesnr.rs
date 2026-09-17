@@ -49,7 +49,7 @@ impl Default for ZMDESNRParams {
 
 /// Add layout columns to the current view
 ///
-/// This function is a port of the VBA code in docs/zmdesnr_layout.md
+/// This function is a port of legacy VBA layout-setup logic.
 /// It adds columns to the layout based on the add_layout_columns configuration
 fn add_layout_columns(session: &GuiSession, params: &ZMDESNRParams) -> Result<bool> {
     println!("Adding layout columns...");

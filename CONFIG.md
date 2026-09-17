@@ -47,7 +47,7 @@ variant = "delivery_layout"
 layout = "delivery_view"
 column_name = "Shipment Number"
 
-[tcode.ZMDESNR]
+[tcode.ZEXSNR]
 variant = "serial_variant"
 layout = "serial_layout"
 tab_number = "2"
@@ -62,8 +62,8 @@ Each TCode section can have the following parameters:
 - `date_range_start`: Start date for date range
 - `date_range_end`: End date for date range
 - `by_date`: Whether to filter by date
-- `serial_number`: Serial number for ZMDESNR
-- `tab_number`: Tab number for ZMDESNR
+- `serial_number`: Serial number for ZEXSNR
+- `tab_number`: Tab number for ZEXSNR
 - Additional custom parameters as needed
 
 ### Loop Section
@@ -140,7 +140,7 @@ layout = "my_layout"
 variant = "delivery_layout"
 layout = "delivery_view"
 
-[tcode.ZMDESNR]
+[tcode.ZEXSNR]
 variant = "serial_variant"
 layout = "serial_layout"
 ```

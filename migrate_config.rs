@@ -35,7 +35,7 @@ fn main() {
     };
 
     // Parse the TOML content
-    let parsed: toml::Value = match content.parse() {
+    let parsed: toml::Value = match toml::from_str(&content) {
         Ok(parsed) => parsed,
         Err(e) => {
             println!("Error parsing config.toml: {}", e);

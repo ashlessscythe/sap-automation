@@ -136,5 +136,5 @@ fn test_version_constant() {
     );
 
     // Print the version for verification
-    println!("Current version: {}", version);
+    println!("Current version: {version}");
 }

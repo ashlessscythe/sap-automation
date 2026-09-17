@@ -37,8 +37,7 @@ pub fn export_local_file(
     };
 
     let radio_id = format!(
-        "wnd[1]/usr/subSUBSCREEN_STEPLOOP:SAPLSPO5:0150/sub:SAPLSPO5:0150/radSPOPLI-SELFLAG[{},0]",
-        radio_index
+        "wnd[1]/usr/subSUBSCREEN_STEPLOOP:SAPLSPO5:0150/sub:SAPLSPO5:0150/radSPOPLI-SELFLAG[{radio_index},0]"
     );
 
     if let Ok(radio) = session.find_by_id(radio_id) {
@@ -73,12 +72,11 @@ pub fn export_local_file(
     // Compose filename, optionally appending suffix before extension
     let file_name = if let Some(suffix) = filename_suffix {
         if file_extension.is_empty() {
-            format!("{}-{}", base_file_name, suffix)
-        } else if let Some(stripped) = base_file_name.strip_suffix(&format!(".{}", file_extension))
-        {
-            format!("{}-{}.{}", stripped, suffix, file_extension)
+            format!("{base_file_name}-{suffix}")
+        } else if let Some(stripped) = base_file_name.strip_suffix(&format!(".{file_extension}")) {
+            format!("{stripped}-{suffix}.{file_extension}")
         } else {
-            format!("{}-{}.{}", base_file_name, suffix, file_extension)
+            format!("{base_file_name}-{suffix}.{file_extension}")
         }
     } else {
         base_file_name
@@ -91,7 +89,7 @@ pub fn export_local_file(
     std::thread::sleep(std::time::Duration::from_millis(2000));
 
     let full_path = format!("{}{}{}", file_path, std::path::MAIN_SEPARATOR, file_name);
-    println!("Successfully exported data to {}", full_path);
+    println!("Successfully exported data to {full_path}");
 
     Ok(full_path)
 }

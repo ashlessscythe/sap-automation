@@ -14,8 +14,8 @@ pub fn exist_ctrl(
     id_suffix: &str,
     silent: bool,
 ) -> Result<CtrlBand> {
-    let wnd_id = format!("wnd[{}]", wnd_idx);
-    let full_id = format!("{}{}", wnd_id, id_suffix);
+    let wnd_id = format!("wnd[{wnd_idx}]");
+    let full_id = format!("{wnd_id}{id_suffix}");
     let full_id_for_log = full_id.clone();
 
     let ctrl_result = session.find_by_id(full_id);
@@ -53,7 +53,7 @@ pub fn exist_ctrl(
     }
 
     if !cband && !silent {
-        println!("Control not found: {}", full_id_for_log);
+        println!("Control not found: {full_id_for_log}");
     }
 
     Ok(CtrlBand {
@@ -83,8 +83,8 @@ pub fn hit_ctrl(
     action: &str,
     value: &str,
 ) -> Result<String> {
-    let wnd_id = format!("wnd[{}]", wnd_idx);
-    let full_id = format!("{}{}", wnd_id, id_suffix);
+    let wnd_id = format!("wnd[{wnd_idx}]");
+    let full_id = format!("{wnd_id}{id_suffix}");
     let full_id_for_log = full_id.clone();
 
     let ctrl_result = session.find_by_id(full_id);
@@ -120,7 +120,7 @@ pub fn hit_ctrl(
             }
         }
         Err(_) => {
-            println!("Control not found: {}", full_id_for_log);
+            println!("Control not found: {full_id_for_log}");
             Ok("".to_string())
         }
     }
@@ -141,13 +141,13 @@ pub fn get_sap_text_errors(
     let prefix_str = prefix.unwrap_or("");
 
     for i in 1..=max_lines {
-        let id = format!("{}{}", id_suffix, i);
+        let id = format!("{id_suffix}{i}");
         let text = hit_ctrl(session, wnd_idx, &id, "Text", "Get", "")?;
         if !text.is_empty() {
             if !result.is_empty() {
                 result.push('\n');
             }
-            result.push_str(&format!("{}{}", prefix_str, text));
+            result.push_str(&format!("{prefix_str}{text}"));
         }
     }
 
@@ -157,7 +157,7 @@ pub fn get_sap_text_errors(
 /// Cell type prefix for SAP multi-value paste tables (`ctxt` vs `txt`).
 /// VL06O/VT11 use `ctxtRSCSEL_255-SLOW_I`; y_dn3_47000149 delivery multi uses `txtRSCSEL_255-SLOW_I`.
 fn multi_paste_cell_id(table_id: &str, cell_prefix: &str, row: i32) -> String {
-    format!("{}/{}RSCSEL_255-SLOW_I[1,{}]", table_id, cell_prefix, row)
+    format!("{table_id}/{cell_prefix}RSCSEL_255-SLOW_I[1,{row}]")
 }
 
 fn read_multi_paste_cell(session: &GuiSession, full_field_id: &str) -> Result<Option<String>> {
@@ -207,12 +207,12 @@ pub fn paste_values_with_scroll(
         return Ok(true);
     }
 
-    let full_table_id = format!("wnd[{}]/usr/{}", wnd_idx, table_id);
+    let full_table_id = format!("wnd[{wnd_idx}]/usr/{table_id}");
 
     // Check if table exists
-    let table_exists = exist_ctrl(session, wnd_idx, &format!("/usr/{}", table_id), true)?;
+    let table_exists = exist_ctrl(session, wnd_idx, &format!("/usr/{table_id}"), true)?;
     if !table_exists.cband {
-        println!("Table not found: {}", full_table_id);
+        println!("Table not found: {full_table_id}");
         return Ok(false);
     }
 
@@ -238,7 +238,7 @@ pub fn paste_values_with_scroll(
         if values_pasted > 0 {
             scroll_position += 7;
             // Try to scroll down using Page Down (more reliable)
-            if let Ok(window) = session.find_by_id(format!("wnd[{}]", wnd_idx)) {
+            if let Ok(window) = session.find_by_id(format!("wnd[{wnd_idx}]")) {
                 if let Some(wnd) = window.downcast::<GuiModalWindow>() {
                     // Send Page Down keys until we find an empty row at index 1
                     let mut page_down_count = 0;
@@ -248,12 +248,11 @@ pub fn paste_values_with_scroll(
                         std::thread::sleep(std::time::Duration::from_millis(50));
                         // Check if row 1 is empty (indicating we've scrolled to a new area)
                         let check_field_id = multi_paste_cell_id(table_id, cell_prefix, 1);
-                        let check_full_id = format!("wnd[{}]/usr/{}", wnd_idx, check_field_id);
+                        let check_full_id = format!("wnd[{wnd_idx}]/usr/{check_field_id}");
                         if let Some(text) = read_multi_paste_cell(session, &check_full_id)? {
                             if text.is_empty() {
                                 println!(
-                                    "Found empty row at index 1 after {} Page Down presses",
-                                    page_down_count
+                                    "Found empty row at index 1 after {page_down_count} Page Down presses"
                                 );
                                 break;
                             }
@@ -280,7 +279,7 @@ pub fn paste_values_with_scroll(
         let mut start_index = 0;
         if values_pasted > 0 {
             let field_id = multi_paste_cell_id(table_id, cell_prefix, 0);
-            let full_field_id = format!("wnd[{}]/usr/{}", wnd_idx, field_id);
+            let full_field_id = format!("wnd[{wnd_idx}]/usr/{field_id}");
             if let Some(text) = read_multi_paste_cell(session, &full_field_id)? {
                 if !text.trim().is_empty() {
                     start_index = 1;
@@ -291,16 +290,13 @@ pub fn paste_values_with_scroll(
         for i in 0..current_batch_size {
             let global_index = values_pasted + i;
             let field_id = multi_paste_cell_id(table_id, cell_prefix, local_index as i32);
-            let full_field_id = format!("wnd[{}]/usr/{}", wnd_idx, field_id);
+            let full_field_id = format!("wnd[{wnd_idx}]/usr/{field_id}");
             let clean_value = clean_values[global_index].clone();
             if write_multi_paste_cell(session, &full_field_id, &clean_value)? {
-                println!(
-                    "  Pasted value {} at local index {}",
-                    clean_value, local_index
-                );
+                println!("  Pasted value {clean_value} at local index {local_index}");
                 local_index += 1;
             } else {
-                println!("  Field not found or not a text field: {}", full_field_id);
+                println!("  Field not found or not a text field: {full_field_id}");
                 break;
             }
         }
@@ -344,7 +340,7 @@ pub fn get_scrollbar_position(session: &GuiSession, wnd_idx: i32, table_id: &str
     let scroll_result = hit_ctrl(
         session,
         wnd_idx,
-        &format!("/usr/{}", table_id),
+        &format!("/usr/{table_id}"),
         "Position",
         "GetV",
         "",
@@ -353,11 +349,11 @@ pub fn get_scrollbar_position(session: &GuiSession, wnd_idx: i32, table_id: &str
     match scroll_result {
         Ok(position_str) => {
             let position = position_str.parse::<i32>().unwrap_or(0);
-            println!("Current scrollbar position: {}", position);
+            println!("Current scrollbar position: {position}");
             Ok(position)
         }
         Err(e) => {
-            println!("Failed to get scrollbar position: {}", e);
+            println!("Failed to get scrollbar position: {e}");
             Ok(0)
         }
     }

@@ -30,7 +30,7 @@ fn resolve_source_path(value: &str) -> std::io::Result<Option<String>> {
         // Literal path — caller will confirm it exists.
         let p = Path::new(value);
         if !p.exists() {
-            println!("Source file does not exist: {}", value);
+            println!("Source file does not exist: {value}");
             return Ok(None);
         }
         return Ok(Some(value.to_string()));
@@ -41,7 +41,7 @@ fn resolve_source_path(value: &str) -> std::io::Result<Option<String>> {
     let dir = format!("{}\\{}", reports_dir, value.to_lowercase());
     let dir_path = Path::new(&dir);
     if !dir_path.exists() {
-        println!("Source directory does not exist: {}", dir);
+        println!("Source directory does not exist: {dir}");
         return Ok(None);
     }
 
@@ -69,7 +69,7 @@ fn resolve_source_path(value: &str) -> std::io::Result<Option<String>> {
         }
     }
     if newest_path.is_empty() {
-        println!("No usable files found in {}", dir);
+        println!("No usable files found in {dir}");
         return Ok(None);
     }
     Ok(Some(newest_path))
@@ -91,10 +91,7 @@ fn read_csv_column(file_path: &str, header: &str) -> std::io::Result<Vec<String>
         if line_no == 0 {
             header_idx = cols.iter().position(|c| c.trim() == header);
             if header_idx.is_none() {
-                println!(
-                    "CSV header '{}' not found in {}. Headers: {:?}",
-                    header, file_path, cols
-                );
+                println!("CSV header '{header}' not found in {file_path}. Headers: {cols:?}");
                 return Ok(Vec::new());
             }
             continue;
@@ -122,12 +119,11 @@ fn read_column_from_file(path: &str, column: &str) -> std::io::Result<Vec<String
         "tsv" | "txt" | "rtf" | "html" => read_tab_delimited_column(path, column),
         "xlsx" | "xls" => match read_excel_column(path, "Sheet1", column) {
             Ok(v) => Ok(v),
-            Err(e) => Err(std::io::Error::other(format!("Excel read error: {}", e))),
+            Err(e) => Err(std::io::Error::other(format!("Excel read error: {e}"))),
         },
         other => {
             println!(
-                "Unsupported source file extension '.{}' for {} (expected csv/tsv/txt/xlsx)",
-                other, path
+                "Unsupported source file extension '.{other}' for {path} (expected csv/tsv/txt/xlsx)"
             );
             Ok(Vec::new())
         }
@@ -148,10 +144,7 @@ pub fn cli_delivery_numbers_override() -> std::io::Result<Option<Vec<String>>> {
     let Some(resolved) = resolve_source_path(file_value)? else {
         return Ok(Some(Vec::new()));
     };
-    println!(
-        "[CLI override] Reading delivery numbers from {} (column '{}')",
-        resolved, column
-    );
+    println!("[CLI override] Reading delivery numbers from {resolved} (column '{column}')");
     let nums = read_column_from_file(&resolved, &column)?;
     let nums = dedup_and_sanitize(nums);
     println!(
@@ -175,10 +168,7 @@ pub fn cli_shipment_numbers_override() -> std::io::Result<Option<Vec<String>>> {
     let Some(resolved) = resolve_source_path(file_value)? else {
         return Ok(Some(Vec::new()));
     };
-    println!(
-        "[CLI override] Reading shipment numbers from {} (column '{}')",
-        resolved, column
-    );
+    println!("[CLI override] Reading shipment numbers from {resolved} (column '{column}')");
     let nums = read_column_from_file(&resolved, &column)?;
     let nums = dedup_and_sanitize(nums);
     println!(

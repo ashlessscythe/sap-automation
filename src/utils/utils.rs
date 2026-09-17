@@ -126,12 +126,12 @@ pub fn generate_timestamp() -> String {
 
     // Get current UTC time
     let now = Utc::now();
-    println!("Now is: {} UTC", now);
-    println!("Using timezone: {}", timezone_str);
+    println!("Now is: {now} UTC");
+    println!("Using timezone: {timezone_str}");
 
     // Format the timestamp with the appropriate timezone offset
     let timestamp = apply_timezone(now, &timezone_str);
-    println!("Generated timestamp: {}", timestamp);
+    println!("Generated timestamp: {timestamp}");
 
     timestamp
 }
@@ -145,18 +145,18 @@ pub fn generate_timestamp() -> String {
 pub fn apply_timezone(utc_time: DateTime<Utc>, timezone_str: &str) -> String {
     // First try to parse as a numeric offset (for backward compatibility)
     if let Ok(hours_offset) = timezone_str.parse::<i32>() {
-        println!("Using numeric offset: {} hours", hours_offset);
+        println!("Using numeric offset: {hours_offset} hours");
         let adjusted_time = utc_time + chrono::Duration::hours(hours_offset as i64);
-        println!("Adjusted time: {}", adjusted_time);
+        println!("Adjusted time: {adjusted_time}");
         return adjusted_time.format("%Y%m%d%H%M%S").to_string();
     }
 
     // Try to parse as a chrono-tz timezone
     if let Ok(tz) = Tz::from_str(timezone_str) {
-        println!("Using timezone database entry: {}", tz);
+        println!("Using timezone database entry: {tz}");
         // Convert UTC time to the target timezone and format it
         let local_time = utc_time.with_timezone(&tz);
-        println!("Local time in {}: {}", tz, local_time);
+        println!("Local time in {tz}: {local_time}");
         return local_time.format("%Y%m%d%H%M%S").to_string();
     }
 
@@ -167,36 +167,33 @@ pub fn apply_timezone(utc_time: DateTime<Utc>, timezone_str: &str) -> String {
             "UTC"
         }
         "EST" | "EDT" => {
-            println!("Converting {} to America/New_York", timezone_str);
+            println!("Converting {timezone_str} to America/New_York");
             "America/New_York"
         }
         "CST" | "CDT" => {
-            println!("Converting {} to America/Chicago", timezone_str);
+            println!("Converting {timezone_str} to America/Chicago");
             "America/Chicago"
         }
         "MST" | "MDT" => {
-            println!("Converting {} to America/Denver", timezone_str);
+            println!("Converting {timezone_str} to America/Denver");
             "America/Denver"
         }
         "PST" | "PDT" => {
-            println!("Converting {} to America/Los_Angeles", timezone_str);
+            println!("Converting {timezone_str} to America/Los_Angeles");
             "America/Los_Angeles"
         }
         _ => {
             // If we can't parse the timezone, fall back to UTC
-            println!(
-                "Warning: Unknown timezone '{}', falling back to UTC",
-                timezone_str
-            );
+            println!("Warning: Unknown timezone '{timezone_str}', falling back to UTC");
             return utc_time.format("%Y%m%d%H%M%S").to_string();
         }
     };
 
     // Parse the timezone and apply it
     if let Ok(tz) = Tz::from_str(tz_string) {
-        println!("Using mapped timezone: {}", tz);
+        println!("Using mapped timezone: {tz}");
         let local_time = utc_time.with_timezone(&tz);
-        println!("Local time in {}: {}", tz, local_time);
+        println!("Local time in {tz}: {local_time}");
         return local_time.format("%Y%m%d%H%M%S").to_string();
     }
 

@@ -30,7 +30,7 @@ pub fn run_vt11_module(session: &GuiSession) -> Result<()> {
             println!("VT11 export failed or was cancelled.");
         }
         Err(e) => {
-            println!("Error running VT11 export: {}", e);
+            println!("Error running VT11 export: {e}");
         }
     }
 
@@ -51,7 +51,7 @@ pub fn run_vt11_auto(session: &GuiSession) -> Result<()> {
     let config = match SapConfig::load() {
         Ok(cfg) => cfg,
         Err(e) => {
-            println!("Error loading configuration: {}", e);
+            println!("Error loading configuration: {e}");
             println!("\nPress Enter to return to main menu...");
             let mut input = String::new();
             io::stdin().read_line(&mut input).unwrap();
@@ -98,7 +98,7 @@ pub fn run_vt11_auto(session: &GuiSession) -> Result<()> {
             println!("VT11 export failed or was cancelled.");
         }
         Err(e) => {
-            println!("Error running VT11 export: {}", e);
+            println!("Error running VT11 export: {e}");
         }
     }
 
@@ -138,7 +138,7 @@ pub fn run_vt11_listcheck_auto(session: &GuiSession) -> Result<()> {
     let config = match SapConfig::load() {
         Ok(cfg) => cfg,
         Err(e) => {
-            println!("Error loading configuration: {}", e);
+            println!("Error loading configuration: {e}");
             return Ok(());
         }
     };
@@ -150,7 +150,7 @@ pub fn run_vt11_listcheck_auto(session: &GuiSession) -> Result<()> {
 
     let tcode_config = match tcode_config {
         Some(cfg) => {
-            println!("DEBUG: tcode_config: {:#?}", cfg);
+            println!("DEBUG: tcode_config: {cfg:#?}");
             cfg
         }
         None => {
@@ -323,7 +323,7 @@ fn get_vt11_parameters() -> Result<VT11Params> {
     clear_screen();
 
     println!("-------------------------------");
-    println!("Running VT11 with params: {:#?}", params);
+    println!("Running VT11 with params: {params:#?}");
     println!("-------------------------------");
 
     Ok(params)

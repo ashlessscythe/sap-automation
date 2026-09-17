@@ -33,7 +33,7 @@ pub fn run_zmdesnr_module(session: &GuiSession) -> Result<()> {
             println!("ZMDESNR export failed or was cancelled.");
         }
         Err(e) => {
-            println!("Error running ZMDESNR export: {}", e);
+            println!("Error running ZMDESNR export: {e}");
         }
     }
 
@@ -54,7 +54,7 @@ pub fn run_zmdesnr_auto(session: &GuiSession) -> Result<()> {
     let config = match SapConfig::load() {
         Ok(cfg) => cfg,
         Err(e) => {
-            println!("Error loading configuration: {}", e);
+            println!("Error loading configuration: {e}");
             println!("\nPress Enter to return to main menu...");
             let mut input = String::new();
             io::stdin().read_line(&mut input).unwrap();
@@ -81,24 +81,21 @@ pub fn run_zmdesnr_auto(session: &GuiSession) -> Result<()> {
 
     // Check if we need to get delivery numbers from Excel
     if let Some(column_name) = &params.column_name {
-        println!(
-            "Reading delivery numbers from Excel column: {}",
-            column_name
-        );
+        println!("Reading delivery numbers from Excel column: {column_name}");
 
         // Get the reports directory
         let reports_dir = get_reports_dir();
 
         // Create the ZMDESNR subdirectory path
-        let zmdesnr_dir = format!("{}\\zmdesnr", reports_dir);
+        let zmdesnr_dir = format!("{reports_dir}\\zmdesnr");
 
         // Check if the ZMDESNR directory exists
         let zmdesnr_path = Path::new(&zmdesnr_dir);
         if !zmdesnr_path.exists() {
-            println!("ZMDESNR directory not found: {}", zmdesnr_dir);
+            println!("ZMDESNR directory not found: {zmdesnr_dir}");
             println!("Creating directory...");
             if let Err(e) = fs::create_dir_all(&zmdesnr_dir) {
-                println!("Error creating directory: {}", e);
+                println!("Error creating directory: {e}");
             }
         }
 
@@ -109,7 +106,7 @@ pub fn run_zmdesnr_auto(session: &GuiSession) -> Result<()> {
             println!("No Excel files found in ZMDESNR directory.");
             println!("Please run ZMDESNR export first to generate an Excel file.");
         } else {
-            println!("Using newest Excel file: {}", excel_path);
+            println!("Using newest Excel file: {excel_path}");
 
             // Read the delivery numbers from the Excel file
             match read_excel_column(&excel_path, "Sheet1", column_name) {
@@ -125,7 +122,7 @@ pub fn run_zmdesnr_auto(session: &GuiSession) -> Result<()> {
                     }
                 }
                 Err(e) => {
-                    println!("Error reading Excel file: {}", e);
+                    println!("Error reading Excel file: {e}");
                 }
             }
         }
@@ -139,15 +136,12 @@ pub fn run_zmdesnr_auto(session: &GuiSession) -> Result<()> {
     println!("Delivery Numbers: {} found", params.delivery_numbers.len());
     if let Some(pre_export_back) = &params.additional_params.pre_export_back {
         if !pre_export_back.is_empty() {
-            println!("Additional param: pre_export_back: {}", pre_export_back);
+            println!("Additional param: pre_export_back: {pre_export_back}");
         }
     }
     if let Some(add_layout_columns) = &params.additional_params.add_layout_columns {
         if !add_layout_columns.is_empty() {
-            println!(
-                "Additional param: add_layout_columns: {:?}",
-                add_layout_columns
-            );
+            println!("Additional param: add_layout_columns: {add_layout_columns:?}");
         }
     }
     println!("--------------------------------------------");
@@ -161,7 +155,7 @@ pub fn run_zmdesnr_auto(session: &GuiSession) -> Result<()> {
             println!("ZMDESNR export failed or was cancelled.");
         }
         Err(e) => {
-            println!("Error running ZMDESNR export: {}", e);
+            println!("Error running ZMDESNR export: {e}");
         }
     }
 
@@ -209,7 +203,7 @@ fn create_zmdesnr_params_from_config(config: &HashMap<String, String>) -> ZMDESN
                 params.additional_params.add_layout_columns = Some(columns);
             }
             Err(e) => {
-                println!("Error parsing layout_columns: {}", e);
+                println!("Error parsing layout_columns: {e}");
                 // Use default values from the task
                 params.additional_params.add_layout_columns = Some(vec![
                     "Created By".to_string(),
@@ -244,7 +238,7 @@ fn get_zmdesnr_parameters() -> Result<ZMDESNRParams> {
 
     // If column name is provided, ask for Excel file path
     if let Some(col_name) = &params.column_name {
-        println!("Column name provided: {}", col_name);
+        println!("Column name provided: {col_name}");
 
         // Ask for Excel file path
         let excel_path: String = Input::new()
@@ -268,7 +262,7 @@ fn get_zmdesnr_parameters() -> Result<ZMDESNRParams> {
                     }
                 }
                 Err(e) => {
-                    println!("Error reading Excel file: {}", e);
+                    println!("Error reading Excel file: {e}");
                 }
             }
         } else {
@@ -338,7 +332,7 @@ fn get_zmdesnr_parameters() -> Result<ZMDESNRParams> {
     clear_screen();
 
     println!("-------------------------------");
-    println!("Running ZMDESNR with params: {:#?}", params);
+    println!("Running ZMDESNR with params: {params:#?}");
     println!("-------------------------------");
 
     Ok(params)

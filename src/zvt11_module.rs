@@ -24,7 +24,7 @@ pub fn run_zvt11_module(session: &GuiSession) -> Result<()> {
             println!("ZVT11 export failed or was cancelled.");
         }
         Err(e) => {
-            eprintln!("Error running ZVT11 export: {}", e);
+            eprintln!("Error running ZVT11 export: {e}");
         }
     }
 
@@ -44,7 +44,7 @@ pub fn run_zvt11_auto(session: &GuiSession) -> Result<()> {
     let config = match SapConfig::load() {
         Ok(cfg) => cfg,
         Err(e) => {
-            eprintln!("Error loading configuration: {}", e);
+            eprintln!("Error loading configuration: {e}");
             println!("Please configure ZVT11 parameters first.");
             println!("\nPress Enter to continue...");
             let mut input = String::new();
@@ -89,7 +89,7 @@ pub fn run_zvt11_auto(session: &GuiSession) -> Result<()> {
             println!("ZVT11 export failed or was cancelled.");
         }
         Err(e) => {
-            eprintln!("Error running ZVT11 export: {}", e);
+            eprintln!("Error running ZVT11 export: {e}");
         }
     }
 
@@ -250,7 +250,7 @@ fn get_zvt11_parameters() -> Result<ZVT11Params> {
     println!("  By Delivery: {}", params.by_delivery);
     println!("  Limiter: {:?}", params.limiter);
 
-    println!("\nRunning ZVT11 with params: {:#?}", params);
+    println!("\nRunning ZVT11 with params: {params:#?}");
 
     Ok(params)
 }

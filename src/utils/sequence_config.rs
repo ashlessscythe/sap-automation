@@ -64,7 +64,7 @@ pub fn get_menu_option_name(id: &str) -> String {
             return option.name;
         }
     }
-    format!("Unknown option: {}", id)
+    format!("Unknown option: {id}")
 }
 
 /// Execute a menu option by ID
@@ -99,7 +99,7 @@ pub fn execute_menu_option(session: &GuiSession, id: &str) -> Result<()> {
             run_149_auto(session)?;
         }
         _ => {
-            println!("Unknown option: {}", id);
+            println!("Unknown option: {id}");
         }
     }
     Ok(())
@@ -197,7 +197,7 @@ impl SequenceConfig {
 
         // Add parameters with param_ prefix
         for (key, value) in &self.params {
-            sequence_params.insert(format!("param_{}", key), value.clone());
+            sequence_params.insert(format!("param_{key}"), value.clone());
         }
 
         let sequence_config = ConfigSequenceConfig {
@@ -318,7 +318,7 @@ pub fn handle_configure_sequence() -> Result<()> {
                     if iterations == 0 {
                         println!("Iterations set to: infinite (until Ctrl+C)");
                     } else {
-                        println!("Iterations set to: {}", iterations);
+                        println!("Iterations set to: {iterations}");
                     }
                 } else {
                     println!(
@@ -339,7 +339,7 @@ pub fn handle_configure_sequence() -> Result<()> {
 
                 if let Ok(delay) = delay_str.parse::<u64>() {
                     config.delay_seconds = delay;
-                    println!("Delay set to: {} seconds", delay);
+                    println!("Delay set to: {delay} seconds");
                 } else {
                     println!(
                         "Invalid number. Keeping current value: {} seconds",
@@ -359,7 +359,7 @@ pub fn handle_configure_sequence() -> Result<()> {
 
                 if let Ok(interval) = interval_str.parse::<u64>() {
                     config.interval_seconds = interval;
-                    println!("Interval set to: {} seconds", interval);
+                    println!("Interval set to: {interval} seconds");
                 } else {
                     println!(
                         "Invalid number. Keeping current value: {} seconds",
@@ -385,12 +385,12 @@ pub fn handle_configure_sequence() -> Result<()> {
 
                 if param_value.is_empty() {
                     config.params.remove(&param_name);
-                    println!("Parameter '{}' removed.", param_name);
+                    println!("Parameter '{param_name}' removed.");
                 } else {
                     config
                         .params
                         .insert(param_name.clone(), param_value.clone());
-                    println!("Parameter '{}' set to: {}", param_name, param_value);
+                    println!("Parameter '{param_name}' set to: {param_value}");
                 }
             }
             5 => {
@@ -424,7 +424,7 @@ pub fn handle_configure_sequence() -> Result<()> {
 
                 let param_name = &param_names[selection];
                 config.params.remove(param_name);
-                println!("Parameter '{}' removed.", param_name);
+                println!("Parameter '{param_name}' removed.");
             }
             6 => {
                 // Show Current Configuration
@@ -450,7 +450,7 @@ pub fn handle_configure_sequence() -> Result<()> {
                 if !config.params.is_empty() {
                     println!("\nParameters:");
                     for (key, value) in &config.params {
-                        println!("  {}: {}", key, value);
+                        println!("  {key}: {value}");
                     }
                 }
 
@@ -467,7 +467,7 @@ pub fn handle_configure_sequence() -> Result<()> {
 
         // Save configuration after each change
         if let Err(e) = config.save() {
-            eprintln!("Failed to save configuration: {}", e);
+            eprintln!("Failed to save configuration: {e}");
             thread::sleep(Duration::from_secs(2));
         } else {
             println!("Configuration saved successfully.");
@@ -487,7 +487,7 @@ pub fn run_sequence(session: &GuiSession) -> Result<()> {
     let config = match SequenceConfig::load() {
         Ok(cfg) => cfg,
         Err(e) => {
-            println!("Error loading sequence configuration: {}", e);
+            println!("Error loading sequence configuration: {e}");
             println!("\nPress Enter to return to main menu...");
             let mut input = String::new();
             io::stdin().read_line(&mut input).unwrap();
@@ -529,7 +529,7 @@ pub fn run_sequence(session: &GuiSession) -> Result<()> {
     if !config.params.is_empty() {
         println!("\nParameters:");
         for (key, value) in &config.params {
-            println!("  {}: {}", key, value);
+            println!("  {key}: {value}");
         }
     }
 
@@ -542,10 +542,7 @@ pub fn run_sequence(session: &GuiSession) -> Result<()> {
     loop {
         // Display iteration information
         if config.iterations == 0 {
-            println!(
-                "\nIteration {} (infinite loop, press Ctrl+C to stop)",
-                iteration
-            );
+            println!("\nIteration {iteration} (infinite loop, press Ctrl+C to stop)");
         } else {
             println!("\nIteration {}/{}", iteration, config.iterations);
         }
@@ -562,7 +559,7 @@ pub fn run_sequence(session: &GuiSession) -> Result<()> {
             // Execute the selected option
             println!("Running: {}", get_menu_option_name(option));
             if let Err(e) = execute_menu_option(session, option) {
-                eprintln!("Error executing option: {}", e);
+                eprintln!("Error executing option: {e}");
             }
 
             // If this is not the last step, wait for the interval
@@ -578,7 +575,7 @@ pub fn run_sequence(session: &GuiSession) -> Result<()> {
         // After completing all steps in this iteration, mark newest unused VT11 ListCheck CSV as used
         // so that subsequent iterations don't reuse the same deliveries (applies also when iterations == 0).
         let reports_dir = crate::utils::config_ops::get_reports_dir();
-        let subdir = format!("{}\\vt11_listcheck", reports_dir);
+        let subdir = format!("{reports_dir}\\vt11_listcheck");
         if let Ok(entries) = std::fs::read_dir(&subdir) {
             let mut newest_path = String::new();
             let mut newest_time: Option<std::time::SystemTime> = None;
@@ -606,13 +603,12 @@ pub fn run_sequence(session: &GuiSession) -> Result<()> {
                 if let Some(dot) = newest_path.rfind('.') {
                     let (prefix, suffix) = newest_path.split_at(dot);
                     if suffix.eq_ignore_ascii_case(".csv") {
-                        let new_path = format!("{}_.csv", prefix);
+                        let new_path = format!("{prefix}_.csv");
                         if let Err(e) = std::fs::rename(&newest_path, &new_path) {
-                            eprintln!("Failed to mark VT11 ListCheck as used: {}", e);
+                            eprintln!("Failed to mark VT11 ListCheck as used: {e}");
                         } else {
                             println!(
-                                "Marked VT11 ListCheck as used after sequence iteration: {} -> {}",
-                                newest_path, new_path
+                                "Marked VT11 ListCheck as used after sequence iteration: {newest_path} -> {new_path}"
                             );
                         }
                     }

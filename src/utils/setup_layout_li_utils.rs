@@ -31,16 +31,16 @@ pub fn setup_layout_li(
     limit: i32,
     no_save: bool,
 ) -> windows::core::Result<bool> {
-    println!("Setting up layout with list items: {}", layout_name);
+    println!("Setting up layout with list items: {layout_name}");
 
-    let wnd = format!("wnd[{}]", n_wnd);
+    let wnd = format!("wnd[{n_wnd}]");
     let obj_name = base_obj_name;
-    let obj_list_left = format!("{}{}/tblSAPLSKBHTC_WRITE_LIST", wnd, obj_name);
-    let obj_list_right = format!("{}/usr/tblSAPLSKBHTC_FIELD_LIST", wnd);
-    let obj_button_to_left = format!("{}/usr/btnAPP_WL_SING", wnd);
-    let obj_button_to_right = format!("{}/usr/btnAPP_FL_SING", wnd);
+    let obj_list_left = format!("{wnd}{obj_name}/tblSAPLSKBHTC_WRITE_LIST");
+    let obj_list_right = format!("{wnd}/usr/tblSAPLSKBHTC_FIELD_LIST");
+    let obj_button_to_left = format!("{wnd}/usr/btnAPP_WL_SING");
+    let obj_button_to_right = format!("{wnd}/usr/btnAPP_FL_SING");
 
-    let nw_obj_list_left = format!("{}/tblSAPLSKBHTC_WRITE_LIST", obj_name);
+    let nw_obj_list_left = format!("{obj_name}/tblSAPLSKBHTC_WRITE_LIST");
     let _nw_obj_list_right = "/usr/tblSAPLSKBHTC_FIELD_LIST";
 
     // Get the left grid
@@ -54,16 +54,16 @@ pub fn setup_layout_li(
         let curr_row = grid_left.current_cell_row()?;
         let scrl_pos = (curr_row as f64 / rc as f64 * rc as f64).floor() as i32;
 
-        println!("Row count is {}", rc);
-        println!("Visible rowcount is {}", vrc);
-        println!("Vertical Scrollbar Position is {}", scrl_pos);
+        println!("Row count is {rc}");
+        println!("Visible rowcount is {vrc}");
+        println!("Vertical Scrollbar Position is {scrl_pos}");
 
         // Clear left grid
-        println!("{} items found in current layout. Clearing...", rc);
+        println!("{rc} items found in current layout. Clearing...");
 
         // Select all rows
         for j in 1..rc {
-            let ctrl_id = format!("{}/txtGT_WRITE_LIST-SELTEXT[0,{}]", nw_obj_list_left, j);
+            let ctrl_id = format!("{nw_obj_list_left}/txtGT_WRITE_LIST-SELTEXT[0,{j}]");
             let err_ctrl = exist_ctrl(session, 1, &ctrl_id, true)?;
 
             if err_ctrl.cband {
@@ -77,7 +77,7 @@ pub fn setup_layout_li(
                         if err_ctrl.cband {
                             let _scroll_position =
                                 (curr_row as f64 / rc as f64 * rc as f64).floor() as i32;
-                            println!("Vertical Scrollbar Position is {}", scrl_pos);
+                            println!("Vertical Scrollbar Position is {scrl_pos}");
 
                             // Scroll down
                             grid_left.set_current_cell(scrl_pos + 12, "down".into())?;
@@ -136,7 +136,7 @@ pub fn setup_layout_li(
                                     if item.to_uppercase() == name.to_uppercase() {
                                         // Found, select row
                                         grid_right.set_selected_rows(i.to_string())?;
-                                        println!("Item ({}) selected from right", name);
+                                        println!("Item ({name}) selected from right");
                                         thread::sleep(Duration::from_millis(100));
 
                                         // Move to left - create a fresh clone of the button path for each use
@@ -148,7 +148,7 @@ pub fn setup_layout_li(
                                             }
                                         }
 
-                                        println!("Item ({}) moved to left", name);
+                                        println!("Item ({name}) moved to left");
 
                                         // Reset scrollbar to top - Alternative to vertical_scrollbar
                                         grid_right.set_first_visible_row(0)?;
@@ -158,7 +158,7 @@ pub fn setup_layout_li(
                                 }
                             } else {
                                 // Row doesn't exist, item not found
-                                println!("Item ({}) not found, skipping", item);
+                                println!("Item ({item}) not found, skipping");
 
                                 // Reset scrollbar to top - Alternative to vertical_scrollbar
                                 grid_right.set_first_visible_row(0)?;
@@ -179,7 +179,7 @@ pub fn setup_layout_li(
 
                             // Check if scrollbar moved (if not it reached bottom)
                             if current_first_row == new_first_row {
-                                println!("Item ({}) not found, skipping", item);
+                                println!("Item ({item}) not found, skipping");
 
                                 // Reset scrollbar to top - Alternative to vertical_scrollbar
                                 grid_right.set_first_visible_row(0)?;
@@ -514,17 +514,14 @@ pub fn setup_layout_li(
                         }
                     }
                     _ => {
-                        println!("Tcode {} not implemented for layout saving", tcode);
+                        println!("Tcode {tcode} not implemented for layout saving");
                     }
                 }
             }
 
             // Get status bar message
             let status_msg = hit_ctrl(session, 0, "/sbar", "Text", "Get", "")?;
-            println!(
-                "Layout ({}) Successfully Setup: {}",
-                layout_name, status_msg
-            );
+            println!("Layout ({layout_name}) Successfully Setup: {status_msg}");
 
             return Ok(true);
         }

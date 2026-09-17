@@ -61,25 +61,25 @@ pub fn select_layout(
         // Check if object exists
         let err_wnd = exist_ctrl(session, n_wnd, object_name, true)?;
         if !err_wnd.cband {
-            println!("Object ({}) not found.", object_name);
+            println!("Object ({object_name}) not found.");
             return Ok(false);
         }
 
         // Get the object
-        let obj_path = format!("wnd[{}]{}", n_wnd, object_name);
+        let obj_path = format!("wnd[{n_wnd}]{object_name}");
         let obj = session.find_by_id(obj_path)?;
 
         // Try to downcast to GuiGridView
         if let Some(grid) = obj.downcast::<GuiGridView>() {
             // Get row count
             let row_count = grid.row_count()?;
-            println!("Object has {} rows", row_count);
+            println!("Object has {row_count} rows");
 
             // Scroll down to end (in case long)
             if row_count > 0 {
                 grid.set_first_visible_row(row_count - 1)?;
                 let r = grid.first_visible_row()?;
-                println!("Scrolldown - First visible row = {}", r);
+                println!("Scrolldown - First visible row = {r}");
             }
 
             // Collect layout names
@@ -100,13 +100,13 @@ pub fn select_layout(
                 grid.set_current_cell(index as i32, "VARIANT".to_string())?;
                 grid.set_selected_rows(index.to_string())?;
                 grid.double_click_current_cell()?;
-                println!("Selected layout: {}", current_layout);
+                println!("Selected layout: {current_layout}");
                 return Ok(true);
             } else {
-                println!("Layout ({}) not found.", current_layout);
+                println!("Layout ({current_layout}) not found.");
 
                 // Ask user for a new layout name or to exit
-                println!("Layout '{}' not found.", current_layout);
+                println!("Layout '{current_layout}' not found.");
 
                 let options = vec!["Enter another layout name", "Exit layout selection"];
                 let selection = Select::new()
@@ -128,7 +128,7 @@ pub fn select_layout(
                         println!("Layout selection cancelled");
 
                         // Close the window
-                        if let Ok(window) = session.find_by_id(format!("wnd[{}]", n_wnd)) {
+                        if let Ok(window) = session.find_by_id(format!("wnd[{n_wnd}]")) {
                             if let Some(wnd) = window.downcast::<GuiModalWindow>() {
                                 println!("Closing window since layout selection was cancelled.");
                                 wnd.close()?;
@@ -140,7 +140,7 @@ pub fn select_layout(
 
                     // Update current_layout and try again
                     current_layout = new_layout;
-                    println!("Trying with new layout name: {}", current_layout);
+                    println!("Trying with new layout name: {current_layout}");
 
                     // Continue to next iteration of the loop
                     continue;
@@ -149,7 +149,7 @@ pub fn select_layout(
                     println!("Layout selection cancelled");
 
                     // Close the window
-                    if let Ok(window) = session.find_by_id(format!("wnd[{}]", n_wnd)) {
+                    if let Ok(window) = session.find_by_id(format!("wnd[{n_wnd}]")) {
                         if let Some(wnd) = window.downcast::<GuiModalWindow>() {
                             println!("Closing window since layout selection was cancelled.");
                             wnd.close()?;
@@ -291,10 +291,7 @@ pub fn select_layout_interactive(
     tcode: &str,
     layout_name: &str,
 ) -> windows::core::Result<bool> {
-    println!(
-        "Selecting layout interactively for tcode: {}, initial layout: {}",
-        tcode, layout_name
-    );
+    println!("Selecting layout interactively for tcode: {tcode}, initial layout: {layout_name}");
 
     // Trigger layout popup
     layout_popup(session, tcode)?;
@@ -329,7 +326,7 @@ pub fn check_select_layout(
 ) -> windows::core::Result<Params> {
     let mut local_r_val = Params::default();
 
-    println!("Checking / selecting layout for tCode ({})", tcode);
+    println!("Checking / selecting layout for tCode ({tcode})");
 
     // Get layout_row from args if provided
     let layout_row = if let Some(args) = &args {
@@ -343,7 +340,7 @@ pub fn check_select_layout(
     };
 
     // debug
-    println!("DEBUG: layout_row is: {}", layout_row);
+    println!("DEBUG: layout_row is: {layout_row}");
 
     // Check window
     if !layout_row.is_empty() && layout_row.len() > 1 {
@@ -402,10 +399,7 @@ pub fn check_select_layout(
         if layout_row.is_empty() {
             // If layout is empty or zero-length, close popup window and export as-is
             close_popups(session, None, None)?;
-            println!(
-                "Layout ({}) is empty or zero-length. Exporting as-is.",
-                layout_row
-            );
+            println!("Layout ({layout_row}) is empty or zero-length. Exporting as-is.");
         } else {
             // String layout name
             // Check if window exists
@@ -427,10 +421,10 @@ pub fn check_select_layout(
                 } else {
                     // Loop through available saved layouts
                     for i in 1..=60 {
-                        let err_ctl = exist_ctrl(session, 1, &format!("/usr/lbl[1,{}]", i), true)?;
+                        let err_ctl = exist_ctrl(session, 1, &format!("/usr/lbl[1,{i}]"), true)?;
                         if err_ctl.cband {
                             let ctrl_msg = if let Ok(label) =
-                                session.find_by_id(format!("wnd[1]/usr/lbl[1,{}]", i))
+                                session.find_by_id(format!("wnd[1]/usr/lbl[1,{i}]"))
                             {
                                 if let Some(lbl) = label.downcast::<GuiLabel>() {
                                     lbl.text()?
@@ -443,7 +437,7 @@ pub fn check_select_layout(
 
                             if ctrl_msg.to_uppercase() == layout_row.to_uppercase() {
                                 if let Ok(label) =
-                                    session.find_by_id(format!("wnd[1]/usr/lbl[1,{}]", i))
+                                    session.find_by_id(format!("wnd[1]/usr/lbl[1,{i}]"))
                                 {
                                     if let Some(lbl) = label.downcast::<GuiLabel>() {
                                         lbl.set_focus()?;
@@ -456,7 +450,7 @@ pub fn check_select_layout(
                                     }
                                 }
 
-                                println!("Layout number ({}), ({}) selected.", i, layout_row);
+                                println!("Layout number ({i}), ({layout_row}) selected.");
                                 local_r_val.run_check = true;
                                 break;
                             }
@@ -469,7 +463,7 @@ pub fn check_select_layout(
                         // If layout not found, close any popups and setup layout
                         close_popups(session, None, None)?;
 
-                        println!("Layout ({}) not found. Setting up layout", layout_row);
+                        println!("Layout ({layout_row}) not found. Setting up layout");
 
                         // Setup layout based on tcode
                         match tcode.to_lowercase().as_str() {
@@ -484,10 +478,10 @@ pub fn check_select_layout(
 
                                 // Setup layout
                                 // This would call setup_layout from setup_layout_utils.rs
-                                println!("Setting up layout for {}", tcode);
+                                println!("Setting up layout for {tcode}");
                             }
                             "vt11" => {
-                                println!("Layout ({}) not found. Setting up layout", layout_row);
+                                println!("Layout ({layout_row}) not found. Setting up layout");
 
                                 if let Ok(menu) = session
                                     .find_by_id("wnd[0]/mbar/menu[3]/menu[0]/menu[0]".to_string())
@@ -499,7 +493,7 @@ pub fn check_select_layout(
 
                                 // Setup layout_li
                                 // This would call setup_layout_li from setup_layout_utils.rs
-                                println!("Setting up layout_li for {}", tcode);
+                                println!("Setting up layout_li for {tcode}");
                             }
                             _ => {
                                 if let Ok(menu) = session
@@ -514,7 +508,7 @@ pub fn check_select_layout(
 
                                 // Setup layout_li
                                 // This would call setup_layout_li from setup_layout_utils.rs
-                                println!("Setting up layout_li for {}", tcode);
+                                println!("Setting up layout_li for {tcode}");
                             }
                         }
 
@@ -527,7 +521,7 @@ pub fn check_select_layout(
         // Check status bar message
         let bar_msg = hit_ctrl(session, 0, "/sbar", "Text", "Get", "")?;
         if contains(&bar_msg, "Layout", Some(false)) {
-            println!("Status bar message: ({})", bar_msg);
+            println!("Status bar message: ({bar_msg})");
         }
 
         // Make sure all windows are closed
@@ -601,7 +595,7 @@ pub fn check_select_layout(
         if !export_wnd_name.is_empty() {
             local_r_val.run_check = check_export_window(session, tcode, export_wnd_name)?;
             if !local_r_val.run_check {
-                local_r_val.err = format!("Failed to check export window for {}", tcode);
+                local_r_val.err = format!("Failed to check export window for {tcode}");
                 return Ok(local_r_val);
             }
         }
@@ -615,20 +609,14 @@ pub fn check_select_layout(
 /// Helper function for goto_setup
 fn goto_setup(_session: &GuiSession, tcode: &str, layout_row: &str) -> windows::core::Result<()> {
     // Implementation would go here
-    println!(
-        "Going to setup for tcode: {}, layout: {}",
-        tcode, layout_row
-    );
+    println!("Going to setup for tcode: {tcode}, layout: {layout_row}");
     Ok(())
 }
 
 /// Helper function for goto_choose
 fn goto_choose(_session: &GuiSession, tcode: &str, layout_row: &str) -> windows::core::Result<()> {
     // Implementation would go here
-    println!(
-        "Going to choose for tcode: {}, layout: {}",
-        tcode, layout_row
-    );
+    println!("Going to choose for tcode: {tcode}, layout: {layout_row}");
     Ok(())
 }
 
@@ -656,9 +644,6 @@ fn check_export_window(
         return Ok(false);
     }
 
-    println!(
-        "Export window found with expected title: {}",
-        expected_title
-    );
+    println!("Export window found with expected title: {expected_title}");
     Ok(true)
 }

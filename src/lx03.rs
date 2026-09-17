@@ -69,10 +69,10 @@ pub fn run_export(session: &GuiSession, params: &LX03Params) -> Result<bool> {
             match choose_layout(session, &params.t_code, layout_row) {
                 Ok(message) if message.is_empty() => {}
                 Ok(message) => {
-                    println!("Message after choosing layout {}: {}", layout_row, message);
+                    println!("Message after choosing layout {layout_row}: {message}");
                 }
                 Err(e) => {
-                    println!("Error choosing layout {}: {}", layout_row, e);
+                    println!("Error choosing layout {layout_row}: {e}");
                     return Ok(false);
                 }
             }
@@ -84,7 +84,7 @@ pub fn run_export(session: &GuiSession, params: &LX03Params) -> Result<bool> {
                         modal_window.close()?;
                     }
                 }
-                println!("Layout ({}) not found.", layout_row);
+                println!("Layout ({layout_row}) not found.");
                 return Ok(false);
             }
         }
@@ -108,7 +108,7 @@ pub fn run_export(session: &GuiSession, params: &LX03Params) -> Result<bool> {
         Ok(path) if path.is_empty() => Ok(true),
         Ok(_) => Ok(true),
         Err(e) => {
-            println!("Error exporting LX03 data: {}", e);
+            println!("Error exporting LX03 data: {e}");
             Ok(false)
         }
     }

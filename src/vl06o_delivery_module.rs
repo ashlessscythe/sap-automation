@@ -20,7 +20,7 @@ use crate::vl06o::{run_export_delivery_packages, VL06ODeliveryParams};
 fn get_listcheck_deliveries_for_vl06o() -> std::io::Result<(Vec<String>, Option<String>)> {
     let mut results: Vec<String> = Vec::new();
     let reports_dir = get_reports_dir();
-    let subdir = format!("{}\\vt11_listcheck", reports_dir);
+    let subdir = format!("{reports_dir}\\vt11_listcheck");
 
     // Find newest CSV that is not marked used (no "_.csv" suffix)
     let mut newest_path = String::new();
@@ -49,7 +49,7 @@ fn get_listcheck_deliveries_for_vl06o() -> std::io::Result<(Vec<String>, Option<
     }
 
     if newest_path.is_empty() {
-        println!("No unused VT11 ListCheck CSV found in {}", subdir);
+        println!("No unused VT11 ListCheck CSV found in {subdir}");
         return Ok((results, None));
     }
 
@@ -93,7 +93,7 @@ pub fn run_vl06o_delivery_packages_module(session: &GuiSession) -> Result<()> {
             println!("VL06O delivery packages export failed or was cancelled.");
         }
         Err(e) => {
-            println!("Error running VL06O delivery packages export: {}", e);
+            println!("Error running VL06O delivery packages export: {e}");
         }
     }
 
@@ -181,7 +181,7 @@ pub fn run_vl06o_delivery_packages_auto(session: &GuiSession) -> Result<()> {
     let config = match SapConfig::load() {
         Ok(cfg) => cfg,
         Err(e) => {
-            println!("Error loading configuration: {}", e);
+            println!("Error loading configuration: {e}");
             println!("\nPress Enter to return to main menu...");
             let mut input = String::new();
             io::stdin().read_line(&mut input).unwrap();
@@ -216,15 +216,15 @@ pub fn run_vl06o_delivery_packages_auto(session: &GuiSession) -> Result<()> {
     let reports_dir = get_reports_dir();
 
     // Create the ZMDESNR subdirectory path
-    let zmdesnr_dir = format!("{}\\zmdesnr", reports_dir);
+    let zmdesnr_dir = format!("{reports_dir}\\zmdesnr");
 
     // Check if the ZMDESNR directory exists
     let zmdesnr_path = Path::new(&zmdesnr_dir);
     if !zmdesnr_path.exists() {
-        println!("ZMDESNR directory not found: {}", zmdesnr_dir);
+        println!("ZMDESNR directory not found: {zmdesnr_dir}");
         println!("Creating directory...");
         if let Err(e) = fs::create_dir_all(&zmdesnr_dir) {
-            println!("Error creating directory: {}", e);
+            println!("Error creating directory: {e}");
             println!("\nPress Enter to return to main menu...");
             let mut input = String::new();
             io::stdin().read_line(&mut input).unwrap();
@@ -248,7 +248,7 @@ pub fn run_vl06o_delivery_packages_auto(session: &GuiSession) -> Result<()> {
     let newest_path = get_newest_file(&zmdesnr_dir, ext)?;
 
     if newest_path.is_empty() {
-        println!("No .{} files found in ZMDESNR directory.", ext);
+        println!("No .{ext} files found in ZMDESNR directory.");
         println!("Please run ZMDESNR export first to generate a file.");
         println!("\nPress Enter to return to main menu...");
         let mut input = String::new();
@@ -256,7 +256,7 @@ pub fn run_vl06o_delivery_packages_auto(session: &GuiSession) -> Result<()> {
         return Ok(());
     }
 
-    println!("Using newest {} file: {}", ext, newest_path);
+    println!("Using newest {ext} file: {newest_path}");
 
     // Read the delivery numbers from the newest file based on extension
     let column_name = params
@@ -267,7 +267,7 @@ pub fn run_vl06o_delivery_packages_auto(session: &GuiSession) -> Result<()> {
         match read_excel_column(&newest_path, "Sheet1", &column_name) {
             Ok(nums) => nums,
             Err(e) => {
-                println!("Error reading Excel file: {}", e);
+                println!("Error reading Excel file: {e}");
                 println!("\nPress Enter to return to main menu...");
                 let mut input = String::new();
                 io::stdin().read_line(&mut input).unwrap();
@@ -278,7 +278,7 @@ pub fn run_vl06o_delivery_packages_auto(session: &GuiSession) -> Result<()> {
         match read_tab_delimited_column(&newest_path, &column_name) {
             Ok(nums) => nums,
             Err(e) => {
-                println!("Error reading text file: {}", e);
+                println!("Error reading text file: {e}");
                 println!("\nPress Enter to return to main menu...");
                 let mut input = String::new();
                 io::stdin().read_line(&mut input).unwrap();
@@ -286,7 +286,7 @@ pub fn run_vl06o_delivery_packages_auto(session: &GuiSession) -> Result<()> {
             }
         }
     } else {
-        println!("Unsupported file type for auto-load: .{}", ext);
+        println!("Unsupported file type for auto-load: .{ext}");
         println!("Currently supported: xlsx, txt (tab-delimited).");
         println!("\nPress Enter to return to main menu...");
         let mut input = String::new();
@@ -295,7 +295,7 @@ pub fn run_vl06o_delivery_packages_auto(session: &GuiSession) -> Result<()> {
     };
 
     if delivery_numbers.is_empty() {
-        println!("No delivery numbers found in {} file.", ext);
+        println!("No delivery numbers found in {ext} file.");
         println!("\nPress Enter to return to main menu...");
         let mut input = String::new();
         io::stdin().read_line(&mut input).unwrap();
@@ -325,7 +325,7 @@ pub fn run_vl06o_delivery_packages_auto(session: &GuiSession) -> Result<()> {
                 if let Ok((mut listcheck_nums, path_opt)) = get_listcheck_deliveries_for_vl06o() {
                     listcheck_path_opt = path_opt;
                     if let Some(ref p) = listcheck_path_opt {
-                        println!("Using VT11 ListCheck deliveries from: {}", p);
+                        println!("Using VT11 ListCheck deliveries from: {p}");
                     }
                     if !listcheck_nums.is_empty() {
                         println!(
@@ -345,10 +345,7 @@ pub fn run_vl06o_delivery_packages_auto(session: &GuiSession) -> Result<()> {
                 }
             }
             Err(e) => {
-                println!(
-                    "CLI delivery-source error: {}; keeping default delivery numbers",
-                    e
-                );
+                println!("CLI delivery-source error: {e}; keeping default delivery numbers");
             }
         }
     }
@@ -370,13 +367,13 @@ pub fn run_vl06o_delivery_packages_auto(session: &GuiSession) -> Result<()> {
                 if let Some(dot) = path.rfind('.') {
                     let (prefix, suffix) = path.split_at(dot);
                     if suffix.eq_ignore_ascii_case(".csv") {
-                        let new_path = format!("{}_.csv", prefix);
+                        let new_path = format!("{prefix}_.csv");
                         match std::fs::rename(&path, &new_path) {
                             Ok(_) => {
-                                println!("Marked VT11 ListCheck as used: {} -> {}", path, new_path)
+                                println!("Marked VT11 ListCheck as used: {path} -> {new_path}")
                             }
                             Err(e) => {
-                                eprintln!("Failed to mark VT11 ListCheck as used ({}): {}", path, e)
+                                eprintln!("Failed to mark VT11 ListCheck as used ({path}): {e}")
                             }
                         }
                     }
@@ -387,7 +384,7 @@ pub fn run_vl06o_delivery_packages_auto(session: &GuiSession) -> Result<()> {
             println!("VL06O delivery packages export failed or was cancelled.");
         }
         Err(e) => {
-            println!("Error running VL06O delivery packages export: {}", e);
+            println!("Error running VL06O delivery packages export: {e}");
         }
     }
 
@@ -427,7 +424,7 @@ fn get_vl06o_delivery_parameters() -> Result<VL06ODeliveryParams> {
 
     // Get start date
     let start_date_str: String = Input::new()
-        .with_prompt(format!("Start date ({})", prompt_format))
+        .with_prompt(format!("Start date ({prompt_format})"))
         .default(chrono::Local::now().format(format_str).to_string())
         .interact_text()
         .unwrap();
@@ -437,7 +434,7 @@ fn get_vl06o_delivery_parameters() -> Result<VL06ODeliveryParams> {
 
     // Get end date
     let end_date_str: String = Input::new()
-        .with_prompt(format!("End date ({})", prompt_format))
+        .with_prompt(format!("End date ({prompt_format})"))
         .default(chrono::Local::now().format(format_str).to_string())
         .interact_text()
         .unwrap();
@@ -447,7 +444,7 @@ fn get_vl06o_delivery_parameters() -> Result<VL06ODeliveryParams> {
 
     // Get variant name
     let variant_prompt = match &params.sap_variant_name {
-        Some(variant) => format!("SAP variant name (default: {})", variant),
+        Some(variant) => format!("SAP variant name (default: {variant})"),
         None => "SAP variant name (leave empty for none)".to_string(),
     };
 
@@ -468,7 +465,7 @@ fn get_vl06o_delivery_parameters() -> Result<VL06ODeliveryParams> {
 
     // Get layout row
     let layout_prompt = match &params.layout_row {
-        Some(layout) => format!("Layout row (default: {})", layout),
+        Some(layout) => format!("Layout row (default: {layout})"),
         None => "Layout row (leave empty for default)".to_string(),
     };
 
@@ -514,7 +511,7 @@ fn get_vl06o_delivery_parameters() -> Result<VL06ODeliveryParams> {
 
     // If column name is provided, ask how to input delivery numbers
     if let Some(col_name) = &params.column_name {
-        println!("Column name provided: {}", col_name);
+        println!("Column name provided: {col_name}");
 
         // Ask how to input delivery numbers
         let input_options = vec![
@@ -594,19 +591,16 @@ fn get_vl06o_delivery_parameters() -> Result<VL06ODeliveryParams> {
 
                 // Get the reports directory as the default starting point
                 let reports_dir = get_reports_dir();
-                println!("Current reports directory: {}", reports_dir);
+                println!("Current reports directory: {reports_dir}");
 
                 // Ask if user wants to use a subdirectory
                 println!("You can enter a subdirectory name to navigate to a specific folder.");
-                println!(
-                    "For example, entering 'subpath' will navigate to {}\\subpath",
-                    reports_dir
-                );
+                println!("For example, entering 'subpath' will navigate to {reports_dir}\\subpath");
                 println!("Or press Enter to use the current reports directory.");
 
                 // Create prompt with default value
                 let subdir_prompt = match &params.subdir {
-                    Some(subdir) => format!("Enter subdirectory (default: {})", subdir),
+                    Some(subdir) => format!("Enter subdirectory (default: {subdir})"),
                     None => "Enter subdirectory (optional)".to_string(),
                 };
 
@@ -631,9 +625,9 @@ fn get_vl06o_delivery_parameters() -> Result<VL06ODeliveryParams> {
                     reports_dir.clone()
                 } else {
                     // Handle the case where the user entered a subdirectory
-                    let mut path = format!("{}\\{}", reports_dir, subdir);
+                    let mut path = format!("{reports_dir}\\{subdir}");
                     path = resolve_path(&path);
-                    println!("Using directory: {}", path);
+                    println!("Using directory: {path}");
                     path
                 };
 
@@ -645,7 +639,7 @@ fn get_vl06o_delivery_parameters() -> Result<VL06ODeliveryParams> {
 
                 match get_excel_file_path(&dir_to_use) {
                     Ok(excel_path) => {
-                        println!("Selected Excel file: {}", excel_path);
+                        println!("Selected Excel file: {excel_path}");
 
                         // Loop until we get a valid column name or user chooses to exit
                         let mut column_valid = false;
@@ -676,13 +670,13 @@ fn get_vl06o_delivery_parameters() -> Result<VL06ODeliveryParams> {
                                 }
                                 // Otherwise, loop continues for another attempt
                             } else {
-                                println!("Reading from column: {}", column_name);
+                                println!("Reading from column: {column_name}");
 
                                 // Read the delivery numbers from the Excel file
                                 match read_excel_column(&excel_path, "Sheet1", &column_name) {
                                     Ok(delivery_numbers) => {
                                         if delivery_numbers.is_empty() {
-                                            println!("No delivery numbers found in column '{}' of the Excel file.", column_name);
+                                            println!("No delivery numbers found in column '{column_name}' of the Excel file.");
 
                                             // Ask if user wants to try again or return to main menu
                                             let options =
@@ -710,10 +704,9 @@ fn get_vl06o_delivery_parameters() -> Result<VL06ODeliveryParams> {
                                         }
                                     }
                                     Err(e) => {
-                                        println!("Error reading Excel file: {}", e);
+                                        println!("Error reading Excel file: {e}");
                                         println!(
-                                            "Column '{}' may not exist in the Excel file.",
-                                            column_name
+                                            "Column '{column_name}' may not exist in the Excel file."
                                         );
 
                                         // Ask if user wants to try again or return to main menu
@@ -743,8 +736,8 @@ fn get_vl06o_delivery_parameters() -> Result<VL06ODeliveryParams> {
                         io::stdin().read_line(&mut input).unwrap();
                     }
                     Err(e) => {
-                        println!("Error selecting Excel file: {}", e);
-                        println!("Error details: {}", e);
+                        println!("Error selecting Excel file: {e}");
+                        println!("Error details: {e}");
 
                         // Wait for user to acknowledge before continuing
                         println!("Press Enter to continue...");
@@ -786,7 +779,7 @@ fn get_vl06o_delivery_parameters() -> Result<VL06ODeliveryParams> {
                             get_listcheck_deliveries_for_vl06o()
                         {
                             if let Some(p) = listcheck_path_opt {
-                                println!("Using VT11 ListCheck deliveries from: {}", p);
+                                println!("Using VT11 ListCheck deliveries from: {p}");
                             }
                             if !listcheck_nums.is_empty() {
                                 println!(
@@ -807,8 +800,7 @@ fn get_vl06o_delivery_parameters() -> Result<VL06ODeliveryParams> {
                     }
                     Err(e) => {
                         println!(
-                            "CLI delivery-source error: {}; keeping current delivery numbers",
-                            e
+                            "CLI delivery-source error: {e}; keeping current delivery numbers"
                         );
                     }
                 }
@@ -819,7 +811,7 @@ fn get_vl06o_delivery_parameters() -> Result<VL06ODeliveryParams> {
     clear_screen();
 
     println!("-------------------------------");
-    println!("Running VL06O Delivery Packages with params: {:#?}", params);
+    println!("Running VL06O Delivery Packages with params: {params:#?}");
     println!("-------------------------------");
 
     Ok(params)

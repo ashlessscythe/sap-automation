@@ -29,7 +29,7 @@ pub fn run_149_rcv_module(session: &GuiSession) -> Result<()> {
             println!("149 RCV report export failed or was cancelled.");
         }
         Err(e) => {
-            println!("Error running 149 RCV report export: {}", e);
+            println!("Error running 149 RCV report export: {e}");
         }
     }
 
@@ -50,7 +50,7 @@ pub fn run_149_rcv_auto(session: &GuiSession) -> Result<()> {
     let config = match SapConfig::load() {
         Ok(cfg) => cfg,
         Err(e) => {
-            println!("Error loading configuration: {}", e);
+            println!("Error loading configuration: {e}");
             println!("\nPress Enter to return to main menu...");
             let mut input = String::new();
             io::stdin().read_line(&mut input).unwrap();
@@ -130,7 +130,7 @@ pub fn run_149_rcv_auto(session: &GuiSession) -> Result<()> {
             println!("149 RCV report export failed or was cancelled.");
         }
         Err(e) => {
-            println!("Error running 149 RCV report export: {}", e);
+            println!("Error running 149 RCV report export: {e}");
         }
     }
 
@@ -211,7 +211,7 @@ fn get_149_rcv_parameters() -> Result<Report149RcvParams> {
         if let Some(tcode_config) = config.get_tcode_config("y_dn3_47000149", Some(true)) {
             if let Some(variant) = tcode_config.get("rcv_variant") {
                 params.variant = Some(variant.clone());
-                println!("Using RCV variant from config: {}", variant);
+                println!("Using RCV variant from config: {variant}");
             }
             // get export_type from config
             if let Some(export_type) = tcode_config.get("export_type") {
@@ -225,7 +225,7 @@ fn get_149_rcv_parameters() -> Result<Report149RcvParams> {
             // get rcv_layout from config
             if let Some(layout) = tcode_config.get("rcv_layout") {
                 params.layout = Some(layout.clone());
-                println!("Using RCV layout from config: {}", layout);
+                println!("Using RCV layout from config: {layout}");
             }
         }
     }
@@ -319,7 +319,7 @@ fn get_149_rcv_parameters() -> Result<Report149RcvParams> {
     clear_screen();
 
     println!("----------------------------------------");
-    println!("Running 149 RCV report with params: {:#?}", params);
+    println!("Running 149 RCV report with params: {params:#?}");
     println!("----------------------------------------");
 
     Ok(params)

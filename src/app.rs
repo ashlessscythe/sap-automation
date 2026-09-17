@@ -125,7 +125,7 @@ pub fn get_or_create_connection(engine: &GuiApplication) -> windows::core::Resul
 pub fn get_login_parameters() -> windows::core::Result<LoginParams> {
     // Default values
     let mut params = LoginParams {
-        client_id: "025".to_string(),
+        client_id: "99".to_string(),
         instance_id: "rs".to_string(),
         user: String::new(),
         password: String::new(),

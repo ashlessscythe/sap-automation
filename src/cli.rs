@@ -50,7 +50,7 @@ pub struct Cli {
     #[arg(long)]
     pub tcode_run_type: Option<String>,
 
-    /// Comma-separated plant list for regular 149 (e.g. `FV50,plt2`).
+    /// Comma-separated plant list for regular 149 (e.g. `PLT1,PLT2`).
     /// Overrides `[tcode.y_dn3_47000149].plants` in config.toml.
     #[arg(long, value_name = "LIST")]
     pub plants: Option<String>,

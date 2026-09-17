@@ -36,7 +36,7 @@ impl Default for Report149MaterialParams {
 
 /// Run 149 material report export with the given parameters
 ///
-/// This function is a port of the VBA code from docs/149_not_tsp.md
+/// This function is a port of legacy VBA export logic.
 pub fn run_export(session: &GuiSession, params: &Report149MaterialParams) -> Result<bool> {
     println!("Running 149 material report export...");
 

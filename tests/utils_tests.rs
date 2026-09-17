@@ -1,11 +1,11 @@
-use rand::Rng;
+use rand::RngExt;
 use sap_automation::utils::utils::{decrypt_data, encrypt_data};
 
 #[test]
 fn test_encrypt_decrypt() {
     // Generate a random key
     let mut key = vec![0u8; 32]; // 256 bits for AES-256
-    rand::thread_rng().fill(&mut key[..]);
+    rand::rng().fill(&mut key[..]);
 
     // Test data
     let original_data = "This is a test string for encryption and decryption";
@@ -27,7 +27,7 @@ fn test_encrypt_decrypt() {
 fn test_encrypt_decrypt_empty_string() {
     // Generate a random key
     let mut key = vec![0u8; 32]; // 256 bits for AES-256
-    rand::thread_rng().fill(&mut key[..]);
+    rand::rng().fill(&mut key[..]);
 
     // Test with empty string
     let original_data = "";
@@ -47,8 +47,8 @@ fn test_decrypt_with_wrong_key() {
     // Generate two different keys
     let mut key1 = vec![0u8; 32];
     let mut key2 = vec![0u8; 32];
-    rand::thread_rng().fill(&mut key1[..]);
-    rand::thread_rng().fill(&mut key2[..]);
+    rand::rng().fill(&mut key1[..]);
+    rand::rng().fill(&mut key2[..]);
 
     // Ensure keys are different
     if key1 == key2 {

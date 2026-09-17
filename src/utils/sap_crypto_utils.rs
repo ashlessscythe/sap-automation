@@ -6,7 +6,7 @@ use aes_gcm::{
     Aes256Gcm, Nonce,
 };
 use base64::{engine::general_purpose, Engine as _};
-use rand::Rng;
+use rand::RngExt;
 use std::io::Error;
 use std::result::Result as StdResult;
 
@@ -15,15 +15,15 @@ use std::result::Result as StdResult;
 // Adding them here for completeness and future use
 
 pub fn encrypt_data(data: &str, key: &[u8]) -> StdResult<String, Error> {
-    let mut rng = rand::thread_rng();
-    let nonce_bytes: [u8; 12] = rng.gen();
-    let nonce = Nonce::from_slice(&nonce_bytes);
+    let mut rng = rand::rng();
+    let nonce_bytes: [u8; 12] = rng.random();
+    let nonce = Nonce::from(nonce_bytes);
 
     let cipher =
         Aes256Gcm::new_from_slice(key).map_err(|_| Error::other("Failed to create cipher"))?;
 
     let ciphertext = cipher
-        .encrypt(nonce, data.as_bytes())
+        .encrypt(&nonce, data.as_bytes())
         .map_err(|_| Error::other("Encryption failed"))?;
 
     // Combine nonce and ciphertext and encode with base64
@@ -45,20 +45,23 @@ pub fn decrypt_data(encrypted_data: &str, key: &[u8]) -> StdResult<String, Error
 
     // Split into nonce and ciphertext
     let (nonce_bytes, ciphertext) = combined.split_at(12);
-    let nonce = Nonce::from_slice(nonce_bytes);
+    let nonce_arr: [u8; 12] = nonce_bytes
+        .try_into()
+        .map_err(|_| Error::other("Invalid nonce length"))?;
+    let nonce = Nonce::from(nonce_arr);
 
     let cipher =
         Aes256Gcm::new_from_slice(key).map_err(|_| Error::other("Failed to create cipher"))?;
 
     let plaintext = cipher
-        .decrypt(nonce, ciphertext)
+        .decrypt(&nonce, ciphertext)
         .map_err(|_| Error::other("Decryption failed"))?;
 
     String::from_utf8(plaintext).map_err(|_| Error::other("UTF-8 decoding failed"))
 }
 
 pub fn generate_key() -> [u8; 32] {
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     let mut key = [0u8; 32];
     rng.fill(&mut key);
     key

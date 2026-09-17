@@ -119,18 +119,18 @@ pub fn persist_inbond_layout_149(layout_name: &str) -> anyhow::Result<()> {
         _ => {
             // Reload file as table, or start fresh table for inbond-only update
             match std::fs::read_to_string(&path) {
-                Ok(content) => match content.parse::<Value>() {
+                Ok(content) => match toml::from_str::<Value>(&content) {
                     Ok(Value::Table(t)) => t,
-                    _ => toml::map::Map::new(),
+                    _ => toml::Table::new(),
                 },
-                Err(_) => toml::map::Map::new(),
+                Err(_) => toml::Table::new(),
             }
         }
     };
 
     let inbond = root
         .entry("inbond".to_string())
-        .or_insert_with(|| Value::Table(toml::map::Map::new()));
+        .or_insert_with(|| Value::Table(toml::Table::new()));
 
     if let Value::Table(table) = inbond {
         let prev = table

@@ -3,7 +3,7 @@ use crossterm::{
     terminal::{Clear, ClearType},
 };
 use dialoguer::Select;
-use rand::Rng;
+use rand::RngExt;
 use sap_scripting::*;
 use std::env;
 use std::io::{self, stdout, Write};
@@ -347,7 +347,7 @@ pub fn save_credentials(
     } else {
         // Generate a new random key
         let mut key = vec![0u8; 32]; // 256 bits for AES-256
-        rand::thread_rng().fill(&mut key[..]);
+        rand::rng().fill(&mut key[..]);
 
         // Save the key
         std::fs::write(key_file, &key).map_err(|_| windows::core::Error::from_win32())?;

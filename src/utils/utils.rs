@@ -6,7 +6,7 @@ use aes_gcm::{
     Aes256Gcm, Nonce,
 };
 use base64::{engine::general_purpose, Engine as _};
-use rand::Rng;
+use rand::RngExt;
 use windows::core::{Error, Result};
 
 /// Format a `windows::core::Error` without calling `Display`/`Debug` (which can panic
@@ -28,12 +28,12 @@ pub fn encrypt_data(data: &str, key: &[u8]) -> Result<String> {
 
     // Generate a random nonce (12 bytes for AES-GCM)
     let mut nonce_bytes = [0u8; 12];
-    rand::thread_rng().fill(&mut nonce_bytes);
-    let nonce = Nonce::from_slice(&nonce_bytes);
+    rand::rng().fill(&mut nonce_bytes);
+    let nonce = Nonce::from(nonce_bytes);
 
     // Encrypt the data
     let plaintext = data.as_bytes();
-    let ciphertext = match cipher.encrypt(nonce, plaintext.as_ref()) {
+    let ciphertext = match cipher.encrypt(&nonce, plaintext.as_ref()) {
         Ok(c) => c,
         Err(_) => return Err(windows::core::Error::from_win32()),
     };
@@ -58,7 +58,10 @@ pub fn decrypt_data(encrypted_data: &str, key: &[u8]) -> Result<String> {
         return Err(windows::core::Error::from_win32());
     }
 
-    let nonce_bytes = &combined[..12];
+    let nonce_bytes: [u8; 12] = match combined[..12].try_into() {
+        Ok(n) => n,
+        Err(_) => return Err(windows::core::Error::from_win32()),
+    };
     let ciphertext = &combined[12..];
 
     // Create cipher with the key
@@ -68,8 +71,8 @@ pub fn decrypt_data(encrypted_data: &str, key: &[u8]) -> Result<String> {
     };
 
     // Decrypt the data
-    let nonce = Nonce::from_slice(nonce_bytes);
-    let plaintext = match cipher.decrypt(nonce, ciphertext.as_ref()) {
+    let nonce = Nonce::from(nonce_bytes);
+    let plaintext = match cipher.decrypt(&nonce, ciphertext.as_ref()) {
         Ok(p) => p,
         Err(_) => return Err(windows::core::Error::from_win32()),
     };

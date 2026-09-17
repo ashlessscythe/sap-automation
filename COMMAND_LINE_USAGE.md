@@ -45,7 +45,7 @@ CLI overrides applied (these win over config.toml): --tcode=VT11 --iterations=3
 
 | Flag | Required? | Notes |
 | --- | --- | --- |
-| `--tcode=<NAME>` | Required for loop / single-shot if `[loop].tcode` is unset | Case-insensitive (`vt11` → `VT11`). Supported in single-shot: `VT11`, `ZVT11`, `VL06O`, `ZMDESNR`, `Y_DN3_47000149`. |
+| `--tcode=<NAME>` | Required for loop / single-shot if `[loop].tcode` is unset | Case-insensitive (`vt11` → `VT11`). Supported in single-shot: `VT11`, `ZEXVT11`, `VL06O`, `ZEXSNR`, `Y_XX_99999999`. |
 | `--tcode-run-type=<rcv\|mat\|tsp\|none>` | Optional for 149 | Selects the 149 sub-flow. Omit or `none` = regular plant-loop 149. |
 
 If `--tcode` (and `[loop].tcode`) are both missing for a loop run:
@@ -61,7 +61,7 @@ Missing flag for tcode, enter with --tcode (or set [loop].tcode in config.toml)
 | `--layout=<NAME>` | The TCode under `--tcode` | Overrides `[tcode.X].layout`. |
 | `--variant=<NAME>` | The TCode under `--tcode` | Overrides `[tcode.X].variant`. |
 | `--export-type=<0..4>` | The TCode under `--tcode` | 0=unconverted, 1=text-tabs, 2=rich-text, 3=HTML, 4=clipboard. |
-| `--plants=<LIST>` | Regular 149 only | Comma-separated plants (e.g. `FV50,plt2`). Overrides `[tcode.y_dn3_47000149].plants`. Empty list / omitted flag falls back to config; empty after both → one `ALL` export. |
+| `--plants=<LIST>` | Regular 149 only | Comma-separated plants (e.g. `PLT1,PLT2`). Overrides `[tcode.y_xx_99999999].plants`. Empty list / omitted flag falls back to config; empty after both → one `ALL` export. |
 
 ### Loop / sequence timing
 
@@ -77,10 +77,10 @@ All booleans are explicit — pass `=true` or `=false`. CLI value wins, so you c
 
 | Flag | TCode scope | Notes |
 | --- | --- | --- |
-| `--by-date=<bool>` | VT11, ZVT11, VL06O | Filter the report by date range. |
-| `--by-delivery=<bool>` | VT11, ZVT11, VL06O | Filter the report by delivery numbers. |
+| `--by-date=<bool>` | VT11, ZEXVT11, VL06O | Filter the report by date range. |
+| `--by-delivery=<bool>` | VT11, ZEXVT11, VL06O | Filter the report by delivery numbers. |
 | `--by-shipment=<bool>` | VL06O **only** | Filter the report by shipment numbers. |
-| `--limiter=<TYPE>` | VT11, ZVT11 | Currently only `date_range` is wired in code; other values are accepted but no-op. |
+| `--limiter=<TYPE>` | VT11, ZEXVT11 | Currently only `date_range` is wired in code; other values are accepted but no-op. |
 
 Two hard rules enforced before any SAP connection is attempted:
 
@@ -93,8 +93,8 @@ Two hard rules enforced before any SAP connection is attempted:
 
 | Flag | TCode scope | Notes |
 | --- | --- | --- |
-| `--pre-export-back=<bool>` | ZMDESNR **only** | Send vkey 3 (back) after export but before layout selection. Overrides `[tcode.ZMDESNR].pre_export_back`. Pass `=false` to disable a config-on value from the CLI. Rejected with `--tcode!=ZMDESNR`. |
-| `--tab-number=<N>` | ZMDESNR **only** | Which results tab to select. Resolution order: **CLI override → `[tcode.ZMDESNR].tab_number` → in-code default `2`** (so a brand-new install with no config still works). Rejected with `--tcode!=ZMDESNR`. **Note:** SAP GUI requires plant (`WERKS`) to be valid before tab switching, so the report flow always selects the variant first (which fills `WERKS`) and only then switches to this tab. |
+| `--pre-export-back=<bool>` | ZEXSNR **only** | Send vkey 3 (back) after export but before layout selection. Overrides `[tcode.ZEXSNR].pre_export_back`. Pass `=false` to disable a config-on value from the CLI. Rejected with `--tcode!=ZEXSNR`. |
+| `--tab-number=<N>` | ZEXSNR **only** | Which results tab to select. Resolution order: **CLI override → `[tcode.ZEXSNR].tab_number` → in-code default `2`** (so a brand-new install with no config still works). Rejected with `--tcode!=ZEXSNR`. **Note:** SAP GUI requires plant (`WERKS`) to be valid before tab switching, so the report flow always selects the variant first (which fills `WERKS`) and only then switches to this tab. |
 
 ### Date range
 
@@ -107,7 +107,7 @@ Two hard rules enforced before any SAP connection is attempted:
 
 By default `--by-delivery=true` reads numbers from a hardcoded merge of:
 
-- the newest ZMDESNR export under `<reports_dir>\zmdesnr\`, plus
+- the newest ZEXSNR export under `<reports_dir>\zexsnr\`, plus
 - the newest unused VT11 ListCheck CSV under `<reports_dir>\vt11_listcheck\` (skipping files marked with the `_.csv` "consumed" suffix).
 
 The CLI lets you override that source per run:
@@ -119,7 +119,7 @@ The CLI lets you override that source per run:
 | `--shipment-file=<value>` | unset → `<reports_dir>\vt11\` newest `.xlsx` | VL06O only. |
 | `--shipment-col=<HEADER>` | `Shipment Number` | VL06O only. |
 
-When `--delivery-file` is set, the legacy ZMDESNR + ListCheck merge is **replaced** (and the `_.csv` rename of consumed ListCheck files is skipped — we didn't consume them). When unset, behavior is unchanged.
+When `--delivery-file` is set, the legacy ZEXSNR + ListCheck merge is **replaced** (and the `_.csv` rename of consumed ListCheck files is skipped — we didn't consume them). When unset, behavior is unchanged.
 
 ### Source resolution rules
 
@@ -150,8 +150,8 @@ The file extension drives the parser:
 | --- | --- |
 | `--by-delivery=true` and `--by-shipment=true` together | `--by-delivery=true and --by-shipment=true cannot both be set ...` |
 | `--by-shipment=true` with `--tcode!=VL06O` | `--by-shipment is only supported for VL06O ...` |
-| `--pre-export-back` with `--tcode!=ZMDESNR` | `--pre-export-back is only supported for ZMDESNR ...` |
-| `--tab-number` with `--tcode!=ZMDESNR` | `--tab-number is only supported for ZMDESNR ...` |
+| `--pre-export-back` with `--tcode!=ZEXSNR` | `--pre-export-back is only supported for ZEXSNR ...` |
+| `--tab-number` with `--tcode!=ZEXSNR` | `--tab-number is only supported for ZEXSNR ...` |
 | `--date-start` / `--date-end` not ISO | `Invalid --date-start value '...': expected ISO YYYY-MM-DD ...` |
 | Loop run, no `--tcode` and no `[loop].tcode` | `Missing flag for tcode, enter with --tcode ...` |
 | 149 single-shot with unknown `--tcode-run-type` | `Unknown --tcode-run-type='...'. Use rcv \| mat \| tsp \| none ...` |
@@ -175,7 +175,7 @@ CLI flags can fully replace `config.toml` for **loop** and **single-shot** modes
 
 ```toml
 [loop]
-tcode = "Y_DN3_47000149"
+tcode = "Y_XX_99999999"
 iterations = "2"
 delay_seconds = "30"
 param_tcode_run_type = "mat"
@@ -184,7 +184,7 @@ param_tcode_run_type = "mat"
 CLI equivalent (no config needed):
 
 ```bash
-./sap_automation.exe --run-loop --tcode=y_dn3_47000149 \
+./sap_automation.exe --run-loop --tcode=y_xx_99999999 \
   --tcode-run-type=mat --iterations=2 --delay-seconds=30
 ```
 
@@ -237,12 +237,12 @@ No sequence options configured. Sequence uses config.toml — create and set up
   --iterations=3 --delay-seconds=30
 ```
 
-### ZMDESNR with deliveries from another tcode's output dir
+### ZEXSNR with deliveries from another tcode's output dir
 
-Disables the post-export back-send (which `[tcode.ZMDESNR].pre_export_back = "true"` would otherwise do) and selects the inventory-view tab (2) instead of the configured one:
+Disables the post-export back-send (which `[tcode.ZEXSNR].pre_export_back = "true"` would otherwise do) and selects the inventory-view tab (2) instead of the configured one:
 
 ```bash
-./sap_automation.exe --tcode=zmdesnr --variant=INV_VIEW_EPDC --layout=mg_view \
+./sap_automation.exe --tcode=zexsnr --variant=INV_VIEW_EPDC --layout=mg_view \
   --by-delivery=true --delivery-file=zvt11 \
   --pre-export-back=false --tab-number=2
 ```
@@ -255,22 +255,22 @@ Disables the post-export back-send (which `[tcode.ZMDESNR].pre_export_back = "tr
 
 ### Regular 149 plant loop (omit run-type or use `none`)
 
-Config plants under `[tcode.y_dn3_47000149]`:
+Config plants under `[tcode.y_xx_99999999]`:
 
 ```toml
-[tcode.y_dn3_47000149]
+[tcode.y_xx_99999999]
 variant = "mg_int_var"
 layout = "mg_view"
 export_type = 1
-plants = ["FV50", "plt2"]
+plants = ["PLT1", "PLT2"]
 ```
 
 CLI override (wins over config):
 
 ```bash
-./sap_automation.exe --tcode=Y_DN3_47000149 --plants=FV50,plt2
+./sap_automation.exe --tcode=Y_XX_99999999 --plants=PLT1,PLT2
 # equivalent:
-./sap_automation.exe --tcode=Y_DN3_47000149 --tcode-run-type=none --plants=FV50,plt2
+./sap_automation.exe --tcode=Y_XX_99999999 --tcode-run-type=none --plants=PLT1,PLT2
 ```
 
 Each plant exports as `{timestamp}_y_149-{plant}.txt` under `<reports_dir>\y_149\`.

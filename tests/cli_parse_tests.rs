@@ -172,13 +172,13 @@ fn string_flags_round_trip() {
 
 #[test]
 fn plants_comma_separated_parses_and_trims() {
-    let cli = parse(&["--plants=FV50, plt2, ,plant3"]).unwrap();
+    let cli = parse(&["--plants=PLT1, PLT2, ,plant3"]).unwrap();
     let o = cli.to_overrides().unwrap();
     assert_eq!(
         o.plants,
         Some(vec![
-            "FV50".to_string(),
-            "plt2".to_string(),
+            "PLT1".to_string(),
+            "PLT2".to_string(),
             "plant3".to_string()
         ])
     );

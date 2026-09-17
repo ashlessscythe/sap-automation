@@ -26,7 +26,7 @@ impl Default for Report149Params {
 
 /// Run 149 report export with the given parameters
 ///
-/// This function is a port of the VBA code from docs/149.md
+/// This function is a port of legacy VBA export logic.
 pub fn run_export(session: &GuiSession, params: &Report149Params) -> Result<bool> {
     println!("Running 149 report export...");
 

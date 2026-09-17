@@ -108,8 +108,8 @@ The application also supports command-line operation for automation scenarios. T
 ./sap_automation.exe --run-loop --tcode=vt11 --iterations=3 --delay-seconds=30
 
 # 149 regular plant-loop (omit run-type / none); or rcv|mat|tsp for sub-flows
-./sap_automation.exe --tcode=y_dn3_47000149 --plants=FV50,plt2
-./sap_automation.exe --run-loop --tcode=y_dn3_47000149 --tcode-run-type=rcv
+./sap_automation.exe --tcode=y_xx_99999999 --plants=PLT1,PLT2
+./sap_automation.exe --run-loop --tcode=y_xx_99999999 --tcode-run-type=rcv
 
 # Filter VT11 by an arbitrary delivery list and date range
 ./sap_automation.exe --tcode=vt11 --by-delivery=true \
@@ -140,10 +140,10 @@ These IDs match the current main menu and can be used in the sequence configurat
 
 - 2: VT11 - Auto Run
 - 4: VT11 - ListCheck Auto
-- 6: ZVT11 - Auto Run
+- 6: ZEXVT11 - Auto Run
 - 8: VL06O - Auto Run
 - 11: VL06O - Delivery Packages Auto Run
-- 13: ZMDESNR - Auto Run
+- 13: ZEXSNR - Auto Run
 - 18: 149 Report - Auto Run
 - 19: Inbond - Shipment to 149
 
@@ -154,7 +154,7 @@ Interactive clerk flow (menu option **Inbond - Shipment to 149**):
 1. Prompt for a shipment number
 2. Run **VL06O** with variant from `[inbond].vl06o_variant` (default `blank_`)
 3. Export the delivery list, parse and **dedupe** delivery numbers
-4. Run **y_dn3_47000149** with variant/layout `inb_ship` (configurable), paste deliveries into `S_DELIV`
+4. Run **y_xx_99999999** with variant/layout `inb_ship` (configurable), paste deliveries into `S_DELIV`
 5. Export a timestamped paste-ready `.txt` and open it in Notepad
 
 Clerk then pastes the file into `material.php` `#clipboard`, types the shipment into `#shipmentInput`, and clicks `#splitBtn`.

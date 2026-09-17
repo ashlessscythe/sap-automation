@@ -550,7 +550,7 @@ mod tests {
         let mut f = fs::File::create(&path).unwrap();
         writeln!(
             f,
-            "Plant\tDelivery Number\tMaterial\nFV52\t1001\tMAT1\nFV52\t1002\tMAT2\nFV52\t1001\tMAT1\nFV52\t1003\tMAT3"
+            "Plant\tDelivery Number\tMaterial\nQX17\t1001\tMAT1\nQX17\t1002\tMAT2\nQX17\t1001\tMAT1\nQX17\t1003\tMAT3"
         )
         .unwrap();
 
@@ -562,15 +562,15 @@ mod tests {
     #[test]
     fn drops_empty_tab_fields_between_columns() {
         // Extra blank column between delivery and material (SAP layout fluff)
-        let row = normalize_tsv_row("FV55\t8012178144\t\tM22830X3\t376,164.000\tFT").unwrap();
-        assert_eq!(row, "FV55\t8012178144\tM22830X3\t376,164.000\tFT");
+        let row = normalize_tsv_row("QX17\t1000000001\t\tMAT0001X\t1,000.000\tFT").unwrap();
+        assert_eq!(row, "QX17\t1000000001\tMAT0001X\t1,000.000\tFT");
 
         // Already clean row unchanged
         let clean =
-            normalize_tsv_row("FV55\t8012178164\t33129011\t2,000.000\tPC\tQP01430157744").unwrap();
+            normalize_tsv_row("QX17\t1000000002\tMAT0002\t2,000.000\tPC\tREF0000000001").unwrap();
         assert_eq!(
             clean,
-            "FV55\t8012178164\t33129011\t2,000.000\tPC\tQP01430157744"
+            "QX17\t1000000002\tMAT0002\t2,000.000\tPC\tREF0000000001"
         );
     }
 }

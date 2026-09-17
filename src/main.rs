@@ -75,8 +75,7 @@ fn main() -> anyhow::Result<()> {
         let target = overrides.tcode.clone().unwrap_or_default().to_uppercase();
         if !target.is_empty() && target != "VL06O" {
             return Err(anyhow::anyhow!(
-                "--by-shipment is only supported for VL06O (got --tcode={})",
-                target
+                "--by-shipment is only supported for VL06O (got --tcode={target})"
             ));
         }
     }
@@ -88,8 +87,7 @@ fn main() -> anyhow::Result<()> {
         let target = overrides.tcode.clone().unwrap_or_default().to_uppercase();
         if !target.is_empty() && target != "ZMDESNR" {
             return Err(anyhow::anyhow!(
-                "--pre-export-back is only supported for ZMDESNR (got --tcode={})",
-                target
+                "--pre-export-back is only supported for ZMDESNR (got --tcode={target})"
             ));
         }
     }
@@ -100,8 +98,7 @@ fn main() -> anyhow::Result<()> {
         let target = overrides.tcode.clone().unwrap_or_default().to_uppercase();
         if !target.is_empty() && target != "ZMDESNR" {
             return Err(anyhow::anyhow!(
-                "--tab-number is only supported for ZMDESNR (got --tcode={})",
-                target
+                "--tab-number is only supported for ZMDESNR (got --tcode={target})"
             ));
         }
     }
@@ -167,7 +164,7 @@ fn run_unattended_loop(skip_sap_check: bool, keep_awake: bool) -> anyhow::Result
     if keep_awake {
         match keep_awake::enable_keep_awake(true) {
             Ok(_) => println!("Keep-awake enabled - system will stay awake during execution"),
-            Err(e) => eprintln!("Warning: Failed to enable keep-awake: {}", e),
+            Err(e) => eprintln!("Warning: Failed to enable keep-awake: {e}"),
         }
     }
 
@@ -189,7 +186,7 @@ fn run_unattended_sequence(skip_sap_check: bool, keep_awake: bool) -> anyhow::Re
     if keep_awake {
         match keep_awake::enable_keep_awake(true) {
             Ok(_) => println!("Keep-awake enabled - system will stay awake during execution"),
-            Err(e) => eprintln!("Warning: Failed to enable keep-awake: {}", e),
+            Err(e) => eprintln!("Warning: Failed to enable keep-awake: {e}"),
         }
     }
 
@@ -215,7 +212,7 @@ fn run_unattended_single_tcode(
     if keep_awake {
         match keep_awake::enable_keep_awake(true) {
             Ok(_) => println!("Keep-awake enabled - system will stay awake during execution"),
-            Err(e) => eprintln!("Warning: Failed to enable keep-awake: {}", e),
+            Err(e) => eprintln!("Warning: Failed to enable keep-awake: {e}"),
         }
     }
 
@@ -469,8 +466,8 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                 return Ok(());
             }
             Err(e) => {
-                eprintln!("Error with TUI: {}", e);
-                return Err(anyhow::anyhow!("TUI error: {}", e));
+                eprintln!("Error with TUI: {e}");
+                return Err(anyhow::anyhow!("TUI error: {e}"));
             }
         };
 
@@ -479,7 +476,7 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                 // Log in to SAP
                 if sap_connected {
                     if let Err(e) = handle_login(session.as_ref().unwrap()) {
-                        eprintln!("Error logging in: {}", e);
+                        eprintln!("Error logging in: {e}");
                         thread::sleep(Duration::from_secs(2));
                     }
                 } else {
@@ -491,7 +488,7 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                 // Run VT11 module (only if logged in and SAP connected)
                 if sap_connected && is_logged_in {
                     if let Err(e) = run_vt11_module(session.as_ref().unwrap()) {
-                        eprintln!("Error running VT11 module: {}", e);
+                        eprintln!("Error running VT11 module: {e}");
                         thread::sleep(Duration::from_secs(2));
                     }
                 } else if sap_connected {
@@ -506,7 +503,7 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                 // Run VT11 Auto module (only if logged in and SAP connected)
                 if sap_connected && is_logged_in {
                     if let Err(e) = run_vt11_auto(session.as_ref().unwrap()) {
-                        eprintln!("Error running VT11 auto module: {}", e);
+                        eprintln!("Error running VT11 auto module: {e}");
                         thread::sleep(Duration::from_secs(2));
                     }
                 } else if sap_connected {
@@ -523,7 +520,7 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                     if let Err(e) =
                         vt11_module::run_vt11_listcheck_module(session.as_ref().unwrap())
                     {
-                        eprintln!("Error running VT11 ListCheck: {}", e);
+                        eprintln!("Error running VT11 ListCheck: {e}");
                         thread::sleep(Duration::from_secs(2));
                     }
                 } else if sap_connected {
@@ -539,7 +536,7 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                 if sap_connected && is_logged_in {
                     if let Err(e) = vt11_module::run_vt11_listcheck_auto(session.as_ref().unwrap())
                     {
-                        eprintln!("Error running VT11 ListCheck Auto: {}", e);
+                        eprintln!("Error running VT11 ListCheck Auto: {e}");
                         thread::sleep(Duration::from_secs(2));
                     }
                 } else if sap_connected {
@@ -554,7 +551,7 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                 // Run ZVT11 module (only if logged in and SAP connected)
                 if sap_connected && is_logged_in {
                     if let Err(e) = run_zvt11_module(session.as_ref().unwrap()) {
-                        eprintln!("Error running ZVT11 module: {}", e);
+                        eprintln!("Error running ZVT11 module: {e}");
                         thread::sleep(Duration::from_secs(2));
                     }
                 } else if sap_connected {
@@ -569,7 +566,7 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                 // Run ZVT11 Auto module (only if logged in and SAP connected)
                 if sap_connected && is_logged_in {
                     if let Err(e) = run_zvt11_auto(session.as_ref().unwrap()) {
-                        eprintln!("Error running ZVT11 auto module: {}", e);
+                        eprintln!("Error running ZVT11 auto module: {e}");
                         thread::sleep(Duration::from_secs(2));
                     }
                 } else if sap_connected {
@@ -584,7 +581,7 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                 // Run VL06O module (only if logged in and SAP connected)
                 if sap_connected && is_logged_in {
                     if let Err(e) = run_vl06o_module(session.as_ref().unwrap()) {
-                        eprintln!("Error running VL06O module: {}", e);
+                        eprintln!("Error running VL06O module: {e}");
                         thread::sleep(Duration::from_secs(2));
                     }
                 } else if sap_connected {
@@ -599,7 +596,7 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                 // Run VL06O Auto module (only if logged in and SAP connected)
                 if sap_connected && is_logged_in {
                     if let Err(e) = run_vl06o_auto(session.as_ref().unwrap()) {
-                        eprintln!("Error running VL06O auto module: {}", e);
+                        eprintln!("Error running VL06O auto module: {e}");
                         thread::sleep(Duration::from_secs(2));
                     }
                 } else if sap_connected {
@@ -614,7 +611,7 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                 // Run VL06O Date Update module (only if logged in and SAP connected)
                 if sap_connected && is_logged_in {
                     if let Err(e) = run_vl06o_date_update_module(session.as_ref().unwrap()) {
-                        eprintln!("Error running VL06O date update module: {}", e);
+                        eprintln!("Error running VL06O date update module: {e}");
                         thread::sleep(Duration::from_secs(2));
                     }
                 } else if sap_connected {
@@ -629,7 +626,7 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                 // Run VL06O Delivery Packages module (only if logged in and SAP connected)
                 if sap_connected && is_logged_in {
                     if let Err(e) = run_vl06o_delivery_packages_module(session.as_ref().unwrap()) {
-                        eprintln!("Error running VL06O delivery packages module: {}", e);
+                        eprintln!("Error running VL06O delivery packages module: {e}");
                         thread::sleep(Duration::from_secs(2));
                     }
                 } else if sap_connected {
@@ -646,7 +643,7 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                 // Run VL06O Delivery Packages Auto module (only if logged in and SAP connected)
                 if sap_connected && is_logged_in {
                     if let Err(e) = run_vl06o_delivery_packages_auto(session.as_ref().unwrap()) {
-                        eprintln!("Error running VL06O delivery packages auto module: {}", e);
+                        eprintln!("Error running VL06O delivery packages auto module: {e}");
                         thread::sleep(Duration::from_secs(2));
                     }
                 } else if sap_connected {
@@ -661,7 +658,7 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                 // Run ZMDESNR module (only if logged in and SAP connected)
                 if sap_connected && is_logged_in {
                     if let Err(e) = run_zmdesnr_module(session.as_ref().unwrap()) {
-                        eprintln!("Error running ZMDESNR module: {}", e);
+                        eprintln!("Error running ZMDESNR module: {e}");
                         thread::sleep(Duration::from_secs(2));
                     }
                 } else if sap_connected {
@@ -676,7 +673,7 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                 // Run ZMDESNR Auto module (only if logged in and SAP connected)
                 if sap_connected && is_logged_in {
                     if let Err(e) = run_zmdesnr_auto(session.as_ref().unwrap()) {
-                        eprintln!("Error running ZMDESNR auto module: {}", e);
+                        eprintln!("Error running ZMDESNR auto module: {e}");
                         thread::sleep(Duration::from_secs(2));
                     }
                 } else if sap_connected {
@@ -691,7 +688,7 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                 // Run LX03 module (only if logged in and SAP connected)
                 if sap_connected && is_logged_in {
                     if let Err(e) = run_lx03_module(session.as_ref().unwrap()) {
-                        eprintln!("Error running LX03 module: {}", e);
+                        eprintln!("Error running LX03 module: {e}");
                         thread::sleep(Duration::from_secs(2));
                     }
                 } else if sap_connected {
@@ -706,7 +703,7 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                 // Run LX03 Auto module (only if logged in and SAP connected)
                 if sap_connected && is_logged_in {
                     if let Err(e) = run_lx03_auto(session.as_ref().unwrap()) {
-                        eprintln!("Error running LX03 auto module: {}", e);
+                        eprintln!("Error running LX03 auto module: {e}");
                         thread::sleep(Duration::from_secs(2));
                     }
                 } else if sap_connected {
@@ -721,7 +718,7 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                 // Run 149 Report module (only if logged in and SAP connected)
                 if sap_connected && is_logged_in {
                     if let Err(e) = run_149_module(session.as_ref().unwrap()) {
-                        eprintln!("Error running 149 report module: {}", e);
+                        eprintln!("Error running 149 report module: {e}");
                         thread::sleep(Duration::from_secs(2));
                     }
                 } else if sap_connected {
@@ -736,7 +733,7 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                 // Run 149 Material Not TSP module (only if logged in and SAP connected)
                 if sap_connected && is_logged_in {
                     if let Err(e) = run_149_material_module(session.as_ref().unwrap()) {
-                        eprintln!("Error running 149 material not TSP module: {}", e);
+                        eprintln!("Error running 149 material not TSP module: {e}");
                         thread::sleep(Duration::from_secs(2));
                     }
                 } else if sap_connected {
@@ -753,7 +750,7 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                 // Run 149 RCV module (only if logged in and SAP connected)
                 if sap_connected && is_logged_in {
                     if let Err(e) = run_149_rcv_module(session.as_ref().unwrap()) {
-                        eprintln!("Error running 149 RCV module: {}", e);
+                        eprintln!("Error running 149 RCV module: {e}");
                         thread::sleep(Duration::from_secs(2));
                     }
                 } else if sap_connected {
@@ -768,7 +765,7 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                 // Run 149 RCV Auto module (only if logged in and SAP connected)
                 if sap_connected && is_logged_in {
                     if let Err(e) = run_149_rcv_auto(session.as_ref().unwrap()) {
-                        eprintln!("Error running 149 RCV auto module: {}", e);
+                        eprintln!("Error running 149 RCV auto module: {e}");
                         thread::sleep(Duration::from_secs(2));
                     }
                 } else if sap_connected {
@@ -783,7 +780,7 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                 // Run 149 Report Auto module (only if logged in and SAP connected)
                 if sap_connected && is_logged_in {
                     if let Err(e) = run_149_auto(session.as_ref().unwrap()) {
-                        eprintln!("Error running 149 report auto module: {}", e);
+                        eprintln!("Error running 149 report auto module: {e}");
                         thread::sleep(Duration::from_secs(2));
                     }
                 } else if sap_connected {
@@ -798,7 +795,7 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                 // Inbond - Shipment to 149
                 if sap_connected && is_logged_in {
                     if let Err(e) = run_inbond_shipment_module(session.as_ref().unwrap()) {
-                        eprintln!("Error running inbond shipment module: {}", e);
+                        eprintln!("Error running inbond shipment module: {e}");
                         thread::sleep(Duration::from_secs(2));
                     }
                 } else if sap_connected {
@@ -813,7 +810,7 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                 // Run Loop (using config) (only if logged in and SAP connected)
                 if sap_connected && is_logged_in {
                     if let Err(e) = run_loop(session.as_ref().unwrap()) {
-                        eprintln!("Error running loop: {}", e);
+                        eprintln!("Error running loop: {e}");
                         thread::sleep(Duration::from_secs(2));
                     }
                 } else if sap_connected {
@@ -828,7 +825,7 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                 // Run Sequence (using config) (only if logged in and SAP connected)
                 if sap_connected && is_logged_in {
                     if let Err(e) = run_sequence(session.as_ref().unwrap()) {
-                        eprintln!("Error running sequence: {}", e);
+                        eprintln!("Error running sequence: {e}");
                         thread::sleep(Duration::from_secs(2));
                     }
                 } else if sap_connected {
@@ -842,35 +839,35 @@ fn run_interactive_mode() -> anyhow::Result<()> {
             24 => {
                 // Configure Reports Directory (available regardless of SAP connection)
                 if let Err(e) = handle_configure_reports_dir() {
-                    eprintln!("Error configuring reports directory: {}", e);
+                    eprintln!("Error configuring reports directory: {e}");
                     thread::sleep(Duration::from_secs(2));
                 }
             }
             25 => {
                 // Configure SAP Parameters (available regardless of SAP connection)
                 if let Err(e) = utils::config_handlers::handle_configure_sap_params() {
-                    eprintln!("Error configuring SAP parameters: {}", e);
+                    eprintln!("Error configuring SAP parameters: {e}");
                     thread::sleep(Duration::from_secs(2));
                 }
             }
             26 => {
                 // Configure Loop (available regardless of SAP connection)
                 if let Err(e) = handle_configure_loop() {
-                    eprintln!("Error configuring loop: {}", e);
+                    eprintln!("Error configuring loop: {e}");
                     thread::sleep(Duration::from_secs(2));
                 }
             }
             27 => {
                 // Configure Sequence (available regardless of SAP connection)
                 if let Err(e) = handle_configure_sequence() {
-                    eprintln!("Error configuring sequence: {}", e);
+                    eprintln!("Error configuring sequence: {e}");
                     thread::sleep(Duration::from_secs(2));
                 }
             }
             28 => {
                 // Read Excel File (available regardless of SAP connection)
                 if let Err(e) = handle_read_excel_file() {
-                    eprintln!("Error reading Excel file: {}", e);
+                    eprintln!("Error reading Excel file: {e}");
                     thread::sleep(Duration::from_secs(2));
                 }
             }
@@ -878,7 +875,7 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                 // Log out of SAP (only if logged in and SAP connected)
                 if sap_connected && is_logged_in {
                     if let Err(e) = handle_logout(session.as_ref().unwrap()) {
-                        eprintln!("Error logging out: {}", e);
+                        eprintln!("Error logging out: {e}");
                         thread::sleep(Duration::from_secs(2));
                     }
                 } else if sap_connected {

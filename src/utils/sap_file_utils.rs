@@ -29,7 +29,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 /// * `(String, String)` - A tuple containing (file_path, file_name)
 pub fn get_tcode_file_path(tcode: &str, ext: &str) -> (String, String) {
     let reports_dir = get_reports_dir();
-    let tcode_dir = format!("{}\\\\{}", reports_dir, tcode);
+    let tcode_dir = format!("{reports_dir}\\\\{tcode}");
 
     // Create the directory if it doesn't exist
     if !Path::new(&tcode_dir).exists() {
@@ -37,7 +37,7 @@ pub fn get_tcode_file_path(tcode: &str, ext: &str) -> (String, String) {
     }
 
     let timestamp = generate_timestamp();
-    let file_name = format!("{}_{}.{}", timestamp, tcode, ext);
+    let file_name = format!("{timestamp}_{tcode}.{ext}");
     let file_path = tcode_dir;
 
     (file_path, file_name)
@@ -163,7 +163,7 @@ fn close_specific_excel_window(file_name: &str) -> Result<bool> {
 
                 // Check if the window title contains the file name
                 if window_title.contains(&data.file_name) {
-                    println!("Closing Excel window: {}", window_title);
+                    println!("Closing Excel window: {window_title}");
                     SendMessageW(hwnd, WM_CLOSE, WPARAM(0), LPARAM(0));
                     data.windows_closed = true;
                 }
@@ -181,10 +181,10 @@ fn close_specific_excel_window(file_name: &str) -> Result<bool> {
     }
 
     if data.windows_closed {
-        println!("Excel window with file '{}' closed successfully", file_name);
+        println!("Excel window with file '{file_name}' closed successfully");
         Ok(true)
     } else {
-        println!("No Excel window with file '{}' found to close", file_name);
+        println!("No Excel window with file '{file_name}' found to close");
         Ok(false)
     }
 }
@@ -218,7 +218,7 @@ fn close_all_excel_windows() -> Result<bool> {
                 let window_title = OsString::from_wide(&title_buffer[..title_len as usize]);
                 let window_title = window_title.to_string_lossy().to_string();
 
-                println!("Closing Excel window: {}", window_title);
+                println!("Closing Excel window: {window_title}");
                 SendMessageW(hwnd, WM_CLOSE, WPARAM(0), LPARAM(0));
                 data.windows_closed = true;
             }
@@ -286,7 +286,7 @@ pub fn save_sap_file(
             if let Ok(component) = session.find_by_id("wnd[1]/usr/txtMESSTXT1".to_string()) {
                 if let Some(text_field) = component.downcast::<GuiTextField>() {
                     let error_msg = text_field.text()?;
-                    println!("Error message: {}", error_msg);
+                    println!("Error message: {error_msg}");
                     return Ok(false);
                 }
             }
@@ -327,7 +327,7 @@ pub fn save_sap_file(
             match close_excel_windows(Some(file_name)) {
                 Ok(true) => println!("Excel closed successfully"),
                 Ok(false) => println!("No Excel windows found to close"),
-                Err(e) => println!("Error closing Excel: {:?}", e),
+                Err(e) => println!("Error closing Excel: {e:?}"),
             }
         }
 

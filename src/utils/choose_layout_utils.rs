@@ -27,10 +27,7 @@ pub fn choose_layout(
     tcode: &str,
     layout_row: &str,
 ) -> windows::core::Result<String> {
-    eprintln!(
-        "DEBUG: Entering choose_layout function with tcode={}, layout_row={}",
-        tcode, layout_row
-    );
+    eprintln!("DEBUG: Entering choose_layout function with tcode={tcode}, layout_row={layout_row}");
 
     // Special handling for 149 tcode (y_dn3_47000149)
     if tcode.to_lowercase() == "y_dn3_47000149" {
@@ -123,8 +120,7 @@ pub fn choose_layout(
             if let Ok(text_field) = session.find_by_id("wnd[1]/usr/txtRSYSF-STRING".to_string()) {
                 if let Some(txt) = text_field.downcast::<GuiTextField>() {
                     eprintln!(
-                        "DEBUG: Text field found in window 1, setting text to '{}'",
-                        current_layout
+                        "DEBUG: Text field found in window 1, setting text to '{current_layout}'"
                     );
                     txt.set_text(current_layout.clone())?;
 
@@ -168,10 +164,7 @@ pub fn choose_layout(
             eprintln!("DEBUG: Setting layout name in text field");
             if let Ok(text_field) = session.find_by_id("wnd[2]/usr/txtRSYSF-STRING".to_string()) {
                 if let Some(txt) = text_field.downcast::<GuiTextField>() {
-                    eprintln!(
-                        "DEBUG: Text field found, setting text to '{}'",
-                        current_layout
-                    );
+                    eprintln!("DEBUG: Text field found, setting text to '{current_layout}'");
                     txt.set_text(current_layout.clone())?;
                 } else {
                     eprintln!("DEBUG: Text field found but downcast failed");
@@ -185,8 +178,7 @@ pub fn choose_layout(
                 {
                     if let Some(txt) = text_field.downcast::<GuiTextField>() {
                         eprintln!(
-                            "DEBUG: Alternative text field found, setting text to '{}'",
-                            current_layout
+                            "DEBUG: Alternative text field found, setting text to '{current_layout}'"
                         );
                         txt.set_text(current_layout.clone())?;
                     } else {
@@ -298,7 +290,7 @@ pub fn choose_layout(
                 // Ask user for a new layout name or to exit
                 use dialoguer::{Input, Select};
 
-                println!("Layout '{}' not found.", current_layout);
+                println!("Layout '{current_layout}' not found.");
 
                 let options = vec!["Enter another layout name", "Exit layout selection"];
                 let selection = Select::new()
@@ -360,12 +352,9 @@ pub fn choose_layout(
     eprintln!("DEBUG: Getting status bar message");
     let msg = hit_ctrl(session, 0, "/sbar", "Text", "Get", "")?;
 
-    eprintln!("DEBUG: Status bar message: {}", msg);
-    println!("{}", msg);
-    eprintln!(
-        "DEBUG: Exiting choose_layout function with message: {}",
-        msg
-    );
+    eprintln!("DEBUG: Status bar message: {msg}");
+    println!("{msg}");
+    eprintln!("DEBUG: Exiting choose_layout function with message: {msg}");
     Ok(msg)
 }
 
@@ -378,10 +367,7 @@ pub fn choose_layout(
 /// session.findById("wnd[1]/usr/ssubD0500_SUBSCREEN:SAPLSLVC_DIALOG:0501/cntlG51_CONTAINER/shellcont/shell").selectedRows = "6"
 /// session.findById("wnd[1]/usr/ssubD0500_SUBSCREEN:SAPLSLVC_DIALOG:0501/cntlG51_CONTAINER/shellcont/shell").clickCurrentCell
 pub fn choose_layout_149(session: &GuiSession, layout_name: &str) -> windows::core::Result<String> {
-    eprintln!(
-        "DEBUG: Starting 149 layout selection for layout: {}",
-        layout_name
-    );
+    eprintln!("DEBUG: Starting 149 layout selection for layout: {layout_name}");
 
     // Step 1: Press the layout button (wnd[0]/tbar[1]/btn[33])
     eprintln!("DEBUG: Pressing layout button");
@@ -404,7 +390,7 @@ pub fn choose_layout_149(session: &GuiSession, layout_name: &str) -> windows::co
     // Step 2: Find the grid container
     let grid_id =
         "wnd[1]/usr/ssubD0500_SUBSCREEN:SAPLSLVC_DIALOG:0501/cntlG51_CONTAINER/shellcont/shell";
-    eprintln!("DEBUG: Looking for grid at: {}", grid_id);
+    eprintln!("DEBUG: Looking for grid at: {grid_id}");
 
     if let Ok(grid_obj) = session.find_by_id(grid_id.to_string()) {
         if let Some(grid) = grid_obj.downcast::<GuiGridView>() {
@@ -416,14 +402,14 @@ pub fn choose_layout_149(session: &GuiSession, layout_name: &str) -> windows::co
 
             // Get the number of rows in the grid
             let row_count = grid.row_count()?;
-            eprintln!("DEBUG: Grid has {} rows", row_count);
+            eprintln!("DEBUG: Grid has {row_count} rows");
 
             // Search through the grid rows to find the layout
             for i in 0..row_count {
                 if let Ok(cell_text) = grid.get_cell_value(i, "TEXT".to_string()) {
-                    eprintln!("DEBUG: Row {} has text: '{}'", i, cell_text);
+                    eprintln!("DEBUG: Row {i} has text: '{cell_text}'");
                     if cell_text.trim().to_lowercase() == layout_name.trim().to_lowercase() {
-                        eprintln!("DEBUG: Layout '{}' found at row {}", layout_name, i);
+                        eprintln!("DEBUG: Layout '{layout_name}' found at row {i}");
                         layout_found = true;
                         layout_row = i;
                         break;
@@ -433,14 +419,11 @@ pub fn choose_layout_149(session: &GuiSession, layout_name: &str) -> windows::co
 
             if layout_found {
                 // Step 4: Set current cell to the found row
-                eprintln!(
-                    "DEBUG: Setting current cell to row {} with column TEXT",
-                    layout_row
-                );
+                eprintln!("DEBUG: Setting current cell to row {layout_row} with column TEXT");
                 grid.set_current_cell(layout_row, "TEXT".to_string())?;
 
                 // Step 5: Select the row
-                eprintln!("DEBUG: Selecting row {}", layout_row);
+                eprintln!("DEBUG: Selecting row {layout_row}");
                 grid.set_selected_rows(layout_row.to_string())?;
 
                 // Step 6: Click on the current cell
@@ -450,12 +433,12 @@ pub fn choose_layout_149(session: &GuiSession, layout_name: &str) -> windows::co
                 eprintln!("DEBUG: 149 layout selection completed successfully");
                 Ok("Layout selected successfully".to_string())
             } else {
-                eprintln!("DEBUG: Layout '{}' not found in grid", layout_name);
+                eprintln!("DEBUG: Layout '{layout_name}' not found in grid");
 
                 // Ask user for a new layout name or to exit
                 use dialoguer::{Input, Select};
 
-                println!("Layout '{}' not found in the grid.", layout_name);
+                println!("Layout '{layout_name}' not found in the grid.");
 
                 let options = vec!["Enter another layout name", "Exit layout selection"];
                 let selection = Select::new()
@@ -494,7 +477,7 @@ pub fn choose_layout_149(session: &GuiSession, layout_name: &str) -> windows::co
             Ok("Failed to access grid object".to_string())
         }
     } else {
-        eprintln!("DEBUG: Grid not found at: {}", grid_id);
+        eprintln!("DEBUG: Grid not found at: {grid_id}");
         Ok("Failed to find layout grid".to_string())
     }
 }
@@ -521,7 +504,7 @@ pub fn try_select_layout_149(
         return Ok(false);
     }
 
-    eprintln!("DEBUG: try_select_layout_149 for layout: {}", layout_name);
+    eprintln!("DEBUG: try_select_layout_149 for layout: {layout_name}");
 
     if let Ok(button) = session.find_by_id("wnd[0]/tbar[1]/btn[33]".to_string()) {
         if let Some(btn) = button.downcast::<GuiButton>() {
@@ -548,7 +531,7 @@ pub fn try_select_layout_149(
                         grid.set_current_cell(i, "TEXT".to_string())?;
                         grid.set_selected_rows(i.to_string())?;
                         grid.click_current_cell()?;
-                        eprintln!("DEBUG: Layout '{}' selected", layout_name);
+                        eprintln!("DEBUG: Layout '{layout_name}' selected");
                         return Ok(true);
                     }
                 }
@@ -556,10 +539,7 @@ pub fn try_select_layout_149(
         }
     }
 
-    println!(
-        "Layout '{}' not found. Closing choose-layout dialog...",
-        layout_name
-    );
+    println!("Layout '{layout_name}' not found. Closing choose-layout dialog...");
     close_popups(session, None, None)?;
     Ok(false)
 }
@@ -618,13 +598,10 @@ pub fn ensure_inbond_layout_149(
 
     if !layout_name.trim().is_empty() {
         if try_select_layout_149(session, layout_name)? {
-            println!("Using existing layout '{}'", layout_name);
+            println!("Using existing layout '{layout_name}'");
             return Ok((true, None));
         }
-        println!(
-            "Provided layout '{}' not found. Setting up default inbond columns...",
-            layout_name
-        );
+        println!("Provided layout '{layout_name}' not found. Setting up default inbond columns...");
     } else {
         println!("No layout provided. Setting up default inbond columns...");
     }
@@ -635,10 +612,7 @@ pub fn ensure_inbond_layout_149(
 
     // Confirm save name when config layout was missing/invalid
     let do_save = Confirm::new()
-        .with_prompt(format!(
-            "Save this layout as '{}' for next time?",
-            save_name
-        ))
+        .with_prompt(format!("Save this layout as '{save_name}' for next time?"))
         .default(true)
         .interact()
         .unwrap_or(true);
@@ -655,10 +629,7 @@ pub fn ensure_inbond_layout_149(
         }
     }
 
-    println!(
-        "Setting up layout columns {:?} (save={} as '{}')",
-        cols, do_save, final_name
-    );
+    println!("Setting up layout columns {cols:?} (save={do_save} as '{final_name}')");
 
     match setup_layout(
         session,
@@ -673,7 +644,7 @@ pub fn ensure_inbond_layout_149(
             println!(
                 "Default inbond layout ready{}",
                 if do_save {
-                    format!(" and saved as '{}'", final_name)
+                    format!(" and saved as '{final_name}'")
                 } else {
                     " (not saved)".to_string()
                 }
@@ -690,7 +661,7 @@ pub fn ensure_inbond_layout_149(
             Ok((false, None))
         }
         Err(e) => {
-            println!("Error setting up 149 inbond layout: {}", e);
+            println!("Error setting up 149 inbond layout: {e}");
             let _ = close_popups(session, None, None);
             Err(e)
         }
@@ -705,10 +676,7 @@ pub fn choose_layout_zvt11(
     session: &GuiSession,
     layout_name: &str,
 ) -> windows::core::Result<String> {
-    eprintln!(
-        "DEBUG: Starting ZVT11 layout selection for layout: {}",
-        layout_name
-    );
+    eprintln!("DEBUG: Starting ZVT11 layout selection for layout: {layout_name}");
 
     // Step 1: Press the layout button (wnd[0]/tbar[1]/btn[33])
     eprintln!("DEBUG: Pressing layout button");
@@ -731,7 +699,7 @@ pub fn choose_layout_zvt11(
     // Step 2: Find the grid container - ZVT11 uses a different grid ID
     let grid_id =
         "wnd[1]/usr/ssubD0500_SUBSCREEN:SAPLSLVC_DIALOG:0501/cntlG51_CONTAINER/shellcont/shell";
-    eprintln!("DEBUG: Looking for ZVT11 grid at: {}", grid_id);
+    eprintln!("DEBUG: Looking for ZVT11 grid at: {grid_id}");
 
     if let Ok(grid_obj) = session.find_by_id(grid_id.to_string()) {
         if let Some(grid) = grid_obj.downcast::<GuiGridView>() {
@@ -743,7 +711,7 @@ pub fn choose_layout_zvt11(
 
             // Get the number of rows in the grid
             let row_count = grid.row_count()?;
-            eprintln!("DEBUG: ZVT11 grid has {} rows", row_count);
+            eprintln!("DEBUG: ZVT11 grid has {row_count} rows");
 
             // Search through the grid rows to find the layout
             // ZVT11 might use different column names, try common ones
@@ -752,14 +720,10 @@ pub fn choose_layout_zvt11(
             for i in 0..row_count {
                 for col_name in &column_names {
                     if let Ok(cell_text) = grid.get_cell_value(i, col_name.to_string()) {
-                        eprintln!(
-                            "DEBUG: Row {} column {} has text: '{}'",
-                            i, col_name, cell_text
-                        );
+                        eprintln!("DEBUG: Row {i} column {col_name} has text: '{cell_text}'");
                         if cell_text.trim().to_lowercase() == layout_name.trim().to_lowercase() {
                             eprintln!(
-                                "DEBUG: Layout '{}' found at row {} column {}",
-                                layout_name, i, col_name
+                                "DEBUG: Layout '{layout_name}' found at row {i} column {col_name}"
                             );
                             layout_found = true;
                             layout_row = i;
@@ -774,7 +738,7 @@ pub fn choose_layout_zvt11(
 
             if layout_found {
                 // Step 4: Set current cell to the found row
-                eprintln!("DEBUG: Setting current cell to row {}", layout_row);
+                eprintln!("DEBUG: Setting current cell to row {layout_row}");
                 // Try to set current cell with the first available column
                 if grid
                     .set_current_cell(layout_row, "TEXT".to_string())
@@ -784,7 +748,7 @@ pub fn choose_layout_zvt11(
                 }
 
                 // Step 5: Select the row
-                eprintln!("DEBUG: Selecting row {}", layout_row);
+                eprintln!("DEBUG: Selecting row {layout_row}");
                 grid.set_selected_rows(layout_row.to_string())?;
 
                 // Step 6: Click on the current cell
@@ -794,12 +758,12 @@ pub fn choose_layout_zvt11(
                 eprintln!("DEBUG: ZVT11 layout selection completed successfully");
                 Ok("Layout selected successfully".to_string())
             } else {
-                eprintln!("DEBUG: Layout '{}' not found in ZVT11 grid", layout_name);
+                eprintln!("DEBUG: Layout '{layout_name}' not found in ZVT11 grid");
 
                 // Ask user for a new layout name or to exit
                 use dialoguer::{Input, Select};
 
-                println!("Layout '{}' not found in the ZVT11 grid.", layout_name);
+                println!("Layout '{layout_name}' not found in the ZVT11 grid.");
 
                 let options = vec!["Enter another layout name", "Exit layout selection"];
                 let selection = Select::new()
@@ -838,7 +802,7 @@ pub fn choose_layout_zvt11(
             Ok("Failed to access ZVT11 grid object".to_string())
         }
     } else {
-        eprintln!("DEBUG: ZVT11 grid not found at: {}", grid_id);
+        eprintln!("DEBUG: ZVT11 grid not found at: {grid_id}");
         Ok("Failed to find ZVT11 layout grid".to_string())
     }
 }

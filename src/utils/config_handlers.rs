@@ -50,7 +50,7 @@ pub fn handle_configure_sap_params() -> Result<()> {
                     .unwrap();
 
                 config.set_instance_id(&instance_id);
-                println!("Instance ID set to: {}", instance_id);
+                println!("Instance ID set to: {instance_id}");
                 println!("Note: This will use different credential files for each instance ID.");
             }
             1 => {
@@ -88,7 +88,7 @@ pub fn handle_configure_sap_params() -> Result<()> {
                             additional_params: HashMap::new(),
                         });
                     }
-                    println!("Default TCode set to: {}", tcode);
+                    println!("Default TCode set to: {tcode}");
                 }
             }
             2 => {
@@ -124,10 +124,10 @@ pub fn handle_configure_sap_params() -> Result<()> {
                                 additional_params: HashMap::new(),
                             });
                         }
-                        println!("Default Menu Option set to: {}", option);
+                        println!("Default Menu Option set to: {option}");
                     }
                     Err(_) => {
-                        println!("Invalid input. Using default value: {}", current);
+                        println!("Invalid input. Using default value: {current}");
                         if let Some(global) = &mut config.global {
                             global.default_menu_option = Some(current);
                         }
@@ -173,7 +173,7 @@ pub fn handle_configure_sap_params() -> Result<()> {
                         additional_params: HashMap::new(),
                     });
                 }
-                println!("Date format set to: {}", date_format);
+                println!("Date format set to: {date_format}");
             }
             4 => {
                 // Configure Timezone
@@ -211,7 +211,7 @@ pub fn handle_configure_sap_params() -> Result<()> {
                         additional_params: HashMap::new(),
                     });
                 }
-                println!("Timezone set to: {}", timezone);
+                println!("Timezone set to: {timezone}");
             }
             5 => {
                 // Configure TCode-specific Parameters
@@ -238,7 +238,7 @@ pub fn handle_configure_sap_params() -> Result<()> {
 
         // Save configuration after each change
         if let Err(e) = config.save() {
-            eprintln!("Failed to save configuration: {}", e);
+            eprintln!("Failed to save configuration: {e}");
             thread::sleep(Duration::from_secs(2));
         } else {
             println!("Configuration saved successfully.");
@@ -314,7 +314,7 @@ fn handle_configure_tcode_params(config: &mut SapConfig) -> Result<()> {
 
 /// Configure parameters for a specific TCode
 fn configure_tcode_parameters(config: &mut SapConfig, tcode_name: &str) -> Result<()> {
-    println!("\nConfiguring parameters for TCode: {}", tcode_name);
+    println!("\nConfiguring parameters for TCode: {tcode_name}");
 
     // Ensure tcode map exists
     if config.tcode.is_none() {
@@ -375,7 +375,7 @@ fn configure_tcode_parameters(config: &mut SapConfig, tcode_name: &str) -> Resul
                     println!("Variant configuration cleared.");
                 } else {
                     tcode_config.variant = Some(variant.clone());
-                    println!("Variant set to: {}", variant);
+                    println!("Variant set to: {variant}");
                 }
             }
             1 => {
@@ -393,7 +393,7 @@ fn configure_tcode_parameters(config: &mut SapConfig, tcode_name: &str) -> Resul
                     println!("Layout configuration cleared.");
                 } else {
                     tcode_config.layout = Some(layout.clone());
-                    println!("Layout set to: {}", layout);
+                    println!("Layout set to: {layout}");
                 }
             }
             2 => {
@@ -411,7 +411,7 @@ fn configure_tcode_parameters(config: &mut SapConfig, tcode_name: &str) -> Resul
                     println!("Column Name configuration cleared.");
                 } else {
                     tcode_config.column_name = Some(column_name.clone());
-                    println!("Column Name set to: {}", column_name);
+                    println!("Column Name set to: {column_name}");
                 }
             }
             3 => {
@@ -440,7 +440,7 @@ fn configure_tcode_parameters(config: &mut SapConfig, tcode_name: &str) -> Resul
                 } else {
                     tcode_config.date_range_start = Some(start_date.clone());
                     tcode_config.date_range_end = Some(end_date.clone());
-                    println!("Date Range set to: {} - {}", start_date, end_date);
+                    println!("Date Range set to: {start_date} - {end_date}");
                 }
             }
             4 => {
@@ -458,7 +458,7 @@ fn configure_tcode_parameters(config: &mut SapConfig, tcode_name: &str) -> Resul
 
                 let by_date = by_date_options[by_date_choice].to_string();
                 tcode_config.by_date = Some(by_date.clone());
-                println!("By Date set to: {}", by_date);
+                println!("By Date set to: {by_date}");
             }
             5 => {
                 // configure by_delivery
@@ -474,7 +474,7 @@ fn configure_tcode_parameters(config: &mut SapConfig, tcode_name: &str) -> Resul
 
                 let by_delivery = by_delivery_options[by_delivery_choice].to_string();
                 tcode_config.by_delivery = Some(by_delivery.clone());
-                println!("By Delivery set to: {}", by_delivery);
+                println!("By Delivery set to: {by_delivery}");
             }
             6 => {
                 // Configure Serial Number
@@ -491,7 +491,7 @@ fn configure_tcode_parameters(config: &mut SapConfig, tcode_name: &str) -> Resul
                     println!("Serial Number configuration cleared.");
                 } else {
                     tcode_config.serial_number = Some(serial_number.clone());
-                    println!("Serial Number set to: {}", serial_number);
+                    println!("Serial Number set to: {serial_number}");
                 }
             }
             7 => {
@@ -509,7 +509,7 @@ fn configure_tcode_parameters(config: &mut SapConfig, tcode_name: &str) -> Resul
                     println!("Tab Number configuration cleared.");
                 } else {
                     tcode_config.tab_number = Some(tab_number.clone());
-                    println!("Tab Number set to: {}", tab_number);
+                    println!("Tab Number set to: {tab_number}");
                 }
             }
             8 => {
@@ -528,12 +528,12 @@ fn configure_tcode_parameters(config: &mut SapConfig, tcode_name: &str) -> Resul
 
                 if param_value.is_empty() {
                     tcode_config.additional_params.remove(&param_name);
-                    println!("Parameter '{}' removed.", param_name);
+                    println!("Parameter '{param_name}' removed.");
                 } else {
                     tcode_config
                         .additional_params
                         .insert(param_name.clone(), param_value.clone());
-                    println!("Parameter '{}' set to: {}", param_name, param_value);
+                    println!("Parameter '{param_name}' set to: {param_value}");
                 }
             }
             9 => {
@@ -629,15 +629,14 @@ fn configure_tcode_parameters(config: &mut SapConfig, tcode_name: &str) -> Resul
                     }
                     _ => {
                         tcode_config.additional_params.remove(param_name);
-                        println!("Parameter '{}' removed.", param_name);
+                        println!("Parameter '{param_name}' removed.");
                     }
                 }
             }
             10 => {
                 // Delete This TCode Configuration
                 println!(
-                    "Are you sure you want to delete the configuration for TCode '{}'? (y/n)",
-                    tcode_name
+                    "Are you sure you want to delete the configuration for TCode '{tcode_name}'? (y/n)"
                 );
                 let mut confirm = String::new();
                 io::stdin().read_line(&mut confirm).unwrap();
@@ -645,11 +644,11 @@ fn configure_tcode_parameters(config: &mut SapConfig, tcode_name: &str) -> Resul
                 if confirm.trim().to_lowercase() == "y" {
                     if let Some(tcode_configs) = &mut config.tcode {
                         tcode_configs.remove(tcode_name);
-                        println!("TCode '{}' configuration deleted.", tcode_name);
+                        println!("TCode '{tcode_name}' configuration deleted.");
 
                         // Save configuration
                         if let Err(e) = config.save() {
-                            eprintln!("Failed to save configuration: {}", e);
+                            eprintln!("Failed to save configuration: {e}");
                             thread::sleep(Duration::from_secs(2));
                         } else {
                             println!("Configuration saved successfully.");
@@ -679,7 +678,7 @@ fn configure_tcode_parameters(config: &mut SapConfig, tcode_name: &str) -> Resul
         }
 
         if let Err(e) = config.save() {
-            eprintln!("Failed to save configuration: {}", e);
+            eprintln!("Failed to save configuration: {e}");
             thread::sleep(Duration::from_secs(2));
         } else {
             println!("Configuration saved successfully.");
@@ -744,7 +743,7 @@ fn handle_configure_loop_params(config: &mut SapConfig) -> Result<()> {
                     .unwrap();
 
                 loop_config.tcode = tcode.clone();
-                println!("TCode set to: {}", tcode);
+                println!("TCode set to: {tcode}");
             }
             1 => {
                 // Configure Iterations
@@ -757,7 +756,7 @@ fn handle_configure_loop_params(config: &mut SapConfig) -> Result<()> {
                     .unwrap();
 
                 loop_config.iterations = iterations_str.clone();
-                println!("Iterations set to: {}", iterations_str);
+                println!("Iterations set to: {iterations_str}");
             }
             2 => {
                 // Configure Delay
@@ -770,7 +769,7 @@ fn handle_configure_loop_params(config: &mut SapConfig) -> Result<()> {
                     .unwrap();
 
                 loop_config.delay_seconds = delay_str.clone();
-                println!("Delay set to: {} seconds", delay_str);
+                println!("Delay set to: {delay_str} seconds");
             }
             3 => {
                 // Add/Edit Parameter
@@ -794,12 +793,12 @@ fn handle_configure_loop_params(config: &mut SapConfig) -> Result<()> {
 
                 if param_value.is_empty() {
                     loop_config.params.remove(&param_name);
-                    println!("Parameter '{}' removed.", param_name);
+                    println!("Parameter '{param_name}' removed.");
                 } else {
                     loop_config
                         .params
                         .insert(param_name.clone(), param_value.clone());
-                    println!("Parameter '{}' set to: {}", param_name, param_value);
+                    println!("Parameter '{param_name}' set to: {param_value}");
                 }
             }
             4 => {
@@ -833,7 +832,7 @@ fn handle_configure_loop_params(config: &mut SapConfig) -> Result<()> {
 
                 let param_name = &param_names[selection];
                 loop_config.params.remove(param_name);
-                println!("Parameter '{}' removed.", param_name);
+                println!("Parameter '{param_name}' removed.");
             }
             5 => {
                 // Show Current Configuration
@@ -846,7 +845,7 @@ fn handle_configure_loop_params(config: &mut SapConfig) -> Result<()> {
                 if !loop_config.params.is_empty() {
                     println!("\nParameters:");
                     for (key, value) in &loop_config.params {
-                        println!("  {}: {}", key, value);
+                        println!("  {key}: {value}");
                     }
                 }
 
@@ -868,7 +867,7 @@ fn handle_configure_loop_params(config: &mut SapConfig) -> Result<()> {
         config.loop_config = Some(loop_config.clone());
 
         if let Err(e) = config.save() {
-            eprintln!("Failed to save configuration: {}", e);
+            eprintln!("Failed to save configuration: {e}");
             thread::sleep(Duration::from_secs(2));
         } else {
             println!("Configuration saved successfully.");
@@ -890,17 +889,17 @@ fn show_current_configuration(config: &SapConfig) {
         println!("Timezone: {}", global.timezone);
 
         if let Some(default_tcode) = &global.default_tcode {
-            println!("Default TCode: {}", default_tcode);
+            println!("Default TCode: {default_tcode}");
         }
 
         if let Some(default_menu_option) = &global.default_menu_option {
-            println!("Default Menu Option: {}", default_menu_option);
+            println!("Default Menu Option: {default_menu_option}");
         }
 
         if !global.additional_params.is_empty() {
             println!("\nGlobal Parameters:");
             for (key, value) in &global.additional_params {
-                println!("  {}: {}", key, value);
+                println!("  {key}: {value}");
             }
         }
     }
@@ -911,42 +910,42 @@ fn show_current_configuration(config: &SapConfig) {
             println!("\nTCode Configurations:");
 
             for (tcode_name, tcode_config) in tcode_configs {
-                println!("\n  {}:", tcode_name);
+                println!("\n  {tcode_name}:");
 
                 if let Some(variant) = &tcode_config.variant {
-                    println!("    Variant: {}", variant);
+                    println!("    Variant: {variant}");
                 }
 
                 if let Some(layout) = &tcode_config.layout {
-                    println!("    Layout: {}", layout);
+                    println!("    Layout: {layout}");
                 }
 
                 if let Some(column_name) = &tcode_config.column_name {
-                    println!("    Column Name: {}", column_name);
+                    println!("    Column Name: {column_name}");
                 }
 
                 if let Some(date_range_start) = &tcode_config.date_range_start {
                     if let Some(date_range_end) = &tcode_config.date_range_end {
-                        println!("    Date Range: {} - {}", date_range_start, date_range_end);
+                        println!("    Date Range: {date_range_start} - {date_range_end}");
                     }
                 }
 
                 if let Some(by_date) = &tcode_config.by_date {
-                    println!("    By Date: {}", by_date);
+                    println!("    By Date: {by_date}");
                 }
 
                 if let Some(serial_number) = &tcode_config.serial_number {
-                    println!("    Serial Number: {}", serial_number);
+                    println!("    Serial Number: {serial_number}");
                 }
 
                 if let Some(tab_number) = &tcode_config.tab_number {
-                    println!("    Tab Number: {}", tab_number);
+                    println!("    Tab Number: {tab_number}");
                 }
 
                 if !tcode_config.additional_params.is_empty() {
                     println!("    Additional Parameters:");
                     for (key, value) in &tcode_config.additional_params {
-                        println!("      {}: {}", key, value);
+                        println!("      {key}: {value}");
                     }
                 }
             }
@@ -963,7 +962,7 @@ fn show_current_configuration(config: &SapConfig) {
         if !loop_config.params.is_empty() {
             println!("  Parameters:");
             for (key, value) in &loop_config.params {
-                println!("    {}: {}", key, value);
+                println!("    {key}: {value}");
             }
         }
     }

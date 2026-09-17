@@ -55,7 +55,7 @@ pub fn run_inbond_shipment_module(session: &GuiSession) -> Result<()> {
             println!("\nInbond flow did not complete successfully.");
         }
         Err(e) => {
-            println!("\nError during inbond flow: {}", e);
+            println!("\nError during inbond flow: {e}");
         }
     }
 

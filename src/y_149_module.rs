@@ -27,7 +27,7 @@ pub fn run_149_module(session: &GuiSession) -> Result<()> {
             println!("149 report export failed or was cancelled.");
         }
         Err(e) => {
-            println!("Error running 149 report export: {}", e);
+            println!("Error running 149 report export: {e}");
         }
     }
 
@@ -48,7 +48,7 @@ pub fn run_149_auto(session: &GuiSession) -> Result<()> {
     let config = match SapConfig::load() {
         Ok(cfg) => cfg,
         Err(e) => {
-            println!("Error loading configuration: {}", e);
+            println!("Error loading configuration: {e}");
             println!("\nPress Enter to return to main menu...");
             let mut input = String::new();
             io::stdin().read_line(&mut input).unwrap();
@@ -90,7 +90,7 @@ pub fn run_149_auto(session: &GuiSession) -> Result<()> {
         params.export_type,
         get_export_type_description(params.export_type)
     );
-    println!("File Extension: {}", file_extension);
+    println!("File Extension: {file_extension}");
     println!("-----------------------------------------------");
 
     // Run the export
@@ -102,7 +102,7 @@ pub fn run_149_auto(session: &GuiSession) -> Result<()> {
             println!("149 report export failed or was cancelled.");
         }
         Err(e) => {
-            println!("Error running 149 report export: {}", e);
+            println!("Error running 149 report export: {e}");
         }
     }
 
@@ -253,7 +253,7 @@ fn get_149_parameters() -> Result<Report149Params> {
     clear_screen();
 
     println!("-------------------------------");
-    println!("Running 149 report with params: {:#?}", params);
+    println!("Running 149 report with params: {params:#?}");
 
     Ok(params)
 }

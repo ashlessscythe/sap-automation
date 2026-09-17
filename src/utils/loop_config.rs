@@ -150,7 +150,7 @@ impl LoopConfig {
 
         // Add parameters with param_ prefix
         for (key, value) in &self.params {
-            loop_params.insert(format!("param_{}", key), value.clone());
+            loop_params.insert(format!("param_{key}"), value.clone());
         }
 
         let loop_config = ConfigLoopConfig {
@@ -210,7 +210,7 @@ pub fn handle_configure_loop() -> Result<()> {
                     .unwrap();
 
                 config.tcode = tcode.clone();
-                println!("TCode set to: {}", tcode);
+                println!("TCode set to: {tcode}");
             }
             1 => {
                 // Configure TCode Run Type
@@ -230,7 +230,7 @@ pub fn handle_configure_loop() -> Result<()> {
                 if run_type.is_empty() {
                     println!("TCode Run Type cleared (will use default)");
                 } else {
-                    println!("TCode Run Type set to: {}", run_type);
+                    println!("TCode Run Type set to: {run_type}");
                 }
             }
             2 => {
@@ -248,7 +248,7 @@ pub fn handle_configure_loop() -> Result<()> {
                     if iterations == 0 {
                         println!("Iterations set to: infinite (until Ctrl+C)");
                     } else {
-                        println!("Iterations set to: {}", iterations);
+                        println!("Iterations set to: {iterations}");
                     }
                 } else {
                     println!(
@@ -269,7 +269,7 @@ pub fn handle_configure_loop() -> Result<()> {
 
                 if let Ok(delay) = delay_str.parse::<u64>() {
                     config.delay_seconds = delay;
-                    println!("Delay set to: {} seconds", delay);
+                    println!("Delay set to: {delay} seconds");
                 } else {
                     println!(
                         "Invalid number. Keeping current value: {} seconds",
@@ -295,12 +295,12 @@ pub fn handle_configure_loop() -> Result<()> {
 
                 if param_value.is_empty() {
                     config.params.remove(&param_name);
-                    println!("Parameter '{}' removed.", param_name);
+                    println!("Parameter '{param_name}' removed.");
                 } else {
                     config
                         .params
                         .insert(param_name.clone(), param_value.clone());
-                    println!("Parameter '{}' set to: {}", param_name, param_value);
+                    println!("Parameter '{param_name}' set to: {param_value}");
                 }
             }
             5 => {
@@ -334,7 +334,7 @@ pub fn handle_configure_loop() -> Result<()> {
 
                 let param_name = &param_names[selection];
                 config.params.remove(param_name);
-                println!("Parameter '{}' removed.", param_name);
+                println!("Parameter '{param_name}' removed.");
             }
             6 => {
                 // Show Current Configuration
@@ -342,7 +342,7 @@ pub fn handle_configure_loop() -> Result<()> {
                 println!("---------------------------");
                 println!("TCode: {}", config.tcode);
                 if let Some(run_type) = &config.tcode_run_type {
-                    println!("TCode Run Type: {}", run_type);
+                    println!("TCode Run Type: {run_type}");
                 } else {
                     println!("TCode Run Type: (default)");
                 }
@@ -356,7 +356,7 @@ pub fn handle_configure_loop() -> Result<()> {
                 if !config.params.is_empty() {
                     println!("\nParameters:");
                     for (key, value) in &config.params {
-                        println!("  {}: {}", key, value);
+                        println!("  {key}: {value}");
                     }
                 }
 
@@ -373,7 +373,7 @@ pub fn handle_configure_loop() -> Result<()> {
 
         // Save configuration after each change
         if let Err(e) = config.save() {
-            eprintln!("Failed to save configuration: {}", e);
+            eprintln!("Failed to save configuration: {e}");
             thread::sleep(Duration::from_secs(2));
         } else {
             println!("Configuration saved successfully.");
@@ -393,7 +393,7 @@ pub fn run_loop(session: &GuiSession) -> Result<()> {
     let config = match LoopConfig::load() {
         Ok(cfg) => cfg,
         Err(e) => {
-            println!("Error loading loop configuration: {}", e);
+            println!("Error loading loop configuration: {e}");
             println!("\nPress Enter to return to main menu...");
             let mut input = String::new();
             io::stdin().read_line(&mut input).unwrap();
@@ -416,7 +416,7 @@ pub fn run_loop(session: &GuiSession) -> Result<()> {
         config.tcode
     );
     if let Some(run_type) = &config.tcode_run_type {
-        println!("TCode Run Type: {}", run_type);
+        println!("TCode Run Type: {run_type}");
     } else {
         println!("TCode Run Type: (default)");
     }
@@ -430,7 +430,7 @@ pub fn run_loop(session: &GuiSession) -> Result<()> {
     if !config.params.is_empty() {
         println!("\nParameters:");
         for (key, value) in &config.params {
-            println!("  {}: {}", key, value);
+            println!("  {key}: {value}");
         }
     }
 
@@ -443,10 +443,7 @@ pub fn run_loop(session: &GuiSession) -> Result<()> {
     loop {
         // Display iteration information
         if config.iterations == 0 {
-            println!(
-                "\nIteration {} (infinite loop, press Ctrl+C to stop)",
-                iteration
-            );
+            println!("\nIteration {iteration} (infinite loop, press Ctrl+C to stop)");
         } else {
             println!("\nIteration {}/{}", iteration, config.iterations);
         }
@@ -489,8 +486,7 @@ pub fn run_loop(session: &GuiSession) -> Result<()> {
                     }
                     Some(unknown_type) => {
                         println!(
-                            "Unknown run type '{}' for 149 report. Running regular 149 auto...",
-                            unknown_type
+                            "Unknown run type '{unknown_type}' for 149 report. Running regular 149 auto..."
                         );
                         crate::y_149_module::run_149_auto(session)?;
                     }

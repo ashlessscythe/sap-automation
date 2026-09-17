@@ -147,11 +147,11 @@ impl ExcelDataFrame {
 pub fn read_excel_file(file_path: &str, sheet_name: &str) -> Result<ExcelDataFrame> {
     let path = Path::new(file_path);
     let mut workbook: Xlsx<_> =
-        open_workbook(path).with_context(|| format!("Failed to open Excel file: {}", file_path))?;
+        open_workbook(path).with_context(|| format!("Failed to open Excel file: {file_path}"))?;
 
     let range = workbook
         .worksheet_range(sheet_name)
-        .with_context(|| format!("Failed to read sheet '{}' from Excel file", sheet_name))?;
+        .with_context(|| format!("Failed to read sheet '{sheet_name}' from Excel file"))?;
 
     parse_excel_range(range)
 }
@@ -202,7 +202,7 @@ pub fn read_excel_columns(
     df.get_columns(column_names).ok_or_else(|| {
         io::Error::new(
             ErrorKind::NotFound,
-            format!("One or more columns not found: {:?}", column_names),
+            format!("One or more columns not found: {column_names:?}"),
         )
         .into()
     })
@@ -219,7 +219,7 @@ pub fn read_excel_column(
     df.get_column(column_name).ok_or_else(|| {
         io::Error::new(
             ErrorKind::NotFound,
-            format!("Column not found: {}", column_name),
+            format!("Column not found: {column_name}"),
         )
         .into()
     })
@@ -236,7 +236,7 @@ pub fn format_excel_column_for_sap(
     df.format_column_for_sap(column_name).ok_or_else(|| {
         io::Error::new(
             ErrorKind::NotFound,
-            format!("Column not found: {}", column_name),
+            format!("Column not found: {column_name}"),
         )
         .into()
     })
@@ -253,7 +253,7 @@ pub fn format_excel_columns_for_sap(
     df.format_columns_for_sap(column_names).ok_or_else(|| {
         io::Error::new(
             ErrorKind::NotFound,
-            format!("One or more columns not found: {:?}", column_names),
+            format!("One or more columns not found: {column_names:?}"),
         )
         .into()
     })

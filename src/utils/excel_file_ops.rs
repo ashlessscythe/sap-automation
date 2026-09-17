@@ -36,17 +36,14 @@ pub fn read_excel_column(
     let df = match read_excel_file(&resolved_path, sheet_name) {
         Ok(df) => df,
         Err(e) => {
-            println!("Error reading Excel file: {}", e);
+            println!("Error reading Excel file: {e}");
             return Ok(Vec::new());
         }
     };
 
     // Check if the column header exists
     if !df.headers.contains(&column_header.to_string()) {
-        println!(
-            "Column header '{}' not found in sheet '{}'",
-            column_header, sheet_name
-        );
+        println!("Column header '{column_header}' not found in sheet '{sheet_name}'");
         println!("Available headers: {:?}", df.headers);
         return Ok(Vec::new());
     }
@@ -102,13 +99,13 @@ pub fn handle_read_excel_file() -> Result<()> {
     let file_path = match get_excel_file_path(&path_or_dir) {
         Ok(path) => path,
         Err(e) => {
-            eprintln!("Error: {}", e);
+            eprintln!("Error: {e}");
             thread::sleep(Duration::from_secs(2));
             return Ok(());
         }
     };
 
-    println!("\nSelected file: {}", file_path);
+    println!("\nSelected file: {file_path}");
 
     // Ask for sheet name
     let sheet_name: String = Input::new()
@@ -132,7 +129,7 @@ pub fn handle_read_excel_file() -> Result<()> {
             df
         }
         Err(e) => {
-            eprintln!("Error reading Excel file: {}", e);
+            eprintln!("Error reading Excel file: {e}");
             thread::sleep(Duration::from_secs(2));
             return Ok(());
         }
@@ -182,7 +179,7 @@ pub fn handle_read_excel_file() -> Result<()> {
                 print!("\x1b[1;36m| "); // Bright cyan, bold
                 for (i, col) in selected_columns.iter().enumerate() {
                     let width = col_widths[i];
-                    print!("{:<width$} | ", col, width = width);
+                    print!("{col:<width$} | ");
                 }
                 println!("\x1b[0m"); // Reset color
 
@@ -211,7 +208,7 @@ pub fn handle_read_excel_file() -> Result<()> {
                         let width = col_widths[col_idx];
                         if row_idx < col.len() {
                             let value = col[row_idx].to_string();
-                            print!("{:<width$} | ", value, width = width);
+                            print!("{value:<width$} | ");
                         } else {
                             print!("{:<width$} | ", "", width = width);
                         }
@@ -235,7 +232,7 @@ pub fn handle_read_excel_file() -> Result<()> {
         // Create a list of options including headers, done selecting, and exit options
         let mut options = Vec::new();
         for header in &df.headers {
-            options.push(format!("Select column: {}", header));
+            options.push(format!("Select column: {header}"));
         }
         options.push("Done selecting - Format for SAP".to_string());
         options.push("Exit back to main menu".to_string());
@@ -271,7 +268,7 @@ pub fn handle_read_excel_file() -> Result<()> {
             match df.format_columns_for_sap(&col_refs) {
                 Some(formatted) => {
                     println!("\nFormatted data for SAP multi-value field:");
-                    println!("{}", formatted);
+                    println!("{formatted}");
 
                     println!("\nThis data can be pasted directly into SAP multi-value fields.");
                     break; // Success, exit the loop
@@ -288,9 +285,9 @@ pub fn handle_read_excel_file() -> Result<()> {
             let selected_header = &df.headers[selection];
             if !selected_columns.contains(selected_header) {
                 selected_columns.push(selected_header.clone());
-                println!("\nAdded column: {}", selected_header);
+                println!("\nAdded column: {selected_header}");
             } else {
-                println!("\nColumn already selected: {}", selected_header);
+                println!("\nColumn already selected: {selected_header}");
             }
             thread::sleep(Duration::from_secs(1));
         }

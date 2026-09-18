@@ -4,3 +4,4 @@
 *.csv
 config.toml
 config.toml.bk
+.vscode/settings.json

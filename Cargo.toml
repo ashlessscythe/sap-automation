@@ -42,7 +42,7 @@ sap-scripting = "0.4.2"
 anyhow = "1.0.103"
 dialoguer = "0.12"
 crossterm = "0.29.0"
-calamine = "0.36.1"
+calamine = "0.37"
 rpassword = "7.5.0"
 clap = { version = "4.4", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }

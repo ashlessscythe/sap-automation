@@ -127,7 +127,7 @@ fn version_prints_semver() {
         .arg("--version")
         .assert()
         .success()
-        // Cargo.toml says 0.6.0 today; assert generic semver shape so the
-        // test doesn't have to be edited every release.
+        // Assert generic semver shape so the test doesn't have to be edited
+        // every release (version comes from CARGO_PKG_VERSION).
         .stdout(predicate::str::is_match(r"\d+\.\d+\.\d+").unwrap());
 }

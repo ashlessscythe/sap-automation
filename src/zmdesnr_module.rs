@@ -80,11 +80,7 @@ pub fn run_zmdesnr_auto(session: &GuiSession) -> Result<()> {
     let mut params = create_zmdesnr_params_from_config(&tcode_config);
 
     // Bin filter replaces delivery-based filtering; skip Excel delivery load.
-    if params
-        .bin_filter
-        .as_ref()
-        .is_some_and(|b| !b.is_empty())
-    {
+    if params.bin_filter.as_ref().is_some_and(|b| !b.is_empty()) {
         println!(
             "Bin filter set ({}); skipping delivery number load.",
             params.bin_filter.as_deref().unwrap_or("")

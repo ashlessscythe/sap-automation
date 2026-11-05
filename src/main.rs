@@ -103,6 +103,16 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
+    // --bin-filter sets ZMDESNR Storage Bin (LGPLA) and skips delivery paste.
+    if overrides.bin_filter.is_some() {
+        let target = overrides.tcode.clone().unwrap_or_default().to_uppercase();
+        if !target.is_empty() && target != "ZMDESNR" {
+            return Err(anyhow::anyhow!(
+                "--bin-filter is only supported for ZMDESNR (got --tcode={target})"
+            ));
+        }
+    }
+
     // Install CLI overrides into the process-wide slot BEFORE any config load,
     // so every `*Config::load()` call site sees the merged view.
     set_cli_overrides(overrides);

@@ -62,6 +62,15 @@ fn omitted_flags_yield_all_none() {
     assert!(o.shipment_col.is_none());
     assert!(o.pre_export_back.is_none());
     assert!(o.tab_number.is_none());
+    assert!(o.bin_filter.is_none());
+}
+
+#[test]
+fn bin_filter_flag_round_trip() {
+    let cli = parse(&["--tcode=zmdesnr", "--bin-filter=64EP*"]).unwrap();
+    let o = cli.to_overrides().unwrap();
+    assert_eq!(o.tcode.as_deref(), Some("ZMDESNR"));
+    assert_eq!(o.bin_filter.as_deref(), Some("64EP*"));
 }
 
 #[test]
@@ -262,6 +271,7 @@ fn per_tcode_flag_names_lists_only_set_fields() {
         "--by-date=true",
         "--limiter=date_range",
         "--tab-number=7",
+        "--bin-filter=64EP*",
     ])
     .unwrap();
     let o = cli.to_overrides().unwrap();
@@ -270,6 +280,7 @@ fn per_tcode_flag_names_lists_only_set_fields() {
     assert!(names.contains(&"--by-date"));
     assert!(names.contains(&"--limiter"));
     assert!(names.contains(&"--tab-number"));
+    assert!(names.contains(&"--bin-filter"));
     assert!(!names.contains(&"--by-delivery"));
     assert!(!names.contains(&"--variant"));
 }

@@ -63,6 +63,17 @@ fn rejects_tab_number_with_non_zmdesnr_tcode() {
         .stderr(predicate::str::contains("only supported for ZMDESNR"));
 }
 
+// ---------- bin_filter is ZMDESNR-only ----------
+
+#[test]
+fn rejects_bin_filter_with_non_zmdesnr_tcode() {
+    bin()
+        .args(["--bin-filter=64EP*", "--tcode=vt11"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("only supported for ZMDESNR"));
+}
+
 // ---------- ISO date parse errors ----------
 
 #[test]

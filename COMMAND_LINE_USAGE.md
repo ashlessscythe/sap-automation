@@ -60,7 +60,7 @@ Missing flag for tcode, enter with --tcode (or set [loop].tcode in config.toml)
 | --- | --- | --- |
 | `--layout=<NAME>` | The TCode under `--tcode` | Overrides `[tcode.X].layout`. |
 | `--variant=<NAME>` | The TCode under `--tcode` | Overrides `[tcode.X].variant`. |
-| `--export-type=<0..4>` | The TCode under `--tcode` | 0=unconverted, 1=text-tabs, 2=rich-text, 3=HTML, 4=clipboard. |
+| `--export-type=<0..4>` | The TCode under `--tcode` | 0=unconverted, 1=text-tabs, 2=rich-text, 3=HTML, 4=clipboard. For ZMDESNR/LX03, omit (and no config/global default) → Excel `.xlsx` menu export. |
 | `--plants=<LIST>` | Regular 149 only | Comma-separated plants (e.g. `PLT1,PLT2`). Overrides `[tcode.y_xx_99999999].plants`. Empty list / omitted flag falls back to config; empty after both → one `ALL` export. |
 
 ### Loop / sequence timing
@@ -95,6 +95,7 @@ Two hard rules enforced before any SAP connection is attempted:
 | --- | --- | --- |
 | `--pre-export-back=<bool>` | ZEXSNR **only** | Send vkey 3 (back) after export but before layout selection. Overrides `[tcode.ZEXSNR].pre_export_back`. Pass `=false` to disable a config-on value from the CLI. Rejected with `--tcode!=ZEXSNR`. |
 | `--tab-number=<N>` | ZEXSNR **only** | Which results tab to select. Resolution order: **CLI override → `[tcode.ZEXSNR].tab_number` → in-code default `2`** (so a brand-new install with no config still works). Rejected with `--tcode!=ZEXSNR`. **Note:** SAP GUI requires plant (`WERKS`) to be valid before tab switching, so the report flow always selects the variant first (which fills `WERKS`) and only then switches to this tab. |
+| `--bin-filter=<BIN>` | ZMDESNR **only** | Storage bin filter (e.g. `64EP*`). Sets `LGPLA-LOW` and **skips delivery paste**. Overrides `[tcode.ZMDESNR].bin_filter`. Rejected with `--tcode!=ZMDESNR`. In PowerShell, quote wildcards: `--bin-filter="64EP*"`. |
 
 ### Date range
 
@@ -245,6 +246,22 @@ Disables the post-export back-send (which `[tcode.ZEXSNR].pre_export_back = "tru
 ./sap_automation.exe --tcode=zexsnr --variant=INV_VIEW_PLACEHOLDER_SP --layout=mg_view \
   --by-delivery=true --delivery-file=zvt11 \
   --pre-export-back=false --tab-number=2
+```
+
+### ZMDESNR bin filter (tab-delimited export)
+
+Sets Storage Bin (`LGPLA-LOW`) and skips delivery paste. `--export-type=1` is text with tabs; omit `--export-type` (and no config default) for Excel `.xlsx`. Quote `*` in PowerShell.
+
+```bash
+./sap_automation.exe --tcode=zmdesnr --variant=INV_VIEW_PLACEHOLDER_SP --layout=audit25 \
+  --bin-filter="64EP*" --export-type=1 --reports-dir=C:\reports
+```
+
+### LX03 variant + layout (tab-delimited export)
+
+```bash
+./sap_automation.exe --tcode=lx03 --variant=FG_BIN_AUD --layout=audit25 \
+  --export-type=1 --reports-dir=C:\reports
 ```
 
 ### Sequence (config-driven) with a faster cadence

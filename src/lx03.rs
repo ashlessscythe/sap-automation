@@ -5,7 +5,9 @@ use crate::utils::choose_layout_utils::choose_layout;
 use crate::utils::config_types::SapConfig;
 use crate::utils::sap_ctrl_utils::exist_ctrl;
 use crate::utils::sap_export_utils::export_local_file;
+use crate::utils::sap_file_utils::{get_tcode_file_path, save_sap_file};
 use crate::utils::sap_tcode_utils::{assert_tcode, variant_select};
+use crate::utils::sap_wnd_utils::check_export_window;
 
 /// Struct to hold LX03 export parameters
 #[derive(Debug)]
@@ -27,16 +29,15 @@ impl Default for LX03Params {
     }
 }
 
-fn resolve_export_type(params: &LX03Params) -> u8 {
+/// Resolve local-file export type when configured. `None` means use Excel `.xlsx`.
+fn resolve_export_type(params: &LX03Params) -> Option<u8> {
     if let Some(export_type) = params.export_type {
-        return export_type;
+        return Some(export_type);
     }
     if let Ok(config) = SapConfig::load() {
-        if let Some(export_type) = config.get_effective_export_type("LX03") {
-            return export_type;
-        }
+        return config.get_effective_export_type("LX03");
     }
-    1 // text with tabs
+    None
 }
 
 /// Run LX03 export with the given parameters
@@ -90,26 +91,47 @@ pub fn run_export(session: &GuiSession, params: &LX03Params) -> Result<bool> {
         }
     }
 
-    let export_type = resolve_export_type(params);
+    // Local file when export_type is set; otherwise Excel .xlsx (ZMDESNR parity).
+    if let Some(export_type) = resolve_export_type(params) {
+        if let Ok(menu) = session.find_by_id("wnd[0]/mbar/menu[0]/menu[1]/menu[2]".to_string()) {
+            if let Some(menu_item) = menu.downcast::<GuiMenu>() {
+                if menu_item.select().is_ok() {
+                    return match export_local_file(session, "LX03", export_type, None) {
+                        Ok(_) => Ok(true),
+                        Err(e) => {
+                            println!("Error exporting LX03 data: {e}");
+                            Ok(false)
+                        }
+                    };
+                }
+            }
+            println!("Failed to open LX03 local file export menu");
+        } else {
+            println!("LX03 local file export menu not found");
+        }
+        println!("Local file export path not available; falling back to Excel export...");
+    }
 
-    if let Ok(menu) = session.find_by_id("wnd[0]/mbar/menu[0]/menu[1]/menu[2]".to_string()) {
+    // Spreadsheet / Excel export (menu sibling of local-file menu[2])
+    if let Ok(menu) = session.find_by_id("wnd[0]/mbar/menu[0]/menu[1]/menu[1]".to_string()) {
         if let Some(menu_item) = menu.downcast::<GuiMenu>() {
             menu_item.select()?;
         } else {
-            println!("Failed to open LX03 local file export menu");
+            println!("Failed to open LX03 Excel export menu");
             return Ok(false);
         }
     } else {
-        println!("LX03 local file export menu not found");
+        println!("LX03 Excel export menu not found");
         return Ok(false);
     }
 
-    match export_local_file(session, "LX03", export_type, None) {
-        Ok(path) if path.is_empty() => Ok(true),
-        Ok(_) => Ok(true),
-        Err(e) => {
-            println!("Error exporting LX03 data: {e}");
-            Ok(false)
-        }
+    let run_check = check_export_window(session, "LX03", "BIN STATUS REPORT: OVERVIEW")?;
+    if !run_check {
+        println!("Error checking LX03 export window");
+        return Ok(false);
     }
+
+    let (file_path, file_name) = get_tcode_file_path("LX03", "xlsx");
+    let run_check = save_sap_file(session, &file_path, &file_name, Some(true))?;
+    Ok(run_check)
 }

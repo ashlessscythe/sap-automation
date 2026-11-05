@@ -96,6 +96,10 @@ pub struct TcodeConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tab_number: Option<String>,
 
+    /// ZMDESNR storage bin filter (e.g. `64EP*`). When set, skips delivery paste.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bin_filter: Option<String>,
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subdir: Option<String>,
 

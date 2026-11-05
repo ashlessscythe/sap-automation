@@ -28,6 +28,8 @@ pub struct ZMDESNRParams {
     pub serial_number: Option<String>,
     pub column_name: Option<String>,
     pub tab_number: Option<i32>,
+    /// Storage bin filter (e.g. `64EP*`). When set, skips delivery paste.
+    pub bin_filter: Option<String>,
     pub additional_params: ZMDESNRAdditionalParams,
 }
 
@@ -42,6 +44,7 @@ impl Default for ZMDESNRParams {
             serial_number: None,
             column_name: None,
             tab_number: None,
+            bin_filter: None,
             additional_params: ZMDESNRAdditionalParams::default(),
         }
     }
@@ -264,7 +267,26 @@ fn handle_tab2_operations(session: &GuiSession, params: &ZMDESNRParams) -> Resul
         }
     }
 
-    // If no serial number provided, continue with delivery numbers
+    // Bin filter: set Storage Bin (LGPLA) and skip delivery multi-paste
+    if let Some(bin) = &params.bin_filter {
+        if !bin.is_empty() {
+            println!("Applying bin filter: {bin}");
+            if let Ok(txt) = session.find_by_id(
+                "wnd[0]/usr/tabsTABSTRIP_TABB1/tabpUCOMM2/ssub%_SUBSCREEN_TABB1:ZMDE_SERIALNUMBER_HISTORY:9002/ctxtS_LGPLA-LOW"
+                    .to_string(),
+            ) {
+                if let Some(text_field) = txt.downcast::<GuiCTextField>() {
+                    text_field.set_text(bin.clone())?;
+                }
+            } else {
+                println!("Storage Bin field (ctxtS_LGPLA-LOW) not found");
+                return Ok(false);
+            }
+            return Ok(true);
+        }
+    }
+
+    // If no serial number or bin filter provided, continue with delivery numbers
 
     // Clear the Low Delivery Number field
     if let Ok(txt) = session.find_by_id("wnd[0]/usr/tabsTABSTRIP_TABB1/tabpUCOMM2/ssub%_SUBSCREEN_TABB1:ZMDE_SERIALNUMBER_HISTORY:9002/txtS_VBELN-LOW".to_string()) {

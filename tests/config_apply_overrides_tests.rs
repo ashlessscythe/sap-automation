@@ -405,6 +405,45 @@ fn tab_number_ignored_when_tcode_not_zmdesnr() {
     assert!(entry.tab_number.is_none());
 }
 
+#[test]
+fn bin_filter_lands_only_on_zmdesnr() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("missing.toml");
+    let mut cfg = SapConfig::load_from_path(path.to_str().unwrap()).unwrap();
+
+    let overrides = CliOverrides {
+        tcode: Some("ZMDESNR".into()),
+        bin_filter: Some("64EP*".into()),
+        ..Default::default()
+    };
+    cfg.apply_overrides_with(&overrides);
+
+    let entry = cfg.tcode.as_ref().unwrap().get("ZMDESNR").unwrap();
+    assert_eq!(entry.bin_filter.as_deref(), Some("64EP*"));
+
+    let merged = cfg
+        .get_tcode_config("ZMDESNR", Some(true))
+        .expect("ZMDESNR config present");
+    assert_eq!(merged.get("bin_filter").map(String::as_str), Some("64EP*"));
+}
+
+#[test]
+fn bin_filter_ignored_when_tcode_not_zmdesnr() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("missing.toml");
+    let mut cfg = SapConfig::load_from_path(path.to_str().unwrap()).unwrap();
+
+    let overrides = CliOverrides {
+        tcode: Some("VT11".into()),
+        bin_filter: Some("64EP*".into()),
+        ..Default::default()
+    };
+    cfg.apply_overrides_with(&overrides);
+
+    let entry = cfg.tcode.as_ref().unwrap().get("VT11").unwrap();
+    assert!(entry.bin_filter.is_none());
+}
+
 // ---------- delivery / shipment file pass-through ----------
 
 #[test]

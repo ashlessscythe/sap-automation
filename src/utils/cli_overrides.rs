@@ -86,6 +86,11 @@ pub struct CliOverrides {
     /// before tab switching works, so the report flow always selects the
     /// variant first (which fills `WERKS`) and only then switches to this tab.
     pub tab_number: Option<i32>,
+
+    /// ZMDESNR-only: storage bin filter (e.g. `64EP*`). Maps to
+    /// `[tcode.ZMDESNR].bin_filter` in `config.toml`. When set, the export
+    /// fills LGPLA-LOW and skips delivery multi-paste.
+    pub bin_filter: Option<String>,
 }
 
 impl CliOverrides {
@@ -153,6 +158,9 @@ impl CliOverrides {
         }
         if self.tab_number.is_some() {
             v.push("--tab-number");
+        }
+        if self.bin_filter.is_some() {
+            v.push("--bin-filter");
         }
         v
     }
@@ -232,6 +240,9 @@ impl CliOverrides {
         }
         if let Some(v) = self.tab_number {
             parts.push(format!("--tab-number={v}"));
+        }
+        if let Some(v) = &self.bin_filter {
+            parts.push(format!("--bin-filter={v}"));
         }
         if parts.is_empty() {
             None

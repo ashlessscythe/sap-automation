@@ -79,8 +79,17 @@ pub fn run_zmdesnr_auto(session: &GuiSession) -> Result<()> {
     println!("Getting zmdesnr params from config");
     let mut params = create_zmdesnr_params_from_config(&tcode_config);
 
-    // Check if we need to get delivery numbers from Excel
-    if let Some(column_name) = &params.column_name {
+    // Bin filter replaces delivery-based filtering; skip Excel delivery load.
+    if params
+        .bin_filter
+        .as_ref()
+        .is_some_and(|b| !b.is_empty())
+    {
+        println!(
+            "Bin filter set ({}); skipping delivery number load.",
+            params.bin_filter.as_deref().unwrap_or("")
+        );
+    } else if let Some(column_name) = &params.column_name {
         println!("Reading delivery numbers from Excel column: {column_name}");
 
         // Get the reports directory
@@ -133,6 +142,7 @@ pub fn run_zmdesnr_auto(session: &GuiSession) -> Result<()> {
     println!("Variant: {:?}", params.sap_variant_name);
     println!("Layout: {:?}", params.layout_row);
     println!("Serial Number: {:?}", params.serial_number);
+    println!("Bin Filter: {:?}", params.bin_filter);
     println!("Delivery Numbers: {} found", params.delivery_numbers.len());
     if let Some(pre_export_back) = &params.additional_params.pre_export_back {
         if !pre_export_back.is_empty() {
@@ -193,6 +203,12 @@ fn create_zmdesnr_params_from_config(config: &HashMap<String, String>) -> ZMDESN
 
     if let Some(pre_export_back) = config.get("pre_export_back") {
         params.additional_params.pre_export_back = Some(pre_export_back.to_string());
+    }
+
+    if let Some(bin_filter) = config.get("bin_filter") {
+        if !bin_filter.is_empty() {
+            params.bin_filter = Some(bin_filter.clone());
+        }
     }
 
     // Set add_layout_columns from layout_columns if available

@@ -223,6 +223,11 @@ impl SapConfig {
                                         .and_then(|v| v.as_str())
                                         .map(|s| s.to_string());
 
+                                    tcode_config.bin_filter = tcode_table
+                                        .get("bin_filter")
+                                        .and_then(|v| v.as_str())
+                                        .map(|s| s.to_string());
+
                                     // Parse export_type as u8 if present
                                     tcode_config.export_type =
                                         tcode_table.get("export_type").and_then(|v| match v {
@@ -267,6 +272,7 @@ impl SapConfig {
                                             "by_delivery",
                                             "serial_number",
                                             "tab_number",
+                                            "bin_filter",
                                             "export_type",
                                             "add_layout_columns",
                                             "layout_columns",
@@ -534,6 +540,10 @@ impl SapConfig {
                 // ZMDESNR module falls back to 2 via `unwrap_or(2)`.
                 if let Some(n) = o.tab_number {
                     entry.tab_number = Some(n.to_string());
+                }
+
+                if let Some(bin) = &o.bin_filter {
+                    entry.bin_filter = Some(bin.clone());
                 }
             }
         }
@@ -823,6 +833,10 @@ impl SapConfig {
                     content.push_str(&format!("tab_number = \"{tab_number}\"\n"));
                 }
 
+                if let Some(bin_filter) = &tcode_config.bin_filter {
+                    content.push_str(&format!("bin_filter = \"{bin_filter}\"\n"));
+                }
+
                 if let Some(export_type) = &tcode_config.export_type {
                     content.push_str(&format!("export_type = {export_type}\n"));
                 }
@@ -988,6 +1002,10 @@ impl SapConfig {
 
                 if let Some(tab_number) = &tcode_config.tab_number {
                     config.insert("tab_number".to_string(), tab_number.clone());
+                }
+
+                if let Some(bin_filter) = &tcode_config.bin_filter {
+                    config.insert("bin_filter".to_string(), bin_filter.clone());
                 }
 
                 if let Some(export_type) = &tcode_config.export_type {

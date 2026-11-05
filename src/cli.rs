@@ -137,6 +137,12 @@ pub struct Cli {
     /// before tab switching works.
     #[arg(long, value_name = "N")]
     pub tab_number: Option<i32>,
+
+    /// ZMDESNR ONLY: storage bin filter (e.g. `64EP*`). Sets LGPLA-LOW and
+    /// skips delivery paste. Overrides `[tcode.ZMDESNR].bin_filter`. Quote the
+    /// value in PowerShell so `*` is not expanded (`--bin-filter="64EP*"`).
+    #[arg(long, value_name = "BIN")]
+    pub bin_filter: Option<String>,
 }
 
 #[derive(Subcommand)]
@@ -201,6 +207,7 @@ impl Cli {
             shipment_col: self.shipment_col.clone(),
             pre_export_back: self.pre_export_back,
             tab_number: self.tab_number,
+            bin_filter: self.bin_filter.clone(),
         })
     }
 }

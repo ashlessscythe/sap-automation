@@ -37,12 +37,28 @@ Dependency pins matter: `aes = "=0.9.2"` is pinned because newer needs rustc 1.8
 
 **SAP abstraction.** `utils/sap_interfaces.rs` defines `SapSession` / `SapComponent` traits; `sap_real_impl.rs` wraps the COM objects, `sap_mock_impl.rs` is a recording mock (`MockSapSession`, `MockEvent`, `create_test_session`) used by tests. Note that most tcode flows take the concrete `&GuiSession` from `sap_scripting` directly, so only code written against the traits is mock-testable. The rest of `utils/` is shared SAP helpers: `sap_wnd_utils` (popups), `sap_ctrl_utils` (controls), `sap_tcode_utils`, layout/variant selection (`choose_layout`, `select_layout_utils`, `setup_layout*`), export + Excel post-processing (`sap_export_utils`, `excel_*` via calamine), `sap_crypto_utils` (AES-GCM credential storage), `keep_awake` (Windows power API).
 
-## ABC headless work (in progress)
+## ABC headless work
 
-`src/abc/` (run config, date resolution) and `src/utils/export_outcome.rs` (`ExportOutcome`, outcome classifier,
-paste-list helpers) are the start of a headless report runner driven by report name (rName, e.g. `mustgo`). Tcode steps
-expose `run_export_outcome` (the bool `run_export` wraps it) and are meant to be config-agnostic: everything comes in
-via the `*Params` struct, with CLI > config > default resolved by the caller. `src/abc_menu.rs` is the TUI submenu.
+`mustgo` is runnable: `sap_automation --rname=mustgo --run-date=<DATE|A..B|WKnn>` (also TUI > ABC Headless > mustgo). Code is
+unit/golden tested offline and reproduces spec 9.3; **the SAP steps have never run live** (see the "Live verification
+checklist" in `docs/abc_headless_plan.md`, the first thing to do when SAP is available).
+
+Modules in `src/abc/`: `run` (date/week parsing), `registry` (rName registry, output paths), `table` + `ops` (in-memory table,
+selection mask, filter/dedup/lookup/sort), `mustgo` (pure stages), `raw` (loader for SAP text-with-tabs exports; header
+`*_ALIASES` map the short list titles to canonical names), `runner` (the `SapSteps` seam, `run_mustgo`, `NoDataError`),
+`adapters` (`RealSapSteps` + `MustgoSapConfig` over the tcode steps), `dispatch` (CLI > `[abc.mustgo]` > `[global]` resolver,
+`run_report`). Also `src/lt23.rs` (new tcode), `src/utils/export_outcome.rs` (`ExportOutcome`, outcome classifiers, paste-list
+helpers) and `src/abc_menu.rs` (TUI submenu).
+
+Rules: tcode steps expose `run_export_outcome` (the bool `run_export` wraps it) and are config-agnostic: everything comes in via
+the `*Params` struct (new optional fields such as `export_target`; `None` keeps the legacy behaviour), with CLI > config >
+default resolved by the caller. Columns are matched by sanitised header name, never by position. Any empty list, no-data or error
+stops a report run and nothing is written.
+
+Fixtures: `tests/fixtures/mustgo/` holds xlsx-derived TSVs (approximate stand-ins) and `real/`, the owner's real exports,
+**byte-exact** (`-text` in `.gitattributes`: do not re-encode or normalise line endings). Tests: `mustgo_golden`,
+`mustgo_pipeline`, `mustgo_pipeline_real`, `mustgo_runner` (a fake `SapSteps` serving the real fixtures).
+
 **Resume from `docs/abc_headless_plan.md` ("RESUME HERE")**; the spec is `docs/abc_headless_migration_spec.md`.
 
 ## Workflow notes

@@ -6,154 +6,139 @@ once its dependencies are ticked. Tick the box and add a one-line note when a ch
 **Session protocol (keeps usage low):** read `CLAUDE.md`, this file, and *only* the spec sections the chunk names.
 Do not re-read the whole spec. One chunk per session; end by updating this file.
 
-## RESUME HERE (state as of 2026-11-09)
+## RESUME HERE (state as of 2026-11-10)
 
 Working mode: **step by step; Claude codes, the owner runs it against live SAP and brings back the real exports.**
-Next up: report-name (rName) driven runner, starting with `mustgo` (spec 5.1, verified numbers in 9.3).
+`mustgo` is runnable end to end in code: `sap_automation --rname=mustgo --run-date=2026-11-05`. Everything that does not
+need SAP is unit/golden tested and reproduces the verified numbers of spec 9.3 on the real exports. **Nothing SAP-facing
+has been run live.** Next for the owner: the live verification checklist below. Next for Claude: `xdock` / `toyota`.
 
-Done in code (all unit-tested, fmt/clippy/test green, **not yet smoke-tested on live SAP**):
-* 4.0 foundation: `src/utils/export_outcome.rs` (`ExportOutcome`, `classify_messages`/`classify_screen`,
-  `normalize_value`, `paste_value_list`); `run_export_outcome` on vt11/zvt11/vl06o/lx03/zmdesnr (bool `run_export`
-  is a wrapper; y_149* NOT converted); ALV variant popup path in `variant_select`.
-* 4.1 VT11 parity (code): new `VT11Params` fields `shipment_status`, `by_created_date`, `shipment_numbers` (K_TKNUM
-  paste), `monday_include_sunday`, `ignore_display_error`, `date_format`; classifier runs right after execute.
-  Not yet wired to config/CLI: `shipment_status`, `by_created_date`, `shipment_numbers`, `monday_include_sunday`.
-* TUI: main menu entry "ABC Headless >" (index 30, Exit moved to 31) -> `src/abc_menu.rs` submenu (existing auto runs
-  + LT23/ZMDETPC placeholders).
-* 2.3 (partial): `src/abc/run.rs` has `week_start`/`week_range` (Excel WEEKNUM, Sunday start; week 45/2026 =
-  2026-11-01..11-07) and `parse_run_date`. NOT yet done: JSON date objects, `diff`, per-day loop, folder/file naming.
-* CLI: `--vt11-closed-date` (K_DATEN) / `--vt11-created-date` (K_ERDAT) (`WK45`, `WK45/2026`, `YYYY-MM-DD`, `A..B`; replaced the generic `--date`; per-tcode flags `--<tcode>-date` to follow), `--ignore-display-error`
-  (VT11 only), `--rname-dir` (relative = under reports_dir, files at `{reports_dir}\<rname-dir>\{TCODE}`; absolute used
-  as is; applied in `get_tcode_file_path`). Date typed into SAP follows `[global].date_format` / `--date-format`
-  (VT11 only so far; ZVT11 still hardcodes `%m/%d/%Y`).
+Done in code (fmt/clippy/test green; SAP parts not smoke-tested):
+* Foundation (4.0): `src/utils/export_outcome.rs` (`ExportOutcome`, P6 classifier, `classify_after_execute`,
+  `normalize_value`, `paste_value_list`); `run_export_outcome` on vt11/zvt11/vl06o/lx03/zmdesnr (`run_export` wraps it;
+  y_149* not converted); ALV variant popup path in `variant_select`.
+* Pure table layer: `src/abc/table.rs` (TSV, header sanitise, `customer` blank fill, normalisation, selection mask),
+  `src/abc/ops.rs` (filter, adv_filter, dedup, lookup, add_col, morph_datetime, count_same, sort, remove_one, copy),
+  `src/abc/run.rs` (week/range/date parsing), `src/abc/registry.rs` (rName registry, output paths).
+* `src/abc/mustgo.rs`: pure stages (TPDC selection, delivery/TO lists, `filter_sn_del`, `lt23_postprocess`,
+  `mark_sn_del_by_lt23`, `snr_copy`, `pivot_plant_by_date`, `write_outputs`).
+* `src/abc/raw.rs`: loader for SAP "text with tabs" list exports, derived from the real files; header aliases map the short
+  list-screen titles to the canonical (macro/xlsx) names; canonical names pass through, extra columns are ignored.
+* `src/abc/runner.rs`: `SapSteps` seam (one method per SAP call, no history call), `run_mustgo`, `outcome_to_output`,
+  `NoDataError`. Output is written only after the last step.
+* `src/abc/adapters.rs`: `RealSapSteps` + `MustgoSapConfig` + pure `*_params` builders over the tcode steps; `src/lt23.rs`
+  (new tcode, registered in lib.rs and main.rs); headless export plumbing (`ExportTarget`, `export_to_target`) in
+  `sap_export_utils.rs`; new optional params on VT11/VL06O/ZMDESNR (`export_target`, ..., defaults keep the old behaviour).
+* `src/abc/dispatch.rs`: resolver (CLI > `[abc.mustgo]` > `[global]` > defaults), `run_report`, summary and error text.
+  CLI `--rname` / `--run-date`; TUI ABC Headless > "mustgo". No sequence menu id (the sequence runner has no run date).
+* Fixtures: `tests/fixtures/mustgo/` (xlsx-derived TSVs + README) and `real/` (the owner's real exports, byte-exact,
+  `-text` in `.gitattributes`). Tests: `mustgo_golden`, `mustgo_pipeline`, `mustgo_pipeline_real`, `mustgo_runner`.
 
-Owner to verify live (VT11, variant `XD_ALL_EPDC_`, `--vt11-closed-date=WK45`, ignore display error): that it runs, the raw
-export header matches the `mustgo` sample (91 rows, 18 columns), `K_DATEN` gets the right dates, no false aborts from
-the new post-execute classifier (status bar `E:`). Control IDs `K_ERDAT`, `K_STTRG`, `K_TKNUM` come from the VBA, not
-a live SAP. Known caveats: Monday rule compares dates after the Sunday shift (Mon start==end becomes Sun..Mon);
-`--rname-dir` only changes where exports are written, readers that look in `{reports_dir}\{tcode}` (e.g. VT11
-deliveries-from-ZMDESNR) still read the old place.
+Decisions made while building (all tested):
+* **476 vs 128 (spec 9.3 step 17-19).** The 476 is the SAP result of the deliveries + TOs call, i.e. the rows of the
+  *unfiltered* `sn_del` (`snr_orig`) whose delivery and TO are in the lists. The lists for that call come from `sn_del`
+  after the row-18 deletion: 128 rows, 10 deliveries, 15 TOs (the same sets as the real 2a export), not from the 1011-row
+  table (107 deliveries / 87 TOs).
+* **`export_date`:** `yyyy-mm-dd` for a single date, `WK_<n>` for a range/week; one run per call, no per-day loop; VT11 gets
+  the whole range.
+* **Empty LT23 result = failure** (no delivery with two or more TOs): the run stops with "NO DATA at step 'lt23
+  post-process'"; any empty list or no-data/error stops the block and writes nothing.
+* **Blank plant** in the pivot is labelled `(blank)` (Excel label); blank `lm_serial_number` rows are not counted.
+* **Headless export plumbing:** `export_target: Some(..)` switches a tcode to a local text-with-tabs export
+  (`<export_dir>\<TCODE>\<yyyymmddhhmmss>_<TCODE>.txt`), no config reads, no Excel fallback, file must exist and be
+  non-empty; the "save list in file" dialog title is checked. `None` = legacy behaviour.
+* **Alias table** (`raw::*_ALIASES`): real list headers (`TPPt`, `Parent no`, `Plnt`, `Cust. Part`, `TO Number`,
+  `Source Bin`, ...) -> canonical names. The real VT11 free text is truncated to 14 characters (unused by mustgo).
+* ZMDESNR by deliveries uses `scroll_paste` (the legacy per-cell loop only fills the visible dialog rows); a missing layout
+  is a step error when headless; LT23 creates a missing layout only if `lt23_create_layout = true`.
 
-Suggested next steps: (1) rName registry + run config for `mustgo` (2.3 remainder, stub SAP steps), (2) table core/ops
-for the mustgo steps only (2.1/2.2 subset), (3) mustgo post-process vs golden data (3.1; needs 0.4 fixtures),
-(4) real SAP steps under the config-agnostic rule: VL06O (4.2), ZMDESNR by deliveries/TOs (4.3), LT23 (4.4).
-Drop the wasted history call in mustgo step 19 (spec item 10).
+Suggested next steps: (1) owner runs the checklist below; fix control ids from the findings, keep the exports as fixtures;
+(2) `xdock` / `toyota` / `misc` (3.2): ZMDETPC summarised (4.5) and the VL06O dedup/merge rules; (3) `k2xx`, `relabel`,
+`repack`, then the v2 list (ZVT11 Closed, VT22, VT03N); (4) per-day loop and `rname_overrides` if wanted (2.3 remainder).
 
-**Update 2026-11-10 (mustgo steps 1-2 done offline):** fixtures `tests/fixtures/mustgo/` (xlsx-derived, approximate),
-`tests/mustgo_golden.rs`, `src/abc/mustgo.rs` + `tests/mustgo_pipeline.rs` (pure stages match spec 9.3; see "Design
-notes"). **Blocked on real exports (owner), do not guess formats:** the raw text-with-tabs loader, runner, SAP adapters,
-CLI/menu wiring. Needed, each via `export_type 1` (text with tabs): VT11 (variant `XD_ALL_EPDC_`, no layout), VL06O
-(item view, no layout), ZMDESNR by deliveries (variant `mg_k2xx`, layout `mg_view`), LT23 (E01, confirmed, layout
-`to_mg`), ZMDESNR by deliveries+TOs (same variant/layout). Same query as the 2026-11-05 xlsx exports.
-
-Offline = no SAP needed (unit/golden tests only). SAP = needs a live SAP GUI to verify; code is written and mock-tested
-offline.
+Offline = no SAP needed (unit/golden tests only). SAP = needs a live SAP GUI to verify.
 
 ---
 
-## Design notes: `mustgo` pure stages (`src/abc/mustgo.rs`)
+## Live verification checklist (mustgo)
 
-Stages (all pure over `Table`, columns by sanitised name, golden-tested in `tests/mustgo_pipeline.rs` on the fixtures in
-`tests/fixtures/mustgo/`):
+Owner, in this order. "Spec" = id taken from the VBA spec only, not seen in this repo's code. Exports are text with tabs
+(export type 1) at `<reports_dir>\<TCODE>\<yyyymmddhhmmss>_<TCODE>.txt` (e.g. `reports\VT11\20261110101550_VT11.txt`); they
+are deleted after a successful load unless `[abc.mustgo] delete_exports = false` (a file that failed to load is kept).
+Outputs: `<reports_dir>\K2XX\<today>\mustgo\<date>_MUSTGO_{LT23,SNR_COPY,PIVOT}.tsv`.
+
+**A. Pre-flight (no SAP actions)**
+1. `[global].date_format` equals the SAP user's date format (the same text is typed into VT11 `K_DATEN`; the default is
+   `mm/dd/yyyy`). The observed exports show ISO dates, which pass through unchanged.
+2. Variants and layouts exist in SAP: VT11 variant `XD_ALL_EPDC_`; ZMDESNR variant `mg_k2xx` and layout `mg_view` (a missing
+   layout is a step error; the existing layout code can also prompt on the console); LT23 layout `to_mg`. Override names in
+   `[abc.mustgo]` if they differ.
+3. Layouts deliver the canonical columns (a missing one stops the run naming it, extra columns are ignored): vt11
+   `shipment_number`, `transportplanningpt`; vl06o `delivery`; zmdesnr by deliveries `delivery`, `transfer_order_number`,
+   `parent_serial_number`, `status`; lt23 `delivery`, `transfer_order_number`, `creation_date`, `creation_time`,
+   `source_storage_bin`; zmdesnr by deliveries+TOs `lm_serial_number`, `parent_serial_number`, `plant`, `created_on`
+   (`week` is inserted at position 19, so use the 19-column `mg_view`).
+4. SAP GUI scripting enabled, logged in, one session open; the first runs use `--keep-awake` off and `delete_exports = false`.
+
+**B. First run: single known date**
+`sap_automation --rname=mustgo --run-date=2026-11-05`. Expected on the data of the verification run (counts differ if SAP data
+changed since): 54 TPDC shipments, 107 deliveries, 87 TOs, `lt23` 15 rows, `snr_copy` 92 rows, pivot FV52 2, FV55 30, FV56 46,
+FV59 6, FW61 5, FW65 3 (total 92); the step-19 call receives 10 deliveries and 15 TOs. Compare the five export files with
+`tests/fixtures/mustgo/real/` (VT11 91 rows, VL06O 834, ZMDESNR 5796, LT23 1071, ZMDESNR 2a 476) and the outputs with
+`tests/fixtures/mustgo/expected_*.tsv`. A failure message names the step; "NO DATA at step ..." is a clean no-data, anything
+else is `ERROR: ...`. Exit code is non-zero for both.
+
+**C. Controls, per step (check in the order the steps run; each is a likely first failure)**
+* Common: the local-file menu paths (VT11 `menu[0]/menu[9]/menu[2]`, then `[9]/[0]`, `[3]/[2]`, `[3]/[0]`; VL06O
+  `menu[0]/menu[5]/menu[2]`, then `[5]/[0]`, `[3]/[2]`, `[3]/[0]`; ZMDESNR `menu[0]/menu[3]/menu[2]`; LT23
+  `menu[0]/menu[1]/menu[2]`, spec) are accepted only if the dialog is titled "save list in file" (case-insensitive); radio
+  `radSPOPLI-SELFLAG[1,0]`, save dialog `ctxtDY_PATH` / `ctxtDY_FILENAME`; the file must appear within 15 s.
+* "No list after execute" detection (`classify_after_execute`): the selection screen must keep VL06O
+  `btn%_IT_TKNUM_%_APP_%-VALU_PUSH`, ZMDESNR `tabsTABSTRIP_TABB1`, LT23 `ctxtT1_LGNUM` when SAP finds nothing; message wording
+  unknown. Test with a date that has no data.
+* VT11: `K_DATEN-LOW/HIGH` get the run date (HIGH cleared for a single date), variant applied, no layout; export 91 rows.
+* VL06O: `btnBUTTON6`, `IT_WADAT` cleared, shipments pasted with scrolling (cells `ctxt`), item view `btn[18]` is the default
+  view of the export (834 rows, `Item` column present).
+* ZMDESNR by deliveries: tab `tabpUCOMM2`, variant via `btn[17]`, all 107 deliveries arrive (`scroll_paste`, cells `txt`),
+  layout via `menu[4]/menu[0]/menu[1]` + grid. The legacy code presses execute twice; unchanged.
+* ZMDESNR by deliveries + TOs (spec): `btn%_S_TANUM_%_APP_%-VALU_PUSH` under `.../tabpUCOMM2/ssub%_SUBSCREEN_TABB1:ZMDE_SERIALNUMBER_HISTORY:9002/`,
+  value cells `txt` or `ctxt` (both tried), `wnd[2]/usr/btnBUTTON_1` warnings answered (up to 5), row-0 check, close with F8.
+* LT23 (all spec; the `/usr/` prefix is assumed): `ctxtT1_LGNUM` (E01), `btn%_T1_TANUM_%_APP_%-VALU_PUSH`, `radT1_QUITA`,
+  execute `btn[8]`; no default date/status limit on the selection screen hides TOs; layout `to_mg` via `btn[33]` and grid
+  `wnd[1]/usr/cntlGRID/shellcont/shell` (column `VARIANT`). Layout creation (`lt23_create_layout = true`: `btn[32]` +
+  `setup_layout_li` on `/usr/tabsTS_LINES/tabpLI01/ssubSUB810:SAPLSKBH:0810`, not saved) has never been run; the header
+  titles of the real LT23 export are the short list titles, not the spec's long names.
+
+**D. Then**
+Run a week (`--run-date=WK45`, one run, `export_date` = `WK_45`), then keep a failing export as a new fixture. Report the
+control ids that needed changes so they can be fixed in code and recorded here.
+
+---
+
+## Design notes: `mustgo` stages (`src/abc/mustgo.rs`, `runner.rs`)
+
+Stages (pure over `Table`, columns by sanitised name; golden-tested on the fixtures in `tests/fixtures/mustgo/`):
 * `select_tpdc_shipments(vt11)` (row 10) -> distinct shipment list for VL06O; `delivery_list(vl06o)` -> list for ZMDESNR.
 * `filter_sn_del(sn_del)` (rows 13-15) + `transfer_order_list` -> 1011 visible rows, 87 TOs (list for LT23).
 * `lt23_postprocess(lt23)` (row 16 a-f) -> 15 rows x 13 cols, equal to `expected_lt23.tsv`.
-* `mark_sn_del_by_lt23(sn_del, lt23)` (rows 17-18) -> 128 rows, 10 deliveries, 15 TOs; `delivery_list` + `transfer_order_list`
-  give the inputs of the ZMDESNR by deliveries + TOs query. NOTE: the 476 of spec 9.3 is the size of that SAP result,
-  i.e. the rows of the *unfiltered* sn_del (`snr_orig`) whose delivery and TO are in these lists, not of the deduped table.
+* `mark_sn_del_by_lt23(sn_del, lt23)` (rows 17-18) -> 128 rows, 10 deliveries, 15 TOs (inputs of step 19).
 * `snr_copy(sn_to, run_date)` (rows 19b-21) -> 92 rows x 21 cols (`week` at 19, `export_date` last), equal to
   `expected_snr_copy.tsv`; `pivot_plant_by_date` -> long table plant / export_date / count; `write_outputs` writes
   `lt23`, `snr_copy`, `pivot` TSV via `registry::output_path`.
 
-Planned SAP-step seam (not implemented): a runner owns a `HashMap<String, Table>` and a trait/closure per SAP step, e.g.
-`fn export(&mut self, step: Step, pasted: &[String]) -> Result<Table>` returning an already imported table
-(`Table::from_raw`). The runner calls: vt11 -> `select_tpdc_shipments` -> vl06o(ships) -> `delivery_list` -> zmdesnr(dels)
--> `filter_sn_del` -> lt23(`transfer_order_list`) -> `lt23_postprocess` -> `mark_sn_del_by_lt23` -> zmdesnr(dels, TOs)
--> `snr_copy`/`pivot_plant_by_date` -> `write_outputs`. Tests then use a fake seam returning the fixture tables. The raw
-export reader (SAP text/xlsx -> headers + rows) is separate and not written yet: the real raw format is unverified.
-
-* Real exports: `src/abc/raw.rs` loads SAP text-with-tabs exports (observed format in `tests/fixtures/mustgo/README.txt`);
-  short list-screen headers are mapped to canonical names by `*_ALIASES`; real data reproduces spec 9.3
-  (`tests/mustgo_pipeline_real.rs`). Real VT11 free text is truncated to 14 characters.
-
-* Runner: `src/abc/runner.rs` (`SapSteps` seam, `run_mustgo`, `outcome_to_output`). Canonical columns each step must deliver
-  (owner: check these against the live layouts; canonical names are accepted as they are, short list titles are mapped by
-  `raw::*_ALIASES`, extra columns are ignored, a missing one stops the run naming it):
-  vt11 `shipment_number`, `transportplanningpt`; vl06o `delivery`; zmdesnr by deliveries `delivery`, `transfer_order_number`,
-  `parent_serial_number`, `status`; lt23 `delivery`, `transfer_order_number`, `creation_date`, `creation_time`,
-  `source_storage_bin`; zmdesnr by deliveries+TOs `lm_serial_number`, `parent_serial_number`, `plant`, `created_on`
-  (`week` is inserted at position 19, so the layout should be the 19-column `mg_view`). Step 19 receives the deliveries/TOs of
-  `sn_del` after the row-18 deletion (10 / 15), not of the 1011-row table. `export_date` = `yyyy-mm-dd` (single date) or
-  `WK_<n>` (range); no history call exists in the seam; outputs are written only after the last step.
-
-## Live verification checklist (mustgo)
-
-Real adapter: `src/abc/adapters.rs` (`RealSapSteps`, `MustgoSapConfig`, pure builders `*_params`, `finish_step`). It was
-written without access to SAP; nothing below has been run live. Every export is "text with tabs" (export type 1), written to
-`<export_dir>\<TCODE>\<yyyymmddhhmmss>_<TCODE>.txt` (e.g. `reports\VT11\20261110101550_VT11.txt`; `export_dir` is a field of
-`MustgoSapConfig`, default `reports`) and deleted after a successful load unless `delete_exports` is false (a file that failed
-to load is kept). New optional params (`export_target`, ...) default to the old behaviour; only `Some(target)` switches a
-tcode to the headless path (no config reads, no Excel fallback).
-
-Owner: check these live, in order. "From spec" = id taken from the VBA spec, not seen in this repo's code.
-
-Common (all four tcodes)
-* Local file export menu path (`export_to_target`): VT11 `menu[0]/menu[9]/menu[2]` (also tries `menu[9]/menu[0]`,
-  `menu[3]/menu[2]`, `menu[3]/menu[0]`), VL06O `menu[0]/menu[5]/menu[2]` (then `[5]/[0]`, `[3]/[2]`, `[3]/[0]`), ZMDESNR
-  `menu[0]/menu[3]/menu[2]`, LT23 `menu[0]/menu[1]/menu[2]` (from spec: sibling of Excel `menu[1]/menu[1]`; unverified).
-  A candidate is accepted only if the dialog it opens is titled "save list in file" (case-insensitive); otherwise it is closed
-  and the next candidate is tried. If the real title differs the step fails with a clear message.
-* Radio `radSPOPLI-SELFLAG[1,0]` = text with tabs, save dialog `ctxtDY_PATH` / `ctxtDY_FILENAME` (existing `export_local_file`).
-  The file must exist and be non-empty within 15 s, otherwise the step fails ("export file ... was not written").
-* "Did it produce a list": `classify_after_execute` - generic P6 classifier first; then "still on the selection screen after
-  execute" is read as no data (status bar text = the reason; no text = error). Marker controls: VL06O
-  `wnd[0]/usr/btn%_IT_TKNUM_%_APP_%-VALU_PUSH`, ZMDESNR `wnd[0]/usr/tabsTABSTRIP_TABB1`, LT23 `wnd[0]/usr/ctxtT1_LGNUM`.
-  UNVERIFIED that these stay on screen when SAP finds nothing, and the wording of the messages. VT11 uses the existing
-  classifier (`E:`, `no shipments`, `no data`, `no display authorization`).
-* Popup "Yes" for warnings: `wnd[2]/usr/btnBUTTON_1` (`answer_popup_yes`, up to 5 rounds) is from the spec only.
-
-VT11 (step 9)
-* Existing flow, now with `closed_range` = run date range in `K_DATEN` (`-LOW`, `-HIGH` cleared for a single date), variant
-  `XD_ALL_EPDC_`, no layout, `ignore_display_error`. The date text follows `date_format` (default `mm/dd/yyyy`; set
-  `MustgoSapConfig.date_format` to the SAP user format). Real export observed: 91 rows.
-
-VL06O (step 11)
-* Existing flow: `btnBUTTON6`, `IT_WADAT` cleared, `btn%_IT_TKNUM_%_APP_%-VALU_PUSH` multi paste with scrolling (cells `ctxt`),
-  execute `wnd[0]` F8, item view `tbar[1]/btn[18]`, no variant, no layout. Verify the item view is the default for the export.
-
-ZMDESNR (steps 12 and 19)
-* Tab `tabpUCOMM2`, variant `mg_k2xx` via `btn[17]`, layout `mg_view` via menu `menu[4]/menu[0]/menu[1]` + grid (existing
-  `check_select_layout`; it can prompt on the console when the layout is missing, a failed layout is now a step error when
-  headless). S_PALLTD-LOW and S_VBELN-LOW/-HIGH are cleared by the existing code.
-* NEW `scroll_paste`: deliveries are pasted with `paste_values_with_scroll` (cells `txtRSCSEL_255-SLOW_I`), because the legacy
-  per-cell loop only fills the rows visible in the dialog. Verify that 107 deliveries all arrive (compare row counts).
-* NEW TO paste: `btn%_S_TANUM_%_APP_%-VALU_PUSH` under `.../tabpUCOMM2/ssub%_SUBSCREEN_TABB1:ZMDE_SERIALNUMBER_HISTORY:9002/`
-  (from spec), value cells `txt` or `ctxt` (both tried), then `wnd[2]` Yes, row-0 check, close with F8.
-* The existing flow presses execute twice (inside `handle_tab2_operations` and again afterwards); unchanged.
-* `pre_export_back` unchanged (not set by the adapter).
-
-LT23 (step 16, new `src/lt23.rs`; ids from spec 3.5, none verified)
-* `wnd[0]/usr/ctxtT1_LGNUM` (warehouse E01), `wnd[0]/usr/btn%_T1_TANUM_%_APP_%-VALU_PUSH` (TO multi paste, `ctxt` or `txt`
-  cells), `wnd[0]/usr/radT1_QUITA` (confirmed), execute `tbar[1]/btn[8]`. The `/usr/` prefix is assumed.
-* No other selection fields are touched: check that the screen has no default date or status limit that would hide TOs.
-* Layout `to_mg`: `tbar[1]/btn[33]`, grid `wnd[1]/usr/cntlGRID/shellcont/shell` with column `VARIANT`. If the layout is missing
-  the step fails, unless `MustgoSapConfig.lt23_create_layout_columns` is set (then `btn[32]` + `setup_layout_li` on
-  `/usr/tabsTS_LINES/tabpLI01/ssubSUB810:SAPLSKBH:0810`, not saved; this path has never been run). The header titles of the real
-  export were the short list titles (`TO Number`, `Plnt`, `Source Bin`, ...), the spec's long titles will not match them.
-
-After a first live run compare the five files in `<export_dir>\<TCODE>` (set `delete_exports` false) with
-`tests/fixtures/mustgo/real/`.
-
-* CLI/dispatch (step 6): `--rname=<name> --run-date=<DATE|A..B|WKnn>` -> `main.rs` -> `unattended_runner::run_rname_unattended` -> `abc::dispatch::run_report` (resolver: CLI > `[abc.mustgo]` > `[global]` > defaults; keys in the `dispatch.rs` module doc). TUI: ABC Headless > "mustgo". No sequence menu id (the sequence runner has no run date).
+SAP-step seam: `runner::SapSteps` has one method per call (`vt11`, `vl06o`, `zmdesnr_by_deliveries`, `lt23`,
+`zmdesnr_by_deliveries_and_tos`), each returning `StepOutput::{Table, NoData}` with an already loaded table; `RealSapSteps`
+implements it over the tcode steps, tests use a fake that serves the real fixtures and records its inputs. A new report adds
+its stage module, a runner over the same seam, and an entry in `dispatch::runnable_reports`.
 
 ## Phase 0: owner answers (blocking input)
 
 - [x] 0.1 Questions answered: this crate; v1 = mustgo, xdock, toyota; defaults for items 7-18 accepted; relabel
       `GM55` reproduced without the leak (fixed schema).
-- [ ] 0.2 Provide raw text-with-tabs exports: ZMDESNR, VT11, VL06O, ZVT11, LT23, ZMDETPC (same query as an xlsx export).
+- [ ] 0.2 *(mustgo set received 2026-11-10: VT11, VL06O, ZMDESNR x2, LT23, in `tests/fixtures/mustgo/real/`)* Provide raw text-with-tabs exports: ZMDESNR, VT11, VL06O, ZVT11, LT23, ZMDETPC (same query as an xlsx export).
       **Can come from the Phase 4 smoke runs** (`export_type 1`), so not a blocker for starting Phase 4.
 - [ ] 0.3 Provide a VT03N sample (what the CM20 pallets note text looks like).
-- [ ] 0.4 Say where `abc/resources/*.zip` live and allow copying into `tests/fixtures/`.
+- [x] 0.4 *(mustgo only: `resources/mustgo.zip`, `mustgo_tsv.zip` -> `tests/fixtures/mustgo/`)* Say where `abc/resources/*.zip` live and allow copying into `tests/fixtures/`.
 - [ ] 0.5 `inb_rs.exe` TSV contract (columns, path argument), or declare it out of scope.
 
 ## Phase 1: verify (read-only, one short session)
@@ -168,16 +153,16 @@ After a first live run compare the five files in `<export_dir>\<TCODE>` (set `de
 
 Dependencies: 0.1 for naming/format decisions. Order is flexible except 2.4 needs 2.1.
 
-- [ ] 2.1 **Table core** (`src/abc/table.rs`): TSV read/write (UTF-8, escaping), header sanitise + trim + blank-fill
+- [x] 2.1 *(done)* **Table core** (`src/abc/table.rs`): TSV read/write (UTF-8, escaping), header sanitise + trim + blank-fill
       `customer`, value normalisation (strip leading zeros, no trailing `.0`, date/time formats), selection mask
       (hide/delete/reset/materialise). Spec: 1.3, 4 intro, 7.0 items 25-26. Done when: unit tests cover each rule.
-- [ ] 2.2 **Table ops** (`src/abc/ops.rs`): filter (Excel criteria incl. wildcards), adv-filter, dedup (+visible),
+- [x] 2.2 *(subset used by mustgo done; compare/regex/merge-ZMDETPC/generic pivot pending)* **Table ops** (`src/abc/ops.rs`): filter (Excel criteria incl. wildcards), adv-filter, dedup (+visible),
       lookup, add_col, compare, regex, remove_one (fixed intent), copy, sort, merge-ZMDETPC, pivot long-form.
       Spec: 4.1-4.14, 7.0 items 9 and 11. Done when: unit tests per op, incl. the `remove_one` 1218-row case shape.
 - [ ] 2.3 *(partial: week/range/date parsing done in `src/abc/run.rs`)* **Run config, dates, naming** (`src/abc/run.rs`): `get_json_date` (single / week range / start-end / diff),
       per-day loop, folder layout, `rname_overrides`, file naming `<date>_<name>_<table>.tsv`, collision suffix.
       Spec: 1.1, 1.4, 7.0 items 2 and 11. Done when: week 31/2026 -> 2026-07-26..08-01 and week 45 -> 11-01..11-07 tested.
-- [ ] 2.4 **Fixture harness**: convert the xlsx outputs/raw files in the zips to golden TSV under `tests/fixtures/`
+- [x] 2.4 *(mustgo: `tests/common`, `tests/mustgo_*`)* **Fixture harness**: convert the xlsx outputs/raw files in the zips to golden TSV under `tests/fixtures/`
       (one-off script in the scratchpad, not the repo), plus a compare helper (row-exact diff with a readable report).
       Spec: section 9. Needs 0.4.
 
@@ -185,7 +170,7 @@ Dependencies: 0.1 for naming/format decisions. Order is flexible except 2.4 need
 
 Each chunk is independent, depends on 2.1-2.4, and is verified against the section 9 golden data. Order by value:
 
-- [ ] 3.1 `mustgo` post-process + `snr_copy` + `week` + pivot (5.1, 9.3).
+- [x] 3.1 *(done, matches 9.3 on xlsx-derived and real data)* `mustgo` post-process + `snr_copy` + `week` + pivot (5.1, 9.3).
 - [ ] 3.2 `xdock` / `toyota` / `misc` (5.2-5.4, 9.6): VL06O dedup, ZMDETPC merge rules, pivot, toyota trailers table.
 - [ ] 3.3 `k2xx` (5.5, 9.5).
 - [ ] 3.4 `relabel` -> `combined` (5.6, 9.5): effective-plant rule, explicit history flag (decision 35).
@@ -241,15 +226,15 @@ Dependencies: none on Phase 2/3. 4.0 first; 4.1-4.5 are independent of each othe
       `variant_select` (P2). (f) Distinct, header-free, blank-free value list helper + one normaliser (strip leading
       zeros, decision 25) used before every paste (P3, decision 32). Spec: P1-P3, P6, 7.0 items 25 and 32.
       **Done when:** helpers unit-tested; `cargo clippy` clean; existing flows untouched.
-- [ ] 4.1 *(code done 2026-11-09, awaiting live smoke; config/CLI wiring of the new fields pending)* **VT11 parity** (3.1, P6): `K_STTRG`/`K_ERDAT`, optional `K_TKNUM` paste, `monday_include_sunday`,
+- [x] 4.1 *(code done, used by the mustgo adapter via `closed_range`; awaiting live smoke; `shipment_status`, `by_created_date`, `shipment_numbers` not wired to config/CLI)* **VT11 parity** (3.1, P6): `K_STTRG`/`K_ERDAT`, optional `K_TKNUM` paste, `monday_include_sunday`,
       `ignore_display_error`, no-layout export, single-date rule (`date1 == date2` clears `-HIGH`). Smoke run:
       variant `XD_ALL_EPDC_`, check outcome and raw header against the `mustgo` sample (91 rows, 18 default columns).
-- [ ] 4.2 **VL06O parity** (3.3): confirm item view, layout menu path `menu[3]/menu[2]/menu[1]`, no-layout export,
+- [x] 4.2 *(code done 2026-11-10: headless `export_target`; awaiting live smoke)* **VL06O parity** (3.3): confirm item view, layout menu path `menu[3]/menu[2]/menu[1]`, no-layout export,
       distinct delivery/shipment paste, outcome/path return. Smoke run with shipments from 4.1.
-- [ ] 4.3 **ZMDESNR parity, v1 modes** (3.4, P2, P3): by deliveries with variant (no date field), by deliveries + TOs
+- [x] 4.3 *(by deliveries / deliveries + TOs done in code, awaiting live smoke; serial/history tab 1 not done)* **ZMDESNR parity, v1 modes** (3.4, P2, P3): by deliveries with variant (no date field), by deliveries + TOs
       (`S_TANUM`, clear `S_PALLTD`/`S_VBELN` range, answer `wnd[2]` warnings), serial/history tab 1. Layout by name
       (`mg_view`) via `btn[33]`; keep `pre_export_back`. Smoke run both mustgo calls (5796 / 476 row shapes).
-- [ ] 4.4 **LT23, new** (3.5): `lt23.rs` + `lt23_module.rs` following the pair pattern, `run_lt23_export_outcome`.
+- [x] 4.4 *(code done: `lt23.rs`, no `lt23_module.rs` and no menu entry; all ids unverified)* **LT23, new** (3.5): `lt23.rs` + `lt23_module.rs` following the pair pattern, `run_lt23_export_outcome`.
       Warehouse `E01`, TO multi paste, `radT1_QUITA`, layout via `btn[33]` + grid `cntlGRID` (else `btn[32]` +
       `setup_layout_li`), export `menu[0]/menu[1]/menu[1]`. Register in `lib.rs` and `main.rs`. No menu option in v1.
       Smoke run with TOs from 4.3 (expect the 87-TO shape).
@@ -266,15 +251,15 @@ live SAP, so some may differ).
 
 ## Phase 5: orchestration
 
-- [ ] 5.1 Report runners composing SAP step + table logic per report, tables persisting across blocks in one run
+- [x] 5.1 *(mustgo: `abc/runner.rs`; per-report runners for the others pending)* Report runners composing SAP step + table logic per report, tables persisting across blocks in one run
       (decision 15), error semantics (skip rest of block, non-zero exit), export cleanup, logging.
-- [ ] 5.2 CLI/config: subcommand and flags for report list, date/range, per-day loop; TUI entry optional.
+- [x] 5.2 *(done for one run per call: `--rname`/`--run-date`, `[abc.mustgo]`, TUI entry; per-day loop not done)* CLI/config: subcommand and flags for report list, date/range, per-day loop; TUI entry optional.
 - [ ] 5.3 First end-to-end live run: `mustgo` (needs 3.1, 4.1, 4.3, 4.4, 5.1, 5.2). Then widen report by report.
 
 ## Phase 6: close-out
 
 - [ ] 6.1 `inb_rs.exe` TSV reader (separate repo; per 0.5) and hand-off note.
-- [ ] 6.2 Update `CLAUDE.md` and README with the new module layout and commands; resolve section 7 leftovers in the spec.
+- [ ] 6.2 *(CLAUDE.md, README, CONFIG.md, COMMAND_LINE_USAGE.md updated 2026-11-10 for mustgo)* Update `CLAUDE.md` and README with the new module layout and commands; resolve section 7 leftovers in the spec.
 
 ---
 

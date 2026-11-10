@@ -20,6 +20,7 @@ CLI overrides applied (these win over config.toml): --tcode=VT11 --iterations=3
 | **Loop** | `run-loop` subcommand or `--run-loop` flag | Repeats one TCode on a timer. Uses `[loop]` from `config.toml`; CLI flags override. |
 | **Sequence** | `run-sequence` subcommand or `--run-sequence` flag | Runs a list of menu options in order. Always config-driven; per-tcode flags are rejected. |
 | **Single-shot** | `--tcode=<X>` (no `--run-loop`/`--run-sequence`) | Runs the auto-flow for that TCode once and exits. |
+| **Report** | `--rname=<name> --run-date=<date>` | Runs a headless report (all SAP steps, post-processing, TSV outputs) once and exits. See [Headless report](#headless-report---rname---run-date). |
 
 ```bash
 ./sap_automation.exe --help                   # full flag list
@@ -148,6 +149,49 @@ The file extension drives the parser:
 | `--reports-dir=<PATH>` | `[global].reports_dir` | |
 | `--date-format=<FMT>` | `[global].date_format` | e.g. `yyyy-mm-dd`, `mm/dd/yyyy`, `dd-mm-yy`. |
 | `--timezone=<TZ>` | `[global].timezone` | e.g. `UTC`, `MDT`, `America/Denver`. |
+
+### Headless report (`--rname`, `--run-date`)
+
+| Flag | Meaning |
+| --- | --- |
+| `--rname=<name>` | Report to run. Only `mustgo` has a runner today (case-insensitive). Unknown names fail with the list of known reports. |
+| `--run-date=<DATE\|A..B\|WKnn>` | `YYYY-MM-DD`, `YYYY-MM-DD..YYYY-MM-DD`, or a week `WK45` / `WK45/2026` (Sunday..Saturday, Excel WEEKNUM; the year defaults to the current year). A range or week is **one run**: VT11 gets the whole range and `export_date` becomes `WK_<n>` (a single date gives `yyyy-mm-dd`). |
+
+`--rname` and `--run-date` require each other. Allowed with them: `--skip-sap-check`, `--keep-awake`, `--reports-dir`,
+`--date-format`, `--timezone`, `--ignore-display-error`. Defaults for variants, layouts, warehouse and clean-up come from the
+optional `[abc.mustgo]` section (see [CONFIG.md](CONFIG.md)); there are no per-tcode flags for a report.
+
+```bash
+./sap_automation.exe --rname=mustgo --run-date=2026-11-05
+./sap_automation.exe --rname=mustgo --run-date=WK45 --keep-awake
+./sap_automation.exe --rname=mustgo --run-date=2026-11-01..2026-11-07 --reports-dir=D:\reports
+```
+
+The run needs a logged-in SAP GUI session (checked unless `--skip-sap-check`), asks nothing, and prints the step row counts
+and the output paths. The flow is VT11 -> VL06O -> ZMDESNR (by deliveries) -> LT23 -> ZMDESNR (by deliveries + TOs). The
+first empty result or error stops the run and **nothing is written**.
+
+**Exit codes:** `0` success; non-zero for every failure. The message tells them apart:
+`NO DATA at step '<step>': <reason>` (SAP returned nothing, or a stage had nothing left, e.g. no TPDC shipments or no delivery
+with two or more TOs) or `ERROR: <details>` (SAP step failed, missing column, unreadable export, ...). Invalid flags exit
+non-zero before SAP is touched (clap errors exit with 2).
+
+**Where files go**
+* Outputs: `<reports_dir>\K2XX\<today yyyy-mm-dd>\mustgo\<date>_MUSTGO_LT23.tsv`, `..._SNR_COPY.tsv`, `..._PIVOT.tsv`
+  (`<date>` is `MM-DD-YYYY`, or `WK_<n>` for a range).
+* Temporary SAP exports (text with tabs, forced): `<reports_dir>\<TCODE>\<yyyymmddhhmmss>_<TCODE>.txt`; deleted after a
+  successful load unless `[abc.mustgo] delete_exports = false`. A file that failed to load is kept.
+
+**Rejected before SAP connect**
+
+| Condition | Error |
+| --- | --- |
+| `--rname` without `--run-date` (or the reverse) | clap: required arguments not provided |
+| `--rname` unknown or without a runner | `Invalid --rname value: unknown report '...'. Known reports: mustgo` |
+| `--run-date` not a date / range / week, or end before start, week outside 1-53 | `Invalid --run-date value '...': ...` |
+| `--rname` with `--run-loop`, `--run-sequence` or the run-loop / run-sequence subcommands | clap conflict / `--rname can't be combined ...` |
+| `--rname` with any per-tcode flag (`--tcode --layout --variant --export-type ... --bin-filter`) | `<flags> can't be used with --rname; ...` |
+| `--rname` with `--rname-dir` | `--rname-dir can't be used with --rname ...` |
 
 ## Validation Rules (fail-fast, before SAP connect)
 

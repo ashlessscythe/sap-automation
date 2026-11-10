@@ -19,8 +19,8 @@ and **the owner has run all four live successfully** (2026-11-10, after the live
 they are unit/golden tested on the owner's real exports (`mustgo` reproduces spec 9.3; `xdock` spec 9.6 with the documented
 differences to the macro xlsx, see "Design notes: `xdock`"). Chunk 3.2 is complete. **`k2xx` (3.3) is coded but NOT run live
 and NOT verified on real data** (no raw k2xx export or macro xlsx was available: fixtures are synthetic stand-ins, see "Design
-notes: `k2xx`" for the open questions and "Live verification checklist (k2xx)"). **Next for Claude: get the owner's k2xx
-exports + answers, then `relabel` (3.4), `repack` (3.5).** Ask the owner for the raw exports (VT11, VL06O, ZMDETPC, ZMDESNR ...) and the macro xlsx of
+notes: `k2xx`" for the open questions and "Live verification checklist (k2xx)"). `relabel` (3.4) is coded too (2026-11-10, synthetic fixtures only, see "Design notes: `relabel`"). **Next for Claude: get the owner's k2xx
+exports + answers, then the relabel exports ("Live verification checklist (relabel)"), then `repack` (3.5).** Ask the owner for the raw exports (VT11, VL06O, ZMDETPC, ZMDESNR ...) and the macro xlsx of
 the next report first; golden tests need them. Work like the existing reports: pure stages in `src/abc/`, a seam trait in
 `inv_runner.rs`/`runner.rs`, `registry` entry, `dispatch` resolver + `[abc.<report>]`, ABC menu entry, fixtures byte-exact, docs.
 
@@ -118,7 +118,16 @@ Decisions made while building (all tested):
   entry, `raw::ZVT11_ALIASES` (empty: real titles unknown). Fixtures `tests/fixtures/k2xx/` are **synthetic** (README
   there). Tests: `k2xx_golden`, `k2xx_runner`.
 
-Suggested next steps: (1) owner: k2xx exports, answers to the k2xx open questions and a first live run; then `relabel`, `repack` (3.4-3.5); (2) the v2 list (ZVT11 Closed, VT22, VT03N); (3) per-day loop
+* **relabel (3.4, code only, 2026-11-10):** `abc/relabel.rs` (pure stages: GM55 as an effective plant, blocks B1-B7,
+  yellow set, `_of_labels`, `export_date`, pivot customer x plant), `abc/relabel_runner.rs` (`RelabelSteps` seam of its own:
+  ZMDESNR by deliveries, ZMDESNR by serial / History; `run_relabel`; the deliveries are **re-read from the k2xx block's
+  `vl06o` TSV of the same run**, owner decision), `zmdesnr::ZMDESNRParams.history_serials` + tab 1 flow
+  (`handle_tab1_history`: radio History, `S_SERIAL` paste via the shared `zmdetpc::paste_multi`), `RealSapSteps` implements the
+  seam, `dispatch` resolves `[abc.relabel]` (`zmdesnr_variant`, `zmdesnr_layout`), registry `RELABEL` (folder `K2XX`, outputs
+  `combined`, `sn_del`, `snr_orig`, `pivot`), ABC menu entry. Fixtures `tests/fixtures/relabel/` are **synthetic** (README
+  there). Tests: `relabel_golden`, `relabel_runner`, unit tests in `relabel.rs`.
+
+Suggested next steps: (1) owner: k2xx exports, answers to the k2xx open questions and a first live run, then the same for `relabel`; then `repack` (3.5); (2) the v2 list (ZVT11 Closed, VT22, VT03N); (3) per-day loop
 and `rname_overrides` if wanted (2.3 remainder); (4) Excel export for the headless runner (Future work). The live verification
 checklists below stay useful for any control id the owner has not exercised yet (the runs above succeeded, so ids they use are
 confirmed; ZMDETPC `S_ADATE`, detail flow and layout button are still unimplemented).
@@ -360,11 +369,117 @@ show equality with the macro's `11-05-2026_K2XX.xlsx`.
    INV merge (the macro's spacer rows). Not expected in practice because ZMDETPC is queried with the VL06O deliveries.
 8. **Output order/names**: `<date>_K2XX_ZVT11.tsv`, `_VT11.tsv`, `_VL06O.tsv` (the macro's sheet order `zvt11`, `vt11`,
    `vl06o`), then `_PIVOT.tsv` (not in the macro). relabel/repack (3.4/3.5) will need this run's `vl06o`: within one process, or re-read from the TSV (spec 7.0
-   item 15 says "from the k2xx block's `vl06o` TSV of the same run"); to be decided with 3.4.
+   item 15 says "from the k2xx block's `vl06o` TSV of the same run"). **Decided with 3.4 (owner): re-read the TSV**
+   (`relabel_runner::read_k2xx_deliveries`); repack should do the same.
 9. **VT11 stand-in**: the fixtures assume `TIER_VT11_K2XX` selects the TPDC shipments (the spec 9.5 run had 107 deliveries,
    like mustgo's TPDC set). Unconfirmed; irrelevant for the code, only for the fixture story.
 10. **Pivot and the blank `total`** (follows from question 1): a delivery without a ZMDETPC row counts as 0 in the pivot. If
     the owner wants the INV fallback (`number_of_packages`) for k2xx, the pivot changes with it (stand-in data: FV58, FW63).
+
+## Live verification checklist (relabel)
+
+**Nothing of relabel has run against SAP.** The ZMDESNR by-deliveries flow (tab 2, scroll paste, layout via `btn[33]`, export
+`menu[0]/menu[3]/menu[2]`) is the one `mustgo` already runs live; new here are the variant/layout names, the History flow and
+the dependency on `k2xx`. Exports are text with tabs at `<reports_dir>\ZMDESNR\<yyyymmddhhmmss>_ZMDESNR.txt`; deleted after a
+successful load unless `[abc.relabel] delete_exports = false` (**keep them on the first runs: they are the fixtures we need**).
+Outputs: `<reports_dir>\K2XX\<today>\relabel\<date>_RELABEL_{COMBINED,SN_DEL,SNR_ORIG,PIVOT}.tsv`.
+
+**A. Pre-flight.** (1) `k2xx` must have run **the same day for the same date**:
+`sap_automation --rname=k2xx --run-date=2026-11-05`, then `--rname=relabel --run-date=2026-11-05`. The file read is
+`<reports_dir>\K2XX\<today>\k2xx\<date>_K2XX_VL06O.tsv` (today = the day of the relabel run); without it the run stops with
+"Run k2xx first". (2) A single date only (a range or `WKnn` is rejected). (3) ZMDESNR variant `relabel_k2xx` and layout
+`epdc_relabel` exist (spec 5.6; override in `[abc.relabel]`). The layout must deliver the 20 columns of spec 8.2 (`LM Serial Number`,
+`Status`, `Serial number 2'nd party verification`, `SPV Scan copies`, `Pallet`, `Parent Serial Number`, `Material`,
+`Customer Part #`, `Delivery`, `Plant`, `Storage Location`, `Warehouse Number`, `Document Date`, `Created on`, `Created by`,
+`Plant Doc line`, `DLOC`, `Kanban Number`, `Container` and the untitled customer column). **The short list titles of that
+layout are unknown** (the real mustgo lists use short ones: `Parent no`, `Plnt`, `SLoc`, ...): a run that stops with
+"missing column(s) ..." needs the real titles in `raw::ZMDESNR_ALIASES`. Required by name: `lm_serial_number`, `status`,
+`serial_number_2nd_party_verification`, `spv_scan_copies`, `pallet`, `parent_serial_number`, `plant`, `document_date`,
+`kanban_number`, `container`, `customer`; the History call needs `lm_serial_number`, `storage_location`, `status`.
+
+**B. First run.** Spec 9.5 saw on 2026-11-05: delivery export 6939 rows (107 deliveries), 11 rows treated as GM55, blocks
+B1 87, B2 262, B3 48, B4 5, B5 9, B6 15, B7 0, History 5 rows (5 serials, all `PRI`, location 11), combined 421 rows, 4 rows with 4
+labels, 417 with 2, sum 850. The summary line prints the same numbers.
+
+**C. Controls that come from the spec only (never seen live):**
+* ZMDESNR by serial / History (`zmdesnr::handle_tab1_history`, `ZMDESNRParams.history_serials`, tab `tabpUCOMM1`):
+  * sub-screen prefix `wnd[0]/usr/tabsTABSTRIP_TABB1/tabpUCOMM1/ssub%_SUBSCREEN_TABB1:ZMDE_SERIALNUMBER_HISTORY:9001/`;
+  * radio `radP_HISTRY` ("History"; `radP_CURRNT` / `radP_OLDNEW` are not touched); the "pallet children" checkbox
+    `chkP_PALLET` is left as the variant sets it (the macro's setting is unknown);
+  * serials via `btn%_S_SERIAL_%_APP_%-VALU_PUSH`, then the shared multi-selection paste (`wnd[1]` clear `sendVKey 16`, cells
+    `ctxt` or `txt` of `tblSAPLALDBSINGLE`, row 0 check, `sendVKey 8`): **assumes the S_SERIAL dialog is the same generic
+    dialog as for deliveries**; the table id in `zmdetpc::MULTI_TABLE_ID` is the one of the delivery paste;
+  * the variant (`btn[17]`) is chosen **before** the tab is selected, as in the by-deliveries flow: check that the variant
+    does not switch the tab or reset the History radio; execute `btn[8]`, then the shared classification
+    (`/usr/tabsTABSTRIP_TABB1` = still on the selection screen), layout `epdc_relabel` via `btn[33]`, export as above.
+  * the serial paste is the FV55 pallet-1 serials (5 on the day of spec 9.5); the macro's History export had 5 rows.
+* The by-deliveries call sends the distinct deliveries of the k2xx file (leading zeros stripped, like every other paste).
+
+**D. Then** send the two raw exports (`..._ZMDESNR.txt` by deliveries and History), the k2xx `VL06O` TSV and the macro's
+`RELABEL.xlsx` of the same date: they replace the synthetic fixtures.
+
+## Design notes: `relabel` (`src/abc/relabel.rs`, `relabel_runner.rs`, `zmdesnr.rs`)
+
+Flow (`run_relabel`, spec 5.6 rows 61-65, algorithm of 9.5): single run date `D` -> deliveries from the k2xx `vl06o` TSV of the
+same run -> ZMDESNR by deliveries (`sn_del`) -> GM55 effective plant -> blocks -> ZMDESNR by serial / History for the B4
+serials (skipped when B4 is empty) -> yellow set -> `combined` (`_of_labels`, `export_date`, `yellow`) -> pivot customer x
+plant -> outputs. Nothing is written before the last step; an empty list, no-data, a missing column or any error stops the run.
+
+**Owner decisions and what is not reproduced.**
+* **Deliveries come from the k2xx `vl06o` TSV of the same run** (not in-process): path = `registry::output_path(reports_dir, K2XX,
+  today, run_date, "vl06o")`, so k2xx and relabel must run for the same date and the same calendar day (a file of another
+  date or day is not found). Missing, empty, header-only or `delivery`-less file: error "Run k2xx first" (no SAP call made).
+* **No macro side effects** (spec 9.5 items 33-34): the temporary `GM55` marks live in a side vector (`effective_plants`) and
+  the saved `sn_del` has neither marks nor the extra last row (`sn_del` = `snr_orig` = the export as loaded: both are written,
+  byte-identical, because the macro saved both sheets). `combined` shows the real plant (`FV55`) of those rows.
+* **`save full_label` (A!62) is left out** (not ticked in the verified run).
+* **Spec 9.5 wins over 5.6**: no sorting (9.5 shows the observed order is block order, each block in the row order of the
+  export; 5.6 and the macro code call `Multi_Sort`, decision 34); blocks B1, B2, B3, B5, B6, B7 (5.6 names A, B, PAL, ... P, Q, R
+  with blank separator rows, which are dropped); **every row without a label from the 4 rule gets 2**
+  (5.6 step 5 says "any non-empty customer": a Find artefact, a row with a blank customer would stay empty); the column is
+  `_of_labels` (sanitised `# of labels`; 5.6 writes `of_labels`).
+* **`export_date`** = `yyyy-mm-dd` of `D`; `_of_labels`, `export_date`, `yellow` are the last three columns.
+
+**Contradiction in the spec** (recorded, 9.5 followed): 5.6 sorts `C` by `customer`, `plant`, `parent_serial_number`,
+`lm_serial_number` and has an A block (`spv_scan_copies = 2`) and a B block (blank verification) with different shapes, while
+9.5 reports counts (87, 262, 48, ...) and the observed order of unsorted blocks.
+
+**Guesses and open questions (each is a choice, the code does what is written here):**
+1. **`yellow` column.** The macro's yellow fill is a data channel (decision 35: "explicit boolean column or list"). It is the
+   column `yellow` (`1` or blank) at the end of `combined`, so that `repack` can read the exclusion list from the TSV
+   (`lm_serial_number` of the rows with `1`). It is an addition to the macro's columns. Keep, or a separate output / list?
+2. **History NO DATA / empty** when B4 has serials: stops the run (the general rule), though a "no hit" could be legitimate
+   in the macro (no yellow rows). A History table that has rows but no `PRI` at location 11 is **not** an error (nothing
+   yellow). Which of the two should an empty result be?
+3. **B3 dedup** by `parent_serial_number` treats blank parents as one group (first row kept; `ops::dedup` / Excel semantics).
+   Spec 5.6 says "dedup by parent_serial_number"; for `status = PAL` rows with a blank parent only the first survives.
+4. **Kanban "not starting with 0" (B7)** is evaluated on the loaded value; the loader strips leading zeros of numeric cells
+   (`Table::from_raw`), so a kanban `0123` reads `123` and enters B7. Spec 9.5 had no kanban values at all (B7 = 0 rows), so this is
+   unverified; it needs a real export with kanban numbers (or a raw-text column option that also skips the zero strip).
+5. **Whole-cell `GM55` -> `FV55`** (5.6 step 6) is replaced by "the marks never leave the side vector": a real plant `GM55` in
+   the data would stay `GM55` here, the macro would turn it into `FV55`.
+6. **Matching** is case-insensitive like Excel: `FV55`, `PAL`, `PRI`, `KC*` and the customer patterns `LSI*`, `GM*`, `GENERAL*` (so
+   `General Motors`, `gmc trucks` match; `AGM ...` does not). `pallet`, `spv_scan_copies`, `storage_location` compare as numbers
+   (`2.000`, `0011`).
+7. **Window**: `document_date` must parse as `yyyy-mm-dd` (the loader converts the SAP user's date format); a blank or
+   unparseable date is outside the window.
+8. **Blank `lm_serial_number` rows are dropped** from every block (the macro deletes empty rows by that column); the plant
+   conditions use the effective plant, a blank plant is in no plant block, but a row with a blank plant can enter B7.
+9. **The 4-label count** (`at least 2`) counts rows of `combined`, so a row that appears in several blocks counts several times
+   (it is evaluated on the visible rows of the macro's `combined`). With fewer than two candidates every row gets 2.
+10. **History variant/layout** are the by-deliveries ones (spec 5.6 names `relabel_k2xx` / `epdc_relabel` for both calls).
+11. **Pivot shape**: long table `customer`, `plant`, `_of_labels` (sorted ascending, `(blank)` last, no grand total), the
+    two-level form of the INV pivots (`inv::pivot_sum` has one key). The macro's pivot is a cross-tab (customer rows x plant
+    columns, with totals): decision 11 of the spec asks for long form.
+12. **A range / week run date** is rejected (spec 7.0 item 16), also from the TUI menu; a range with equal ends counts as a
+    single date.
+13. **No sequence menu id** (as for the other reports: the sequence runner has no run date).
+
+**Test data is synthetic** (`tests/fixtures/relabel/README.txt`): 44 stand-in rows covering every block and edge case, a 7-row
+History export, expected tables from a one-off script. The tests pin spec 9.5's rules; they do **not** show equality with the
+macro's `RELABEL.xlsx`. Real exports needed for real golden tests: the by-deliveries ZMDESNR text export and the History export of
+one run date, plus the k2xx `vl06o` file of that run, plus `RELABEL.xlsx` (and ideally a day with a non-empty B7, i.e. kanban
+numbers, and one with an empty B4).
 
 ## Design notes: `misc`
 
@@ -478,7 +593,9 @@ Each chunk is independent, depends on 2.1-2.4, and is verified against the secti
       pivot, toyota trailers table.
 - [x] 3.3 *(code + tests on SYNTHETIC stand-in data, 2026-11-10; not verified against the macro output or live SAP: needs the
       owner's raw exports and K2XX xlsx, see "Design notes: `k2xx`")* `k2xx` (5.5, 9.5).
-- [ ] 3.4 `relabel` -> `combined` (5.6, 9.5): effective-plant rule, explicit history flag (decision 35).
+- [x] 3.4 *(code + tests on SYNTHETIC stand-in data, 2026-11-10; not verified against the macro output or live SAP: needs the
+      owner's raw ZMDESNR exports and the RELABEL xlsx, see "Design notes: `relabel`")* `relabel` -> `combined` (5.6, 9.5):
+      effective-plant rule, explicit history flag (decision 35).
 - [ ] 3.5 `repack` -> `snr_repack` (5.7, 9.5).
 - [ ] 3.6 `nc_tsp`, `nc_masterpack`, `redtag`, `busbar`, `inb_*`, `out_*` (5.8-5.17, 9.4): filters from 8.1.
 - [ ] 3.7 `add_del`: ZVT11 format (decisions 28-30), VT22 raw parser + `changes` logic, `split`, `pallets` (5.18, 9.2-9.3).
@@ -536,7 +653,7 @@ Dependencies: none on Phase 2/3. 4.0 first; 4.1-4.5 are independent of each othe
       variant `XD_ALL_EPDC_`, check outcome and raw header against the `mustgo` sample (91 rows, 18 default columns).
 - [x] 4.2 *(code done 2026-11-10: headless `export_target`; awaiting live smoke)* **VL06O parity** (3.3): confirm item view, layout menu path `menu[3]/menu[2]/menu[1]`, no-layout export,
       distinct delivery/shipment paste, outcome/path return. Smoke run with shipments from 4.1.
-- [x] 4.3 *(by deliveries / deliveries + TOs done in code, awaiting live smoke; serial/history tab 1 not done)* **ZMDESNR parity, v1 modes** (3.4, P2, P3): by deliveries with variant (no date field), by deliveries + TOs
+- [x] 4.3 *(by deliveries / deliveries + TOs done in code, awaiting live smoke; serial/history tab 1 coded 2026-11-10 for relabel, all ids unverified)* **ZMDESNR parity, v1 modes** (3.4, P2, P3): by deliveries with variant (no date field), by deliveries + TOs
       (`S_TANUM`, clear `S_PALLTD`/`S_VBELN` range, answer `wnd[2]` warnings), serial/history tab 1. Layout by name
       (`mg_view`) via `btn[33]`; keep `pre_export_back`. Smoke run both mustgo calls (5796 / 476 row shapes).
 - [x] 4.4 *(code done: `lt23.rs`, no `lt23_module.rs` and no menu entry; all ids unverified)* **LT23, new** (3.5): `lt23.rs` + `lt23_module.rs` following the pair pattern, `run_lt23_export_outcome`.

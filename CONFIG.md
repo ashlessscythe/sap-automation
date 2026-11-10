@@ -178,6 +178,22 @@ ignore_display_error = true     # treat "no display authorization" as harmless
 # date_range_buffer = 3         # as in [abc.xdock]: VT11 and ZMDETPC only; it is not added to the ZVT11 window
 ```
 
+### ABC Headless Section (`[abc.relabel]`)
+
+Optional, same rules as the other `[abc.<report>]` sections (CLI flag > `[abc.relabel]` > `[global]` > default; wrong or empty
+values fall back). Used only by `--rname=relabel` (and the ABC Headless > relabel menu entry). **Not verified on live SAP yet**:
+the names are the ones of the macro. `relabel` reads the `VL06O` table written by `k2xx` for the same run date and day from
+`<reports_dir>\K2XX\<today>\k2xx\`, so `reports_dir` must be the same as for the `k2xx` run. The History call (ZMDESNR by serial)
+uses the same variant and layout as the call by deliveries.
+
+```toml
+[abc.relabel]
+zmdesnr_variant = "relabel_k2xx" # ZMDESNR variant of both calls
+zmdesnr_layout = "epdc_relabel"  # ZMDESNR layout of both calls (20 columns, see the live verification checklist)
+delete_exports = true            # delete each temporary export after it was loaded
+ignore_display_error = true      # treat "no display authorization" as harmless
+```
+
 ## Migration from Legacy Format
 
 If you're upgrading from a previous version, you can use the migration tool to convert your configuration file to the new format:

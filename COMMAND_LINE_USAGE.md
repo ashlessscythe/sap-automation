@@ -154,14 +154,14 @@ The file extension drives the parser:
 
 | Flag | Meaning |
 | --- | --- |
-| `--rname=<name>` | Report to run. `mustgo`, `xdock`, `toyota`, `misc` and `k2xx` have a runner today (case-insensitive; `k2xx` has not run against live SAP yet). Unknown names fail with the list of known reports. |
+| `--rname=<name>` | Report to run. `mustgo`, `xdock`, `toyota`, `misc`, `k2xx` and `relabel` have a runner today (case-insensitive; `k2xx` and `relabel` have not run against live SAP yet). Unknown names fail with the list of known reports. |
 | `--run-date=<DATE\|A..B\|WKnn>` | `YYYY-MM-DD`, `YYYY-MM-DD..YYYY-MM-DD`, or a week `WK45` / `WK45/2026` (Sunday..Saturday, Excel WEEKNUM; the year defaults to the current year). A range or week is **one run**: VT11 gets the whole range and `export_date` becomes `WK_<n>` (a single date gives `yyyy-mm-dd`). |
 
 | `--date-range-buffer=<DAYS>` | Days added before the start and after the end of the run date range of every tcode that sets one (VT11, ZMDETPC). **Omitted**: ZMDETPC gets **3** days each side when the run is a week (`WKnn`, or the exact Sunday..Saturday range), everything else gets **0**, so a single date or other range is not widened. An explicit value (also `0`) applies to every such tcode and to single dates too. Overrides `[abc.<report>] date_range_buffer`. |
 
 `--rname` and `--run-date` require each other. Allowed with them: `--skip-sap-check`, `--keep-awake`, `--reports-dir`,
 `--date-format`, `--timezone`, `--ignore-display-error`, `--date-range-buffer`. Defaults for variants, layouts, warehouse and clean-up come from the
-optional `[abc.mustgo]` / `[abc.xdock]` / `[abc.toyota]` / `[abc.misc]` / `[abc.k2xx]` section (see [CONFIG.md](CONFIG.md)); there are no per-tcode flags for a report.
+optional `[abc.mustgo]` / `[abc.xdock]` / `[abc.toyota]` / `[abc.misc]` / `[abc.k2xx]` / `[abc.relabel]` section (see [CONFIG.md](CONFIG.md)); there are no per-tcode flags for a report.
 
 ```bash
 ./sap_automation.exe --rname=mustgo --run-date=2026-11-05
@@ -171,6 +171,7 @@ optional `[abc.mustgo]` / `[abc.xdock]` / `[abc.toyota]` / `[abc.misc]` / `[abc.
 ./sap_automation.exe --rname=toyota --run-date=2026-11-05
 ./sap_automation.exe --rname=misc --run-date=2026-11-05
 ./sap_automation.exe --rname=k2xx --run-date=2026-11-05
+./sap_automation.exe --rname=relabel --run-date=2026-11-05                     # after k2xx for the same date, same day
 ./sap_automation.exe --rname=toyota --run-date=WK45                          # ZMDETPC 2026-10-29..2026-11-10
 ./sap_automation.exe --rname=toyota --run-date=WK45 --date-range-buffer=0    # ZMDETPC 2026-11-01..2026-11-07
 ```
@@ -189,6 +190,17 @@ Closed for the deliveries (variant `k2xx_`, layout `add_del`, run date -/+ 100 d
 by plant (the macro has no pivot for k2xx; it was added on the owner's request). `k2xx` has
 not run against live SAP yet and is tested on synthetic stand-in data only (checklist in `docs/abc_headless_plan.md`). The
 first empty result or error stops the run and **nothing is written**.
+
+`relabel` takes the delivery list from the `VL06O` table that `k2xx` wrote for the **same run date on the same calendar day**
+(`<reports_dir>\K2XX\<today>\k2xx\<date>_K2XX_VL06O.tsv`); without that file (or with an empty one) it stops with "Run k2xx first" and
+SAP is not touched. It needs a **single date** (`--run-date=YYYY-MM-DD`; a range or `WKnn` is rejected). Flow: ZMDESNR by deliveries (variant
+`relabel_k2xx`, layout `epdc_relabel`) -> rows of plant `FV55` for the customers `LSI*`, `GM*`, `GENERAL*` count as plant `GM55` while
+the blocks are built -> blocks of rows (non-FV55 rows with 2 scan copies or a blank verification dated the run date or the next day,
+the first pallet row per parent serial, the FV55 pallet rows, FV55 rows without pallet and parent, rows with a kanban and a parent) ->
+ZMDESNR by serial / History for the FV55 pallet-1 serials (rows at storage location 11 with status `PRI` are flagged `yellow`) ->
+`_of_labels` (4 for FV55 pallet rows 1/2 without kanban, not container `KC*`, not yellow, when at least two exist; 2 otherwise) ->
+`export_date` -> pivot of `_of_labels` by customer and plant. `relabel` has not run against live SAP yet and is tested on
+synthetic stand-in data only (checklist in `docs/abc_headless_plan.md`).
 
 **Exit codes:** `0` success; non-zero for every failure. The message tells them apart:
 `NO DATA at step '<step>': <reason>` (SAP returned nothing, or a stage had nothing left, e.g. no TPDC shipments or no delivery
@@ -209,6 +221,10 @@ non-zero before SAP is touched (clap errors exit with 2).
   `..._VL06O.tsv` (merged table, sorted by delivery, last columns `date`, `delivery_`, `pallet`, `child`, `total`),
   `..._PIVOT.tsv` (`plant`, `total` = sum of `total` of the `VL06O` table; same shape rules as the xdock pivot; a delivery
   with a blank `total` adds nothing).
+* Outputs `relabel`: `<reports_dir>\K2XX\<today yyyy-mm-dd>\relabel\<date>_RELABEL_COMBINED.tsv` (the columns of the ZMDESNR export, then
+  `_of_labels`, `export_date`, `yellow` (`1` = history hit)), `..._SN_DEL.tsv` and `..._SNR_ORIG.tsv` (the delivery export as loaded, identical;
+  no temporary `GM55` marks), `..._PIVOT.tsv` (`customer`, `plant`, sum of `_of_labels`; `(blank)` last, no grand-total row). The `full_label`
+  sheet of the macro is not written.
 * Temporary SAP exports (text with tabs, forced): `<reports_dir>\<TCODE>\<yyyymmddhhmmss>_<TCODE>.txt`; deleted after a
   successful load unless `[abc.<report>] delete_exports = false`. A file that failed to load is kept.
 
@@ -217,7 +233,7 @@ non-zero before SAP is touched (clap errors exit with 2).
 | Condition | Error |
 | --- | --- |
 | `--rname` without `--run-date` (or the reverse) | clap: required arguments not provided |
-| `--rname` unknown or without a runner | `Invalid --rname value: unknown report '...'. Known reports: mustgo, xdock, toyota, misc, k2xx` |
+| `--rname` unknown or without a runner | `Invalid --rname value: unknown report '...'. Known reports: mustgo, xdock, toyota, misc, k2xx, relabel` |
 | `--run-date` not a date / range / week, or end before start, week outside 1-53 | `Invalid --run-date value '...': ...` |
 | `--rname` with `--run-loop`, `--run-sequence` or the run-loop / run-sequence subcommands | clap conflict / `--rname can't be combined ...` |
 | `--rname` with any per-tcode flag (`--tcode --layout --variant --export-type ... --bin-filter`) | `<flags> can't be used with --rname; ...` |

@@ -104,6 +104,7 @@ The application also supports command-line operation for automation scenarios. T
 ./sap_automation.exe --rname=toyota --run-date=2026-11-05
 ./sap_automation.exe --rname=misc --run-date=2026-11-05
 ./sap_automation.exe --rname=k2xx --run-date=2026-11-05
+./sap_automation.exe --rname=relabel --run-date=2026-11-05   # run k2xx for the same date first
 
 # Sequence (uses [sequence] from config.toml)
 ./sap_automation.exe run-sequence
@@ -144,14 +145,14 @@ For the full flag reference, validation rules, source-file resolution, and end-t
 
 ### ABC Headless reports
 
-`--rname=<name> --run-date=<DATE|A..B|WKnn>` runs a whole report unattended (today: `mustgo`, `xdock`, `toyota`, `misc` and `k2xx`): the SAP exports are forced to
+`--rname=<name> --run-date=<DATE|A..B|WKnn>` runs a whole report unattended (today: `mustgo`, `xdock`, `toyota`, `misc`, `k2xx` and `relabel`): the SAP exports are forced to
 text with tabs, loaded, post-processed offline and written as TSV under `<reports_dir>\K2XX\<today>\mustgo\` (`mustgo`) or
 `<reports_dir>\INV\<today>\xdock\` (`xdock`: VT11, VL06O, ZMDETPC, merged `vl06o` table and plant pivot; `toyota` the same under `...\toyota\` plus a trailers table; `misc`: VT11, VL06O and a pivot of packages by shipping point, no ZMDETPC). `k2xx` writes to `<reports_dir>\K2XX\<today>\k2xx\`
 (VT11, VL06O layout `pallets`, ZVT11 Closed, ZMDETPC; outputs `zvt11`, `vt11`, the merged `vl06o` table and a plant pivot of its `total`); **it has
-not run against live SAP yet and is tested on synthetic stand-in data only**. In the TUI they are
+not run against live SAP yet and is tested on synthetic stand-in data only**. `relabel` needs a single run date and the output of `k2xx` for the same date and day (it reads the `VL06O` table `k2xx` wrote); it runs ZMDESNR by deliveries and by serial / History and writes `combined`, `sn_del`, `snr_orig` and a pivot of the label counts to `<reports_dir>\K2XX\<today>\relabel\` (also **not run against live SAP yet**, synthetic test data only). In the TUI they are
 the first entries of the **ABC Headless** submenu (main menu option 30); it asks for the run date and runs the same code. There is
 deliberately **no sequence menu id** for them: the sequence runner is config-driven and has no run date. Options live in the
-optional `[abc.mustgo]` / `[abc.xdock]` / `[abc.toyota]` / `[abc.misc]` / `[abc.k2xx]` sections ([CONFIG.md](CONFIG.md)); flags, exit codes and file locations are in
+optional `[abc.mustgo]` / `[abc.xdock]` / `[abc.toyota]` / `[abc.misc]` / `[abc.k2xx]` / `[abc.relabel]` sections ([CONFIG.md](CONFIG.md)); flags, exit codes and file locations are in
 [COMMAND_LINE_USAGE.md](COMMAND_LINE_USAGE.md). The SAP steps have not been verified on a live system yet; see the live
 verification checklist in `docs/abc_headless_plan.md`.
 

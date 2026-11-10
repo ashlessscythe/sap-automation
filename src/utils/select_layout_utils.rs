@@ -62,7 +62,9 @@ pub fn select_layout(
         let err_wnd = exist_ctrl(session, n_wnd, object_name, true)?;
         if !err_wnd.cband {
             println!("Object ({object_name}) not found.");
-            return Ok(false);
+            // Some systems show the classic list dialog (`lbl[col,row]` labels with a Find
+            // button) instead of the ALV grid; try that before giving up.
+            return select_layout_from_list(session, n_wnd, &current_layout);
         }
 
         // Get the object
@@ -164,6 +166,148 @@ pub fn select_layout(
             return Ok(false);
         }
     }
+}
+
+/// Does the text of a list label name `layout`? Case-insensitive; the label may be just the
+/// name or the name followed by a description (first whitespace-separated token).
+pub fn list_label_matches(label_text: &str, layout: &str) -> bool {
+    let t = label_text.trim();
+    let want = layout.trim();
+    if want.is_empty() {
+        return false;
+    }
+    t.eq_ignore_ascii_case(want)
+        || t.split_whitespace()
+            .next()
+            .is_some_and(|first| first.eq_ignore_ascii_case(want))
+}
+
+/// Find the label (column 1) of window `n_wnd` whose text names `layout`; returns its id.
+fn find_list_label(session: &GuiSession, n_wnd: i32, layout: &str) -> Option<String> {
+    for row in 1..=80 {
+        let id = format!("wnd[{n_wnd}]/usr/lbl[1,{row}]");
+        if let Ok(c) = session.find_by_id(id.clone()) {
+            if let Some(l) = c.downcast::<GuiLabel>() {
+                if list_label_matches(&l.text().unwrap_or_default(), layout) {
+                    return Some(id);
+                }
+            }
+        }
+    }
+    None
+}
+
+fn press_button(session: &GuiSession, id: &str) -> bool {
+    session
+        .find_by_id(id.to_string())
+        .ok()
+        .and_then(|c| c.downcast::<GuiButton>())
+        .map(|b| b.press().is_ok())
+        .unwrap_or(false)
+}
+
+fn send_key(session: &GuiSession, n_wnd: i32, key: i16) -> windows::core::Result<()> {
+    if let Ok(w) = session.find_by_id(format!("wnd[{n_wnd}]")) {
+        if let Some(m) = w.downcast::<GuiModalWindow>() {
+            m.send_v_key(key)?;
+        }
+    }
+    Ok(())
+}
+
+fn focus_label(session: &GuiSession, id: &str) -> bool {
+    session
+        .find_by_id(id.to_string())
+        .ok()
+        .and_then(|c| c.downcast::<GuiLabel>())
+        .map(|l| l.set_focus().is_ok())
+        .unwrap_or(false)
+}
+
+/// Select a layout in the classic list-style "Layout: Choose" dialog (labels `lbl[1,row]`, a
+/// Find button `btn[71]`), as recorded on the owner's system for VL06O:
+/// 1. the layout is visible in `wnd[n]` -> focus its label and F2;
+/// 2. else Find (`wnd[n]/tbar[0]/btn[71]`),
+///    type the name in `wnd[n+1]/usr/txtRSYSF-STRING`, Enter, pick the hit in `wnd[n+2]`
+///    (F2), which puts the cursor on the layout in `wnd[n]`, then F2 there.
+///
+/// Returns `Ok(true)` when the dialog closed after the choice, `Ok(false)` (popups closed)
+/// when the layout cannot be found.
+pub fn select_layout_from_list(
+    session: &GuiSession,
+    n_wnd: i32,
+    layout_name: &str,
+) -> windows::core::Result<bool> {
+    println!("Trying the list-style layout dialog for '{layout_name}'.");
+    let settle = || thread::sleep(Duration::from_millis(300));
+    let dialog_open = |n: i32| exist_ctrl(session, n, "", true).map(|c| c.cband);
+
+    // 1. visible in the list
+    if let Some(id) = find_list_label(session, n_wnd, layout_name) {
+        focus_label(session, &id);
+        send_key(session, n_wnd, 2)?;
+        settle();
+        let done = !dialog_open(n_wnd)?;
+        println!("Selected layout from the list: {layout_name} (closed: {done})");
+        return Ok(done);
+    }
+
+    // 2. Find
+    let tbar = format!("wnd[{n_wnd}]/tbar[0]");
+    if !press_button(session, &format!("{tbar}/btn[71]")) {
+        println!("List dialog has no Find button; layout '{layout_name}' not found.");
+        return Ok(false);
+    }
+    settle();
+    let find_wnd = n_wnd + 1;
+    let field = session
+        .find_by_id(format!("wnd[{find_wnd}]/usr/txtRSYSF-STRING"))
+        .ok()
+        .and_then(|c| c.downcast::<GuiTextField>());
+    let Some(field) = field else {
+        println!("Find dialog did not open; layout '{layout_name}' not found.");
+        return Ok(false);
+    };
+    field.set_text(layout_name.to_string())?;
+    press_button(session, &format!("wnd[{find_wnd}]/tbar[0]/btn[0]"));
+    settle();
+
+    // hit list in wnd[n+2]
+    let hits = n_wnd + 2;
+    if !dialog_open(hits)? {
+        println!("No hit list for '{layout_name}'.");
+        close_popups_above(session, n_wnd)?;
+        return Ok(false);
+    }
+    let Some(hit) = find_list_label(session, hits, layout_name) else {
+        println!("Layout '{layout_name}' not in the hit list.");
+        close_popups_above(session, n_wnd)?;
+        return Ok(false);
+    };
+    focus_label(session, &hit);
+    send_key(session, hits, 2)?;
+    settle();
+
+    // the cursor now sits on the layout in the list: prefer an explicit focus when visible
+    if let Some(id) = find_list_label(session, n_wnd, layout_name) {
+        focus_label(session, &id);
+    }
+    send_key(session, n_wnd, 2)?;
+    settle();
+    let done = !dialog_open(n_wnd)?;
+    println!("Selected layout via Find: {layout_name} (closed: {done})");
+    Ok(done)
+}
+
+/// F12 (cancel) the popups stacked above `n_wnd`, highest first.
+fn close_popups_above(session: &GuiSession, n_wnd: i32) -> windows::core::Result<()> {
+    for n in ((n_wnd + 1)..=(n_wnd + 3)).rev() {
+        if exist_ctrl(session, n, "", true)?.cband {
+            send_key(session, n, 12)?;
+            thread::sleep(Duration::from_millis(150));
+        }
+    }
+    Ok(())
 }
 
 /// Trigger layout popup based on transaction code
@@ -646,4 +790,20 @@ fn check_export_window(
 
     println!("Export window found with expected title: {expected_title}");
     Ok(true)
+}
+
+#[cfg(test)]
+mod list_label_tests {
+    use super::list_label_matches;
+
+    #[test]
+    fn matches_name_or_first_token_case_insensitively() {
+        assert!(list_label_matches("xdock", "XDOCK"));
+        assert!(list_label_matches("  XDOCK  ", "xdock"));
+        assert!(list_label_matches("XDOCK  Cross dock view", "xdock"));
+        assert!(!list_label_matches("XDOCK2", "xdock"));
+        assert!(!list_label_matches("MY XDOCK", "xdock"));
+        assert!(!list_label_matches("xdock", ""));
+        assert!(!list_label_matches("", "xdock"));
+    }
 }

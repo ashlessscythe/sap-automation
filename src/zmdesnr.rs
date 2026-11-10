@@ -1,3 +1,4 @@
+use crate::utils::export_outcome::ExportOutcome;
 use crate::utils::sap_file_utils::*;
 use crate::utils::select_layout_utils::check_select_layout;
 use crate::utils::setup_layout_utils::setup_layout;
@@ -105,13 +106,15 @@ fn add_layout_columns(session: &GuiSession, params: &ZMDESNRParams) -> Result<bo
 /// Run ZMDESNR export with the given parameters
 ///
 /// This function is a port of the VBA function ZMDESNR_With_Exclude_Export
-pub fn run_export(session: &GuiSession, params: &ZMDESNRParams) -> Result<bool> {
+pub fn run_export_outcome(session: &GuiSession, params: &ZMDESNRParams) -> Result<ExportOutcome> {
     println!("Running ZMDESNR export...");
 
     // Check if tCode is active
     if !assert_tcode(session, "ZMDESNR", Some(0))? {
         println!("Failed to activate ZMDESNR transaction");
-        return Ok(false);
+        return Ok(ExportOutcome::Error(
+            "ZMDESNR: export step failed".to_string(),
+        ));
     }
 
     // Apply variant if provided
@@ -161,7 +164,9 @@ pub fn run_export(session: &GuiSession, params: &ZMDESNRParams) -> Result<bool> 
 
     // If tab operations failed, return early
     if !tab_operation_success {
-        return Ok(false);
+        return Ok(ExportOutcome::Error(
+            "ZMDESNR: export step failed".to_string(),
+        ));
     }
 
     // Check if we need to send vkey 3 after export (before layout selection)
@@ -193,7 +198,9 @@ pub fn run_export(session: &GuiSession, params: &ZMDESNRParams) -> Result<bool> 
                 "Statusbar message: No layouts found for layout {}",
                 params.layout_row.as_deref().unwrap_or("")
             );
-            return Ok(false);
+            return Ok(ExportOutcome::Error(
+                "ZMDESNR: export step failed".to_string(),
+            ));
         }
         _ => {
             println!("Statusbar message: {bar_msg}");
@@ -213,10 +220,10 @@ pub fn run_export(session: &GuiSession, params: &ZMDESNRParams) -> Result<bool> 
             if let Ok(menu) = session.find_by_id("wnd[0]/mbar/menu[0]/menu[3]/menu[2]".to_string())
             {
                 if let Some(menu_item) = menu.downcast::<GuiMenu>() {
-                    if menu_item.select().is_ok()
-                        && export_local_file(session, "ZMDESNR", exp_type, None).is_ok()
-                    {
-                        return Ok(true);
+                    if menu_item.select().is_ok() {
+                        if let Ok(p) = export_local_file(session, "ZMDESNR", exp_type, None) {
+                            return Ok(ExportOutcome::from_exported_path(&p));
+                        }
                     }
                 }
             }
@@ -239,7 +246,9 @@ pub fn run_export(session: &GuiSession, params: &ZMDESNRParams) -> Result<bool> 
     )?;
     if !run_check {
         println!("Error checking export window");
-        return Ok(false);
+        return Ok(ExportOutcome::Error(
+            "ZMDESNR: export step failed".to_string(),
+        ));
     }
 
     // Get file path using the utility function
@@ -248,7 +257,12 @@ pub fn run_export(session: &GuiSession, params: &ZMDESNRParams) -> Result<bool> 
     // Save SAP file
     let run_check = save_sap_file(session, &file_path, &file_name, Some(true))?;
 
-    Ok(run_check)
+    Ok(ExportOutcome::from_saved(run_check, &file_path, &file_name))
+}
+
+/// Boolean wrapper kept for menus/sequence; see [`run_export_outcome`].
+pub fn run_export(session: &GuiSession, params: &ZMDESNRParams) -> Result<bool> {
+    Ok(run_export_outcome(session, params)?.into_bool())
 }
 
 /// Handle operations specific to tab 2

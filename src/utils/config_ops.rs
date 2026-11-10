@@ -525,6 +525,15 @@ impl SapConfig {
                     .insert("cli_shipment_col".to_string(), v.clone());
             }
 
+            // VT11-only: read by `create_vt11_params_from_config` as "true"/"false".
+            if key_upper == "VT11" {
+                if let Some(b) = o.ignore_display_error {
+                    entry
+                        .additional_params
+                        .insert("ignore_display_error".to_string(), b.to_string());
+                }
+            }
+
             // ZMDESNR-only knobs.
             if key_upper == "ZMDESNR" {
                 // pre_export_back: read by `create_zmdesnr_params_from_config`
@@ -1132,17 +1141,19 @@ impl SapConfig {
 
     /// Format a date using the configured date format
     pub fn format_date(&self, date: chrono::NaiveDate) -> String {
-        let date_format = self.get_date_format();
-        match date_format.as_str() {
-            "mm/dd/yyyy" => date.format("%m/%d/%Y").to_string(),
-            "yyyy-mm-dd" => date.format("%Y-%m-%d").to_string(),
-            "dd-mm-yy" => date.format("%d-%m-%y").to_string(),
-            "dd-mm-yyyy" => date.format("%d-%m-%Y").to_string(),
-            _ => {
-                // Default to ISO format if unknown format
-                date.format("%Y-%m-%d").to_string()
-            }
-        }
+        format_date_with(&self.get_date_format(), date)
+    }
+}
+
+/// Format a date using a config-style format name (`mm/dd/yyyy`, `yyyy-mm-dd`,
+/// `dd-mm-yy`, `dd-mm-yyyy`). Unknown names fall back to ISO.
+pub fn format_date_with(date_format: &str, date: chrono::NaiveDate) -> String {
+    match date_format {
+        "mm/dd/yyyy" => date.format("%m/%d/%Y").to_string(),
+        "yyyy-mm-dd" => date.format("%Y-%m-%d").to_string(),
+        "dd-mm-yy" => date.format("%d-%m-%y").to_string(),
+        "dd-mm-yyyy" => date.format("%d-%m-%Y").to_string(),
+        _ => date.format("%Y-%m-%d").to_string(),
     }
 }
 

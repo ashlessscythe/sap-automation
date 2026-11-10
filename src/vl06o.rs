@@ -1,6 +1,7 @@
 use std::thread;
 use std::time::Duration;
 
+use crate::utils::export_outcome::ExportOutcome;
 use sap_scripting::*;
 use windows::core::Result;
 
@@ -293,13 +294,15 @@ fn try_open_local_file_export(session: &GuiSession) -> bool {
 /// Run VL06O export with the given parameters
 ///
 /// This function is a port of the VBA function VL06O_DeliveryList_Run_Export
-pub fn run_export(session: &GuiSession, params: &VL06OParams) -> Result<bool> {
+pub fn run_export_outcome(session: &GuiSession, params: &VL06OParams) -> Result<ExportOutcome> {
     println!("Running VL06O export...");
 
     // Check if tCode is active
     if !assert_tcode(session, "VL06O", Some(0))? {
         println!("Failed to activate VL06O transaction");
-        return Ok(false);
+        return Ok(ExportOutcome::Error(
+            "VL06O: export step failed".to_string(),
+        ));
     }
 
     // Press "List Outbound Deliveries" button
@@ -367,7 +370,9 @@ pub fn run_export(session: &GuiSession, params: &VL06OParams) -> Result<bool> {
 
     if !paste_result {
         println!("Failed to paste shipment numbers");
-        return Ok(false);
+        return Ok(ExportOutcome::Error(
+            "VL06O: export step failed".to_string(),
+        ));
     }
 
     // Check if items were pasted successfully
@@ -376,7 +381,9 @@ pub fn run_export(session: &GuiSession, params: &VL06OParams) -> Result<bool> {
         println!("Paste not successful, retrying...");
         // In a real implementation, we would retry the paste operation
         // For now, we'll just return false
-        return Ok(false);
+        return Ok(ExportOutcome::Error(
+            "VL06O: export step failed".to_string(),
+        ));
     }
 
     // Close Multi-Window
@@ -428,10 +435,10 @@ pub fn run_export(session: &GuiSession, params: &VL06OParams) -> Result<bool> {
     // Export preference: try local file export if configured; otherwise Excel
     if let Ok(config) = SapConfig::load() {
         if let Some(exp_type) = config.get_effective_export_type("VL06O") {
-            if try_open_local_file_export(session)
-                && export_local_file(session, "VL06O", exp_type, None).is_ok()
-            {
-                return Ok(true);
+            if try_open_local_file_export(session) {
+                if let Ok(p) = export_local_file(session, "VL06O", exp_type, None) {
+                    return Ok(ExportOutcome::from_exported_path(&p));
+                }
             }
             println!("Local file export path not available; falling back to Excel export...");
         }
@@ -448,7 +455,9 @@ pub fn run_export(session: &GuiSession, params: &VL06OParams) -> Result<bool> {
     let run_check = check_export_window(session, "VL06O", "LIST OF OUTBOUND DELIVERIES")?;
     if !run_check {
         println!("Error checking export window");
-        return Ok(false);
+        return Ok(ExportOutcome::Error(
+            "VL06O: export step failed".to_string(),
+        ));
     }
 
     // Get file path using the utility function
@@ -457,7 +466,12 @@ pub fn run_export(session: &GuiSession, params: &VL06OParams) -> Result<bool> {
     // Save SAP file with prevent_excel_open set to true (don't open Excel)
     let run_check = save_sap_file(session, &file_path, &file_name, Some(true))?;
 
-    Ok(run_check)
+    Ok(ExportOutcome::from_saved(run_check, &file_path, &file_name))
+}
+
+/// Boolean wrapper kept for menus/sequence; see [`run_export_outcome`].
+pub fn run_export(session: &GuiSession, params: &VL06OParams) -> Result<bool> {
+    Ok(run_export_outcome(session, params)?.into_bool())
 }
 
 /// Run VL06O export with delivery numbers to get package counts

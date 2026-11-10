@@ -181,7 +181,11 @@ pub fn run_vt11_listcheck_auto(session: &GuiSession) -> Result<()> {
 }
 
 fn create_vt11_params_from_config(config: &HashMap<String, String>) -> VT11Params {
-    let mut params = VT11Params::default();
+    // SAP date format: [global].date_format (the --date-format override is merged into it)
+    let mut params = VT11Params {
+        date_format: SapConfig::load().ok().map(|c| c.get_date_format()),
+        ..Default::default()
+    };
 
     // Set variant if available
     if let Some(variant) = config.get("variant") {
@@ -204,6 +208,10 @@ fn create_vt11_params_from_config(config: &HashMap<String, String>) -> VT11Param
         if let Ok(date) = parse_date(end_date) {
             params.end_date = date;
         }
+    }
+
+    if let Some(v) = config.get("ignore_display_error") {
+        params.ignore_display_error = v.eq_ignore_ascii_case("true");
     }
 
     // Set by_date if available
@@ -234,7 +242,10 @@ fn clear_screen() {
 }
 
 fn get_vt11_parameters() -> Result<VT11Params> {
-    let mut params = VT11Params::default();
+    let mut params = VT11Params {
+        date_format: SapConfig::load().ok().map(|c| c.get_date_format()),
+        ..Default::default()
+    };
 
     // Get start date
     let start_date_str: String = Input::new()

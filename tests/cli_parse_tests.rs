@@ -312,3 +312,58 @@ fn summary_line_includes_set_flags() {
     assert!(line.contains("--iterations=3"));
     assert!(line.contains("--date-start=2026-01-01"));
 }
+
+#[test]
+fn date_week_sets_range_and_by_date() {
+    let cli = parse(&["--date=WK45/2026"]).unwrap();
+    let o = cli.to_overrides().unwrap();
+    assert_eq!(o.date_start, NaiveDate::from_ymd_opt(2026, 11, 1));
+    assert_eq!(o.date_end, NaiveDate::from_ymd_opt(2026, 11, 7));
+    assert_eq!(o.by_date, Some(true));
+}
+
+#[test]
+fn date_keeps_explicit_by_date_false() {
+    let cli = parse(&["--date=2026-11-05", "--by-date=false"]).unwrap();
+    let o = cli.to_overrides().unwrap();
+    assert_eq!(o.date_start, NaiveDate::from_ymd_opt(2026, 11, 5));
+    assert_eq!(o.date_end, NaiveDate::from_ymd_opt(2026, 11, 5));
+    assert_eq!(o.by_date, Some(false));
+}
+
+#[test]
+fn date_conflicts_with_date_start() {
+    let cli = parse(&["--date=WK45", "--date-start=2026-11-01"]).unwrap();
+    assert!(cli.to_overrides().is_err());
+}
+
+#[test]
+fn date_garbage_rejected() {
+    let cli = parse(&["--date=WKx"]).unwrap();
+    assert!(cli.to_overrides().is_err());
+}
+
+#[test]
+fn ignore_display_error_flag() {
+    let o = parse(&["--ignore-display-error"])
+        .unwrap()
+        .to_overrides()
+        .unwrap();
+    assert_eq!(o.ignore_display_error, Some(true));
+    let o = parse(&["--ignore-display-error=false"])
+        .unwrap()
+        .to_overrides()
+        .unwrap();
+    assert_eq!(o.ignore_display_error, Some(false));
+    let o = parse(&[]).unwrap().to_overrides().unwrap();
+    assert_eq!(o.ignore_display_error, None);
+}
+
+#[test]
+fn rname_dir_flag() {
+    let o = parse(&["--rname-dir=./mustgo"])
+        .unwrap()
+        .to_overrides()
+        .unwrap();
+    assert_eq!(o.rname_dir.as_deref(), Some("./mustgo"));
+}

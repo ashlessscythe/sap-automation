@@ -14,6 +14,31 @@ use windows::Win32::UI::WindowsAndMessaging::{
     EnumWindows, FindWindowW, GetWindowTextW, SendMessageW, WM_CLOSE,
 };
 
+/// Directory exports for `tcode` go to. Without `rname_dir` this is the legacy
+/// `{reports_dir}\\{tcode}`. A relative `rname_dir` (`./mustgo`, `mustgo`) goes under the
+/// reports dir (`{reports_dir}\{rname_dir}\{tcode}`); an absolute one is used as is
+/// (`{rname_dir}\{tcode}`).
+pub fn resolve_export_dir(reports_dir: &str, rname_dir: Option<&str>, tcode: &str) -> String {
+    let r = rname_dir.map(str::trim).filter(|r| !r.is_empty());
+    let Some(r) = r else {
+        return format!("{reports_dir}\\\\{tcode}");
+    };
+    let rp = Path::new(r);
+    let base = if rp.is_absolute() {
+        rp.to_path_buf()
+    } else {
+        // Reports dir may carry doubled backslashes from config; normalise for joining.
+        let mut p = std::path::PathBuf::from(reports_dir.replace("\\\\", "\\"));
+        for c in rp.components() {
+            if !matches!(c, std::path::Component::CurDir) {
+                p.push(c.as_os_str());
+            }
+        }
+        p
+    };
+    base.join(tcode).to_string_lossy().into_owned()
+}
+
 /// Gets a file path for a specific tcode
 ///
 /// This function generates a file path based on the tcode, timestamp, and extension.
@@ -29,7 +54,13 @@ use windows::Win32::UI::WindowsAndMessaging::{
 /// * `(String, String)` - A tuple containing (file_path, file_name)
 pub fn get_tcode_file_path(tcode: &str, ext: &str) -> (String, String) {
     let reports_dir = get_reports_dir();
-    let tcode_dir = format!("{reports_dir}\\\\{tcode}");
+    let tcode_dir = resolve_export_dir(
+        &reports_dir,
+        crate::utils::cli_overrides::cli_overrides()
+            .rname_dir
+            .as_deref(),
+        tcode,
+    );
 
     // Create the directory if it doesn't exist
     if !Path::new(&tcode_dir).exists() {
@@ -335,5 +366,60 @@ pub fn save_sap_file(
     } else {
         println!("Error: Save dialog window not found");
         Ok(false)
+    }
+}
+
+#[cfg(test)]
+mod export_dir_tests {
+    use super::resolve_export_dir;
+    use std::path::Path;
+
+    fn joined(base: &str, parts: &[&str]) -> String {
+        let mut p = Path::new(base).to_path_buf();
+        for x in parts {
+            p.push(x);
+        }
+        p.to_string_lossy().into_owned()
+    }
+
+    #[test]
+    fn legacy_without_rname_dir() {
+        let legacy = resolve_export_dir(r"C:\Reports", None, "VT11");
+        assert!(legacy.ends_with("VT11") && legacy.starts_with(r"C:\Reports"));
+        assert_eq!(
+            resolve_export_dir(r"C:\Reports", Some("  "), "VT11"),
+            legacy
+        );
+    }
+
+    #[test]
+    fn relative_goes_under_reports_dir() {
+        let want = joined(r"C:\Reports", &["mustgo", "VT11"]);
+        assert_eq!(
+            resolve_export_dir(r"C:\Reports", Some("./mustgo"), "VT11"),
+            want
+        );
+        assert_eq!(
+            resolve_export_dir(r"C:\Reports", Some(r".\mustgo"), "VT11"),
+            want
+        );
+        assert_eq!(
+            resolve_export_dir(r"C:\Reports", Some("mustgo"), "VT11"),
+            want
+        );
+        // doubled backslashes from config are normalised
+        assert_eq!(
+            resolve_export_dir(r"C:\\Reports", Some("mustgo"), "VT11"),
+            want
+        );
+    }
+
+    #[test]
+    fn absolute_used_as_is() {
+        let want = joined(r"D:\out\k2xx", &["VT11"]);
+        assert_eq!(
+            resolve_export_dir(r"C:\Reports", Some(r"D:\out\k2xx"), "VT11"),
+            want
+        );
     }
 }

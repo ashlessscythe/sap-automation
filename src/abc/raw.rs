@@ -33,16 +33,80 @@ impl Default for RawOptions {
     }
 }
 
-/// Decode export bytes: UTF-8 (a BOM is dropped). Other encodings were not observed and are
-/// rejected with an error instead of being guessed.
+/// Windows-1252 `0x80..=0x9F` (the range where it differs from Latin-1); `None` = undefined.
+const CP1252_HIGH: [Option<char>; 32] = [
+    Some('\u{20AC}'),
+    None,
+    Some('\u{201A}'),
+    Some('\u{0192}'),
+    Some('\u{201E}'),
+    Some('\u{2026}'),
+    Some('\u{2020}'),
+    Some('\u{2021}'),
+    Some('\u{02C6}'),
+    Some('\u{2030}'),
+    Some('\u{0160}'),
+    Some('\u{2039}'),
+    Some('\u{0152}'),
+    None,
+    Some('\u{017D}'),
+    None,
+    None,
+    Some('\u{2018}'),
+    Some('\u{2019}'),
+    Some('\u{201C}'),
+    Some('\u{201D}'),
+    Some('\u{2022}'),
+    Some('\u{2013}'),
+    Some('\u{2014}'),
+    Some('\u{02DC}'),
+    Some('\u{2122}'),
+    Some('\u{0161}'),
+    Some('\u{203A}'),
+    Some('\u{0153}'),
+    None,
+    Some('\u{017E}'),
+    Some('\u{0178}'),
+];
+
+/// Decode Windows-1252 (SAP's default text-file encoding on Windows); an undefined byte is an
+/// error rather than a guess.
+fn decode_cp1252(b: &[u8]) -> Result<String> {
+    let mut s = String::with_capacity(b.len());
+    for (i, &x) in b.iter().enumerate() {
+        match x {
+            0x80..=0x9F => match CP1252_HIGH[usize::from(x - 0x80)] {
+                Some(c) => s.push(c),
+                None => {
+                    return Err(anyhow!(
+                        "export is neither UTF-8 nor Windows-1252 (undefined byte 0x{x:02X} at {i})"
+                    ))
+                }
+            },
+            // ASCII and 0xA0..=0xFF map to the same code points (Latin-1)
+            _ => s.push(char::from(x)),
+        }
+    }
+    Ok(s)
+}
+
+/// Decode export bytes: UTF-8 (a BOM is dropped); when the bytes are not valid UTF-8 the file
+/// is read as Windows-1252 (a real VT11 export had a non-breaking space, byte `0xA0`, in a
+/// "Seal Number" text). Bytes that are neither are an error.
 pub fn decode_export(bytes: &[u8]) -> Result<String> {
     let b = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(bytes);
-    String::from_utf8(b.to_vec()).map_err(|e| {
-        anyhow!(
-            "export is not valid UTF-8 (byte {}): {e}",
-            e.utf8_error().valid_up_to()
-        )
-    })
+    match std::str::from_utf8(b) {
+        Ok(s) => Ok(s.to_string()),
+        Err(_) => {
+            // UTF-16 (BOM) would "decode" as garbage in Windows-1252: say what it is instead
+            if b.starts_with(&[0xFF, 0xFE]) || b.starts_with(&[0xFE, 0xFF]) {
+                return Err(anyhow!(
+                    "export looks like UTF-16 (byte order mark); only UTF-8 and Windows-1252 text is supported"
+                ));
+            }
+            decode_cp1252(b)
+        }
+    }
 }
 
 fn fields(line: &str) -> Vec<&str> {
@@ -398,7 +462,41 @@ mod tests {
     #[test]
     fn decode_rules() {
         assert_eq!(decode_export(b"\xEF\xBB\xBFab").unwrap(), "ab");
-        assert!(decode_export(&[0x66, 0xE9]).is_err());
+        // valid UTF-8 stays UTF-8 (a multi-byte char is not re-read as Windows-1252)
+        assert_eq!(decode_export("caf\u{e9}".as_bytes()).unwrap(), "caf\u{e9}");
+    }
+
+    #[test]
+    fn invalid_utf8_falls_back_to_windows_1252() {
+        // 0xA0 = non-breaking space (the byte of the real VT11 failure), 0xE9 = e acute
+        assert_eq!(
+            decode_export(b"FEDX\xA0 729656\xE9").unwrap(),
+            "FEDX\u{a0} 729656\u{e9}"
+        );
+        // the 0x80..0x9F range differs from Latin-1: euro, curly quotes, en dash
+        assert_eq!(
+            decode_export(&[0x80, 0x93, 0x94, 0x96]).unwrap(),
+            "\u{20ac}\u{201c}\u{201d}\u{2013}"
+        );
+        // bytes undefined in Windows-1252 are an error, not a guess
+        let e = decode_export(&[0x66, 0x81]).unwrap_err().to_string();
+        assert!(e.contains("0x81"), "{e}");
+        // UTF-16 is recognised by its BOM and rejected, not decoded as Windows-1252
+        let e = decode_export(&[0xFF, 0xFE, b'a', 0x00])
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("UTF-16"), "{e}");
+        assert!(decode_export(&[0xFE, 0xFF, 0x00, b'a']).is_err());
+    }
+
+    #[test]
+    fn non_breaking_space_in_a_cell_loads_and_trims() {
+        let txt: &[u8] =
+            b"\tShipment\tSeal Number 2\r\n\r\n\t24571599\t\xA0FEDX\xA0 729656 S\xA0\r\n";
+        let t = load_export("t", txt, &RawOptions::default()).unwrap();
+        assert_eq!(t.rows[0][0], "24571599");
+        // leading/trailing NBSP are trimmed like spaces, an interior one is kept
+        assert_eq!(t.rows[0][1], "FEDX\u{a0} 729656 S");
     }
 
     #[test]

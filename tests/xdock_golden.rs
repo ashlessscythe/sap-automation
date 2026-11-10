@@ -46,6 +46,33 @@ fn col(t: &Table, name: &str) -> Vec<String> {
     t.rows.iter().map(|r| r[c].clone()).collect()
 }
 
+/// A real week VT11 export (WK43, 424 shipments) is not UTF-8: it has non-breaking spaces
+/// (byte 0xA0, Windows-1252) in "Seal Number 2". It used to stop the run with "export is not
+/// valid UTF-8"; it must load, with all rows and unchanged shipment numbers.
+#[test]
+fn vt11_week_export_in_windows_1252_loads() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/xdock/real/raw_vt11_wk43_cp1252.txt");
+    let bytes = std::fs::read(&path).unwrap();
+    assert!(
+        std::str::from_utf8(&bytes).is_err(),
+        "fixture must really be non-UTF-8"
+    );
+    let vt = common::load_real_in("xdock", "vt11_inv", "raw_vt11_wk43_cp1252.txt");
+    assert_eq!(vt.nrows(), 424, "list header says Entries: 424");
+    assert!(vt.col("shipment_number").is_ok() && vt.col("transportplanningpt").is_ok());
+    let sn = col(&vt, "shipment_number");
+    assert!(sn
+        .iter()
+        .all(|s| !s.is_empty() && s.chars().all(|c| c.is_ascii_digit())));
+    // the cell with the NBSP is kept (interior NBSP), not dropped or mangled
+    let seals = col(&vt, "seal_number_2");
+    assert!(
+        seals.iter().any(|s| s.contains('\u{a0}')),
+        "expected a seal text with a non-breaking space"
+    );
+}
+
 #[test]
 fn loader_shapes() {
     let vt = vt11();

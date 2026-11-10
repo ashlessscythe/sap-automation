@@ -84,3 +84,26 @@ pub fn load_raw_fixture(dir: &str, file: &str) -> Table {
     let t = load_fixture(dir, file);
     Table::from_raw(file, &t.headers, t.rows)
 }
+
+/// Load a real SAP text export from `tests/fixtures/mustgo/real/` through the production
+/// loader (`abc::raw`), with the canonical header aliases of `tcode` applied.
+pub fn load_real(tcode: &str, file: &str) -> Table {
+    let path: PathBuf = [
+        env!("CARGO_MANIFEST_DIR"),
+        "tests",
+        "fixtures",
+        "mustgo",
+        "real",
+        file,
+    ]
+    .iter()
+    .collect();
+    let bytes = std::fs::read(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    sap_automation::abc::raw::load_export_canonical(
+        tcode,
+        file,
+        &bytes,
+        &sap_automation::abc::raw::RawOptions::default(),
+    )
+    .unwrap_or_else(|e| panic!("load {file}: {e}"))
+}

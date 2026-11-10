@@ -1,7 +1,8 @@
 //! Real SAP adapter for the headless runners: [`RealSapSteps`] implements
 //! [`super::runner::SapSteps`] (`mustgo`), [`super::inv_runner::InvSteps`] (`xdock`, `toyota`),
-//! [`super::inv_runner::MiscSteps`] and [`super::k2xx_runner::K2xxSteps`] on top of the tcode
-//! steps (`vt11`, `vl06o`, `zmdesnr`, `lt23`, `zmdetpc`, `zvt11` Closed).
+//! [`super::inv_runner::MiscSteps`], [`super::k2xx_runner::K2xxSteps`] and
+//! [`super::relabel_runner::RelabelSteps`] on top of the tcode steps (`vt11`, `vl06o`,
+//! `zmdesnr`, `lt23`, `zmdetpc`, `zvt11` Closed).
 //!
 //! Nothing here reads config or CLI overrides: the caller builds a [`MustgoSapConfig`]
 //! (defaults below) and passes the session. Every step forces "text with tabs"
@@ -10,13 +11,14 @@
 //! `delete_exports` is set (a file that failed to load is kept for diagnosis).
 //!
 //! NOT run against SAP by the author. See "Live verification checklist (mustgo)", "(xdock)"
-//! and "(k2xx)" in `docs/abc_headless_plan.md` for every control id / behaviour that is
+//! "(k2xx)" and "(relabel)" in `docs/abc_headless_plan.md` for every control id / behaviour that is
 //! unverified.
 #![allow(dead_code)]
 
 use super::inv_runner::{InvSteps, MiscSteps};
 use super::k2xx_runner::K2xxSteps;
 use super::raw::RawOptions;
+use super::relabel_runner::RelabelSteps;
 use super::run::RunDate;
 use super::runner::{outcome_to_output, SapSteps, StepOutput};
 use crate::lt23::LT23Params;
@@ -199,6 +201,41 @@ pub fn zmdesnr_by_deliveries_and_tos_params(
     ZMDESNRParams {
         transfer_numbers: transfer_orders.to_vec(),
         ..zmdesnr_by_deliveries_params(cfg, deliveries, target)
+    }
+}
+
+/// `relabel`: ZMDESNR by deliveries with the given variant and layout (tab 2, scroll paste).
+pub fn relabel_by_deliveries_params(
+    cfg: &MustgoSapConfig,
+    deliveries: &[String],
+    variant: &str,
+    layout: &str,
+    target: ExportTarget,
+) -> ZMDESNRParams {
+    ZMDESNRParams {
+        sap_variant_name: Some(variant.to_string()).filter(|v| !v.trim().is_empty()),
+        layout_row: Some(layout.to_string()).filter(|l| !l.trim().is_empty()),
+        ..zmdesnr_by_deliveries_params(cfg, deliveries, target)
+    }
+}
+
+/// `relabel`: ZMDESNR by serial / History (tab 1) for the serials with the given variant and
+/// layout.
+pub fn relabel_history_params(
+    cfg: &MustgoSapConfig,
+    serials: &[String],
+    variant: &str,
+    layout: &str,
+    target: ExportTarget,
+) -> ZMDESNRParams {
+    ZMDESNRParams {
+        history_serials: serials.to_vec(),
+        sap_variant_name: Some(variant.to_string()).filter(|v| !v.trim().is_empty()),
+        layout_row: Some(layout.to_string()).filter(|l| !l.trim().is_empty()),
+        tab_number: Some(1),
+        export_target: Some(target),
+        ignore_display_error: cfg.ignore_display_error,
+        ..ZMDESNRParams::default()
     }
 }
 
@@ -503,6 +540,34 @@ impl K2xxSteps for RealSapSteps<'_> {
     }
 }
 
+impl RelabelSteps for RealSapSteps<'_> {
+    fn zmdesnr_by_deliveries(
+        &mut self,
+        deliveries: &[String],
+        variant: &str,
+        layout: &str,
+    ) -> Result<StepOutput> {
+        let (target, _) = self.target("ZMDESNR");
+        let params = relabel_by_deliveries_params(&self.cfg, deliveries, variant, layout, target);
+        let outcome = crate::zmdesnr::run_export_outcome(self.session, &params)
+            .map_err(|e| anyhow!("zmdesnr (by deliveries): SAP step failed: {e}"))?;
+        finish_step(&self.cfg, "zmdesnr", outcome)
+    }
+
+    fn zmdesnr_history(
+        &mut self,
+        serials: &[String],
+        variant: &str,
+        layout: &str,
+    ) -> Result<StepOutput> {
+        let (target, _) = self.target("ZMDESNR");
+        let params = relabel_history_params(&self.cfg, serials, variant, layout, target);
+        let outcome = crate::zmdesnr::run_export_outcome(self.session, &params)
+            .map_err(|e| anyhow!("zmdesnr (serial / history): SAP step failed: {e}"))?;
+        finish_step(&self.cfg, "zmdesnr", outcome)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -702,6 +767,30 @@ mod tests {
         assert_eq!(z.export_target, Some(t.clone()));
         let blank = zvt11_closed_params(&cfg, &s(&["8"]), d(1, 1), d(1, 2), " ", "", t);
         assert!(blank.variant.is_none() && blank.layout_row.is_none());
+    }
+
+    #[test]
+    fn relabel_params() {
+        let cfg = MustgoSapConfig::default();
+        let t = export_target(&cfg, "ZMDESNR", now());
+        let p = relabel_by_deliveries_params(
+            &cfg,
+            &s(&["8", "9"]),
+            "relabel_k2xx",
+            "site_relabel",
+            t.clone(),
+        );
+        assert_eq!(p.sap_variant_name.as_deref(), Some("relabel_k2xx"));
+        assert_eq!(p.layout_row.as_deref(), Some("site_relabel"));
+        assert_eq!(p.tab_number, Some(2));
+        assert!(p.scroll_paste && p.history_serials.is_empty());
+        assert_eq!(p.delivery_numbers, s(&["8", "9"]));
+        assert_eq!(p.export_target, Some(t.clone()));
+        let h = relabel_history_params(&cfg, &s(&["5", "6"]), "relabel_k2xx", "site_relabel", t);
+        assert_eq!(h.tab_number, Some(1));
+        assert_eq!(h.history_serials, s(&["5", "6"]));
+        assert!(h.delivery_numbers.is_empty() && h.export_target.is_some());
+        assert_eq!(h.layout_row.as_deref(), Some("site_relabel"));
     }
 
     #[test]

@@ -135,6 +135,9 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
+    // --rname (headless report) pairing/conflict rules that need the parsed overrides.
+    cli.validate_rname(&overrides)?;
+
     // Install CLI overrides into the process-wide slot BEFORE any config load,
     // so every `*Config::load()` call site sees the merged view.
     set_cli_overrides(overrides);
@@ -148,6 +151,13 @@ fn main() -> anyhow::Result<()> {
                  create and set up [sequence] / [tcode.X] (configure interactively or hand-edit).",
                 bad.join(", ")
             ));
+        }
+    }
+
+    // Headless report by name: --rname=<name> --run-date=<date>
+    if let Some(rname) = cli_overrides().rname.clone() {
+        if let Some(date) = cli_overrides().run_date {
+            return run_unattended_rname(&rname, &date, cli.skip_sap_check, cli.keep_awake);
         }
     }
 
@@ -229,6 +239,35 @@ fn run_unattended_sequence(skip_sap_check: bool, keep_awake: bool) -> anyhow::Re
     run_sequence_unattended(&session, skip_sap_check)?;
 
     println!("Unattended sequence execution completed successfully.");
+    Ok(())
+}
+
+fn run_unattended_rname(
+    rname: &str,
+    date: &sap_automation::abc::run::RunDate,
+    skip_sap_check: bool,
+    keep_awake: bool,
+) -> anyhow::Result<()> {
+    println!("SAP Automation - Unattended Report Mode");
+    println!("=======================================");
+
+    if keep_awake {
+        match keep_awake::enable_keep_awake(true) {
+            Ok(_) => println!("Keep-awake enabled - system will stay awake during execution"),
+            Err(e) => eprintln!("Warning: Failed to enable keep-awake: {e}"),
+        }
+    }
+
+    let (_com_instance, _wrapper, _engine, _connection, session) = init_sap_connection()?;
+
+    sap_automation::utils::unattended_runner::run_rname_unattended(
+        &session,
+        rname,
+        date,
+        skip_sap_check,
+    )?;
+
+    println!("Unattended report execution completed successfully.");
     Ok(())
 }
 

@@ -144,6 +144,8 @@ LT23 (step 16, new `src/lt23.rs`; ids from spec 3.5, none verified)
 After a first live run compare the five files in `<export_dir>\<TCODE>` (set `delete_exports` false) with
 `tests/fixtures/mustgo/real/`.
 
+* CLI/dispatch (step 6): `--rname=<name> --run-date=<DATE|A..B|WKnn>` -> `main.rs` -> `unattended_runner::run_rname_unattended` -> `abc::dispatch::run_report` (resolver: CLI > `[abc.mustgo]` > `[global]` > defaults; keys in the `dispatch.rs` module doc). TUI: ABC Headless > "mustgo". No sequence menu id (the sequence runner has no run date).
+
 ## Phase 0: owner answers (blocking input)
 
 - [x] 0.1 Questions answered: this crate; v1 = mustgo, xdock, toyota; defaults for items 7-18 accepted; relabel

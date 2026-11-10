@@ -28,6 +28,17 @@ pub struct Cli {
     #[arg(long, default_value = "false")]
     pub keep_awake: bool,
 
+    /// Run a headless report by name (see `--run-date`), e.g. `--rname=mustgo`. Drives all
+    /// SAP steps of the report unattended and writes TSV outputs under the reports dir.
+    /// Cannot be combined with --run-loop / --run-sequence / per-tcode flags.
+    #[arg(long, value_name = "NAME", requires = "run_date", conflicts_with_all = ["run_loop", "run_sequence"])]
+    pub rname: Option<String>,
+
+    /// Run date of --rname: `YYYY-MM-DD`, `YYYY-MM-DD..YYYY-MM-DD`, or a week `WK45` /
+    /// `WK45/2026` (Sunday..Saturday, Excel WEEKNUM). A range or week is one run.
+    #[arg(long, value_name = "DATE|A..B|WKnn", requires = "rname")]
+    pub run_date: Option<String>,
+
     /// Override target TCode (case-insensitive: vt11, VL06O, y_dn3_47000149, ...).
     /// On its own runs the TCode auto-flow once. With --run-loop, drives the loop.
     #[arg(long)]
@@ -206,7 +217,11 @@ impl Cli {
         let vt11_closed_date = parse_run_date_opt("--vt11-closed-date", &self.vt11_closed_date)?;
         let vt11_created_date = parse_run_date_opt("--vt11-created-date", &self.vt11_created_date)?;
 
+        let (rname, run_date) = parse_rname_opts(self.rname.as_deref(), self.run_date.as_deref())?;
+
         Ok(CliOverrides {
+            rname,
+            run_date,
             tcode: self.tcode.as_ref().map(|s| s.to_uppercase()),
             layout: self.layout.clone(),
             variant: self.variant.clone(),
@@ -237,6 +252,54 @@ impl Cli {
             tab_number: self.tab_number,
             bin_filter: self.bin_filter.clone(),
         })
+    }
+}
+
+impl Cli {
+    /// Cross-flag rules of `--rname` that need the parsed overrides (the pairing with
+    /// `--run-date` and the conflict with `--run-loop`/`--run-sequence` are enforced by clap).
+    pub fn validate_rname(&self, o: &CliOverrides) -> Result<()> {
+        if o.rname.is_none() {
+            return Ok(());
+        }
+        if self.command.is_some() {
+            return Err(anyhow!(
+                "--rname can't be combined with the run-loop / run-sequence subcommands"
+            ));
+        }
+        let bad = o.per_tcode_flag_names();
+        if !bad.is_empty() {
+            return Err(anyhow!(
+                "{} can't be used with --rname; the report flow sets its own variants/layouts \
+                 (override them in [abc.mustgo] of config.toml)",
+                bad.join(", ")
+            ));
+        }
+        if o.rname_dir.is_some() {
+            return Err(anyhow!(
+                "--rname-dir can't be used with --rname (outputs go under the reports dir)"
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// Validate `--rname` against the registry and parse `--run-date` (default year = this year).
+fn parse_rname_opts(
+    rname: Option<&str>,
+    run_date: Option<&str>,
+) -> Result<(Option<String>, Option<crate::abc::run::RunDate>)> {
+    match (rname, run_date) {
+        (None, None) => Ok((None, None)),
+        (Some(_), None) => Err(anyhow!("--rname requires --run-date")),
+        (None, Some(_)) => Err(anyhow!("--run-date requires --rname")),
+        (Some(n), Some(d)) => {
+            let name = crate::abc::dispatch::check_report(n)
+                .map_err(|e| anyhow!("Invalid --rname value: {e}"))?;
+            let rd = crate::abc::run::parse_run_date(d, chrono::Local::now().year())
+                .map_err(|e| anyhow!("Invalid --run-date value '{d}': {e}"))?;
+            Ok((Some(name.to_string()), Some(rd)))
+        }
     }
 }
 
@@ -271,4 +334,100 @@ fn parse_plants_opt(raw: Option<&str>) -> Option<Vec<String>> {
             .filter(|p| !p.is_empty())
             .collect()
     })
+}
+
+#[cfg(test)]
+mod rname_tests {
+    use super::*;
+
+    fn parse(args: &[&str]) -> std::result::Result<Cli, clap::Error> {
+        let mut v = vec!["sap_automation"];
+        v.extend_from_slice(args);
+        <Cli as Parser>::try_parse_from(v)
+    }
+
+    fn ov(args: &[&str]) -> Result<CliOverrides> {
+        let cli = parse(args).map_err(|e| anyhow!("{e}"))?;
+        let o = cli.to_overrides()?;
+        cli.validate_rname(&o)?;
+        Ok(o)
+    }
+
+    #[test]
+    fn valid_combinations() {
+        let o = ov(&["--rname=mustgo", "--run-date=2026-11-05"]).unwrap();
+        assert_eq!(o.rname.as_deref(), Some("mustgo"));
+        assert_eq!(o.run_date.unwrap().as_range().0.to_string(), "2026-11-05");
+        let o = ov(&["--rname=MustGo", "--run-date=WK45/2026"]).unwrap();
+        assert_eq!(o.rname.as_deref(), Some("mustgo"));
+        assert_eq!(
+            o.run_date.unwrap().as_range(),
+            (
+                NaiveDate::from_ymd_opt(2026, 11, 1).unwrap(),
+                NaiveDate::from_ymd_opt(2026, 11, 7).unwrap()
+            )
+        );
+        assert!(ov(&["--rname=mustgo", "--run-date=2026-11-01..2026-11-07"]).is_ok());
+        // global flags are allowed
+        assert!(ov(&[
+            "--rname=mustgo",
+            "--run-date=2026-11-05",
+            "--reports-dir=C:/r",
+            "--date-format=yyyy-mm-dd",
+            "--keep-awake",
+            "--skip-sap-check"
+        ])
+        .is_ok());
+        // WK without year uses the current year
+        assert!(ov(&["--rname=mustgo", "--run-date=WK45"]).is_ok());
+    }
+
+    #[test]
+    fn pairing_is_required() {
+        assert!(parse(&["--rname=mustgo"]).is_err());
+        assert!(parse(&["--run-date=2026-11-05"]).is_err());
+    }
+
+    #[test]
+    fn invalid_values() {
+        let e = ov(&["--rname=nope", "--run-date=2026-11-05"])
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("unknown report") && e.contains("mustgo"), "{e}");
+        let e = ov(&["--rname=mustgo", "--run-date=banana"])
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("--run-date"), "{e}");
+        assert!(ov(&["--rname=mustgo", "--run-date=2026-11-07..2026-11-01"]).is_err());
+        assert!(ov(&["--rname=mustgo", "--run-date=WK99/2026"]).is_err());
+    }
+
+    #[test]
+    fn conflicts() {
+        assert!(parse(&["--rname=mustgo", "--run-date=2026-11-05", "--run-loop"]).is_err());
+        assert!(parse(&["--rname=mustgo", "--run-date=2026-11-05", "--run-sequence"]).is_err());
+        let e = ov(&["--rname=mustgo", "--run-date=2026-11-05", "--tcode=vt11"])
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("--tcode") && e.contains("--rname"), "{e}");
+        assert!(ov(&["--rname=mustgo", "--run-date=2026-11-05", "--layout=x"]).is_err());
+        assert!(ov(&["--rname=mustgo", "--run-date=2026-11-05", "--rname-dir=x"]).is_err());
+        let cli = parse(&["--rname=mustgo", "--run-date=2026-11-05"]).unwrap();
+        let o = cli.to_overrides().unwrap();
+        assert!(cli.validate_rname(&o).is_ok());
+    }
+
+    #[test]
+    fn without_rname_nothing_changes() {
+        let o = ov(&["--tcode=vt11"]).unwrap();
+        assert!(o.rname.is_none() && o.run_date.is_none());
+        let line = ov(&["--rname=mustgo", "--run-date=WK45/2026"])
+            .unwrap()
+            .summary_line()
+            .unwrap();
+        assert!(
+            line.contains("--rname=mustgo") && line.contains("--run-date=WK_45"),
+            "{line}"
+        );
+    }
 }

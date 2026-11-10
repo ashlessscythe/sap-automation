@@ -4,4 +4,5 @@ pub mod ops;
 pub mod raw;
 pub mod registry;
 pub mod run;
+pub mod runner;
 pub mod table;

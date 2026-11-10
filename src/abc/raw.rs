@@ -370,6 +370,26 @@ mod tests {
     }
 
     #[test]
+    fn aliases_are_tolerant() {
+        // canonical names pass through, unknown extra columns are kept untouched
+        let txt = "\tDelivery\tTO Number\tstorage_bin\tWeird Extra\r\n\r\n\t1\t2\t3\t4\r\n";
+        let t =
+            load_export_canonical("zmdesnr", "t", txt.as_bytes(), &RawOptions::default()).unwrap();
+        assert_eq!(
+            t.headers,
+            vec![
+                "delivery",
+                "transfer_order_number",
+                "storage_bin",
+                "weird_extra"
+            ]
+        );
+        let txt = "\tdelivery\ttransfer_order_number\r\n\r\n\t1\t2\r\n";
+        let t = load_export_canonical("lt23", "t", txt.as_bytes(), &RawOptions::default()).unwrap();
+        assert_eq!(t.headers, vec!["delivery", "transfer_order_number"]);
+    }
+
+    #[test]
     fn unknown_tcode() {
         assert!(load_export_canonical("x", "t", b"", &RawOptions::default()).is_err());
     }

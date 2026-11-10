@@ -72,6 +72,10 @@ Planned SAP-step seam (not implemented): a runner owns a `HashMap<String, Table>
 -> `snr_copy`/`pivot_plant_by_date` -> `write_outputs`. Tests then use a fake seam returning the fixture tables. The raw
 export reader (SAP text/xlsx -> headers + rows) is separate and not written yet: the real raw format is unverified.
 
+* Real exports: `src/abc/raw.rs` loads SAP text-with-tabs exports (observed format in `tests/fixtures/mustgo/README.txt`);
+  short list-screen headers are mapped to canonical names by `*_ALIASES`; real data reproduces spec 9.3
+  (`tests/mustgo_pipeline_real.rs`). Real VT11 free text is truncated to 14 characters.
+
 ## Phase 0: owner answers (blocking input)
 
 - [x] 0.1 Questions answered: this crate; v1 = mustgo, xdock, toyota; defaults for items 7-18 accepted; relabel

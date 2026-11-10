@@ -17,3 +17,4 @@
 
 # Test fixtures keep LF endings
 tests/fixtures/** text eol=lf
+tests/fixtures/mustgo/real/** -text

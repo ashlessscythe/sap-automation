@@ -33,6 +33,10 @@ pub enum Step {
     ShipToRegex,
     /// Trailer estimate per plant (toyota, spec 5.2 rows 31-32).
     Trailers,
+    /// ZVT11 Closed by deliveries from `vl06o` (k2xx, spec 5.5 row 55).
+    Zvt11Closed,
+    /// Merge ZMDETPC into `vl06o` without the xdock/toyota rules (k2xx, spec 4.12 steps 1-4).
+    MergeZmdetpcPlain,
     /// Write output tables.
     Save,
 }
@@ -104,7 +108,23 @@ pub const MISC: ReportDef = ReportDef {
     output_tables: &["vt11", "vl06o", "pivot"],
 };
 
-const REPORTS: &[ReportDef] = &[MUSTGO, XDOCK, TOYOTA, MISC];
+/// `k2xx` (spec 5.5): VT11 -> VL06O (layout `pallets`) -> ZVT11 Closed -> ZMDETPC -> merge
+/// (plain rules). No pivot (spec 7.0 item 1). `relabel` / `repack` will read its `vl06o`.
+pub const K2XX: ReportDef = ReportDef {
+    name: "k2xx",
+    folder: "K2XX",
+    steps: &[
+        Step::Vt11,
+        Step::Vl06o,
+        Step::Zvt11Closed,
+        Step::Zmdetpc,
+        Step::MergeZmdetpcPlain,
+        Step::Save,
+    ],
+    output_tables: &["zvt11", "vt11", "vl06o"],
+};
+
+const REPORTS: &[ReportDef] = &[MUSTGO, XDOCK, TOYOTA, MISC, K2XX];
 
 /// Case-insensitive lookup by rName.
 pub fn find_report(name: &str) -> Option<&'static ReportDef> {
@@ -214,6 +234,24 @@ mod tests {
                 .join("toyota")
                 .join("11-05-2026_TOYOTA_TRAILERS.tsv")
         );
+    }
+
+    #[test]
+    fn k2xx_output_path() {
+        let rd = RunDate {
+            date1: d(2026, 11, 5),
+            date2: None,
+        };
+        let p = output_path(Path::new("r"), &K2XX, d(2026, 11, 10), &rd, "zvt11");
+        assert_eq!(
+            p,
+            Path::new("r")
+                .join("K2XX")
+                .join("2026-11-10")
+                .join("k2xx")
+                .join("11-05-2026_K2XX_ZVT11.tsv")
+        );
+        assert_eq!(find_report("K2xx").unwrap().output_tables.len(), 3);
     }
 
     #[test]

@@ -506,3 +506,329 @@ pub fn run_export_outcome(session: &GuiSession, params: &ZVT11Params) -> Result<
 pub fn run_export(session: &GuiSession, params: &ZVT11Params) -> Result<bool> {
     Ok(run_export_outcome(session, params)?.into_bool())
 }
+
+// ---------------------------------------------------------------------------------------------
+// ZVT11 "Closed" (tab 2) for the headless ABC runner, spec 3.2.
+//
+// Config-agnostic: everything arrives through [`ZVT11ClosedParams`]; no `SapConfig`, no CLI
+// overrides, no clock, no console prompt. The legacy flow above (tab 1, "Open") is untouched.
+//
+// NOT run against SAP by the author. Every control id below comes from the VBA spec only; see
+// "Live verification checklist (k2xx)" in `docs/abc_headless_plan.md`. UNVERIFIED live:
+// * tab `wnd[0]/usr/tabsTABSTRIP_BLK1/tabpTAB2` and the sub-screen prefix [`CLOSED_PREFIX`],
+// * `ctxtS_DATE_2-LOW` / `-HIGH`, `btn%_S_VBELN2_%_APP_%-VALU_PUSH`, `radR1`, `chkP_ALV_2`,
+//   `ctxtS_VSTEL2-LOW` (ship point, only typed when given),
+// * the variant dialog (shared `variant_select`) while tab 2 is active,
+// * the "No data exists in the database for this selection" popup (`wnd[1]/usr/txtMESSTXT1`),
+// * the layout chooser behind `btn[33]` (grid [`CLOSED_LAYOUT_GRID`], name columns
+//   [`CLOSED_LAYOUT_COLUMNS`]),
+// * the local file export menu (candidates [`CLOSED_LOCAL_FILE_MENUS`]) and the header titles
+//   of the exported text list.
+// ---------------------------------------------------------------------------------------------
+
+/// Sub-screen of the "Closed" tab (spec 3.2), relative to `wnd[0]/usr/`.
+pub const CLOSED_PREFIX: &str =
+    "tabsTABSTRIP_BLK1/tabpTAB2/ssub%_SUBSCREEN_BLK1:ZSDR_SHIPMENT_REPORT:0102/";
+/// Layout chooser grid (the id the legacy ZVT11 layout code uses).
+pub const CLOSED_LAYOUT_GRID: &str =
+    "wnd[1]/usr/ssubD0500_SUBSCREEN:SAPLSLVC_DIALOG:0501/cntlG51_CONTAINER/shellcont/shell";
+/// Grid columns that may hold the layout name (tried in this order).
+pub const CLOSED_LAYOUT_COLUMNS: &[&str] = &["VARIANT", "LAYOUT", "NAME", "TEXT", "DESCRIPTION"];
+/// "Local file" menu candidates (the list of the legacy flow).
+pub const CLOSED_LOCAL_FILE_MENUS: &[&str] = &[
+    "wnd[0]/mbar/menu[0]/menu[3]/menu[2]",
+    "wnd[0]/mbar/menu[0]/menu[9]/menu[2]",
+];
+/// Days on either side of the run date typed into `S_DATE_2` (the delivery list is the filter).
+pub const CLOSED_WINDOW_DAYS: i64 = 100;
+
+/// ZVT11 Closed parameters (headless only).
+#[derive(Debug, Clone)]
+pub struct ZVT11ClosedParams {
+    pub variant: Option<String>,
+    pub layout_row: Option<String>,
+    /// `S_DATE_2-LOW` / `-HIGH`, already widened by the caller ([`closed_window`]).
+    pub date_start: NaiveDate,
+    pub date_end: NaiveDate,
+    /// Config-style date format typed into SAP; `None` = `mm/dd/yyyy`.
+    pub date_format: Option<String>,
+    /// Distinct, blank-free deliveries (the caller prepares the list).
+    pub deliveries: Vec<String>,
+    /// Optional ship point (`S_VSTEL2-LOW`); `None` leaves the field alone.
+    pub ship_point: Option<String>,
+    /// Headless target; required (this step has no legacy flow).
+    pub export_target: Option<crate::utils::sap_export_utils::ExportTarget>,
+    pub ignore_display_error: bool,
+    pub t_code: String,
+}
+
+impl Default for ZVT11ClosedParams {
+    fn default() -> Self {
+        let epoch = NaiveDate::from_ymd_opt(1970, 1, 1).expect("valid date");
+        Self {
+            variant: None,
+            layout_row: None,
+            date_start: epoch,
+            date_end: epoch,
+            date_format: None,
+            deliveries: Vec::new(),
+            ship_point: None,
+            export_target: None,
+            ignore_display_error: false,
+            t_code: "ZVT11".to_string(),
+        }
+    }
+}
+
+/// The ZVT11 Closed date window of a run: `start - days` .. `end + days` (spec 3.2: date1 - 100
+/// and date1 + 100; for a range the end of the range is widened). Negative `days` count as 0.
+pub fn closed_window(start: NaiveDate, end: NaiveDate, days: i64) -> (NaiveDate, NaiveDate) {
+    let d = chrono::Duration::days(days.max(0));
+    let end = end.max(start);
+    (start - d, end + d)
+}
+
+/// The two date strings typed into `S_DATE_2-LOW` / `-HIGH` (pure, unit tested).
+pub fn closed_date_fields(params: &ZVT11ClosedParams) -> (String, String) {
+    let fmt = params.date_format.as_deref().unwrap_or("mm/dd/yyyy");
+    let end = params.date_end.max(params.date_start);
+    (
+        crate::utils::config_ops::format_date_with(fmt, params.date_start),
+        crate::utils::config_ops::format_date_with(fmt, end),
+    )
+}
+
+/// Full id of a control on the Closed sub-screen.
+pub fn closed_id(control: &str) -> String {
+    format!("wnd[0]/usr/{CLOSED_PREFIX}{control}")
+}
+
+/// True for the "no data" popup text of ZVT11 (spec 3.2).
+pub fn is_no_data_popup(text: &str) -> bool {
+    text.to_lowercase().contains("no data exists")
+}
+
+fn closed_fail(msg: &str) -> Result<ExportOutcome> {
+    Ok(ExportOutcome::Error(format!("ZVT11 Closed: {msg}")))
+}
+
+/// Select `layout` in the chooser behind `btn[33]` without any console prompt. Ok(false) when
+/// it could not be applied (the chooser is closed again).
+fn select_closed_layout(session: &GuiSession, layout: &str) -> Result<bool> {
+    use crate::zmdetpc::{close_wnd1, press};
+    if !press(session, "wnd[0]/tbar[1]/btn[33]")? {
+        println!("ZVT11 Closed: layout button btn[33] not found");
+        return Ok(false);
+    }
+    std::thread::sleep(std::time::Duration::from_millis(1000));
+    let grid = session
+        .find_by_id(CLOSED_LAYOUT_GRID.to_string())
+        .ok()
+        .and_then(|c| c.downcast::<GuiGridView>());
+    let Some(grid) = grid else {
+        println!("ZVT11 Closed: layout chooser grid {CLOSED_LAYOUT_GRID} not found");
+        close_wnd1(session);
+        return Ok(false);
+    };
+    let rows = grid.row_count()?;
+    for column in CLOSED_LAYOUT_COLUMNS {
+        let names: Vec<String> = (0..rows)
+            .map(|i| {
+                grid.get_cell_value(i, column.to_string())
+                    .unwrap_or_default()
+            })
+            .collect();
+        let Some(i) = crate::lt23::find_layout_row(&names, layout) else {
+            continue;
+        };
+        let _ = grid.set_current_cell(i as i32, column.to_string());
+        grid.set_selected_rows(i.to_string())?;
+        grid.click_current_cell()?;
+        if exist_ctrl(session, 1, "", true)?.cband {
+            println!("ZVT11 Closed: layout chooser still open after selecting '{layout}'");
+            close_wnd1(session);
+            return Ok(false);
+        }
+        println!("ZVT11 Closed: layout '{layout}' selected");
+        return Ok(true);
+    }
+    println!("ZVT11 Closed: layout '{layout}' not found among {rows} layouts");
+    close_wnd1(session);
+    Ok(false)
+}
+
+/// Run ZVT11 Closed for `params.deliveries` (spec 3.2) and export to the target.
+pub fn run_closed_export_outcome(
+    session: &GuiSession,
+    params: &ZVT11ClosedParams,
+) -> Result<ExportOutcome> {
+    use crate::utils::export_outcome::{classify_after_execute, classify_screen, ClassifyOptions};
+    use crate::zmdetpc::{close_wnd1, paste_multi, press, select_radio, set_ctext};
+
+    println!("Running ZVT11 Closed export...");
+    if params.deliveries.is_empty() {
+        return closed_fail("no deliveries given");
+    }
+    let Some(target) = &params.export_target else {
+        return closed_fail("no export target (this step only runs headless)");
+    };
+    if !assert_tcode(session, "ZVT11", Some(0))? {
+        return closed_fail("could not start transaction ZVT11");
+    }
+
+    // tab 2 (Closed)
+    match session
+        .find_by_id("wnd[0]/usr/tabsTABSTRIP_BLK1/tabpTAB2".to_string())
+        .ok()
+        .and_then(|c| c.downcast::<GuiTab>())
+    {
+        Some(tab) => tab.select()?,
+        None => return closed_fail("tab tabpTAB2 (Closed) not found"),
+    }
+
+    // variant first: the fields below overwrite what it carries
+    if let Some(v) = params.variant.as_deref().filter(|v| !v.trim().is_empty()) {
+        if !variant_select(session, &params.t_code, v)? {
+            return closed_fail(&format!("variant '{v}' could not be selected"));
+        }
+    }
+
+    if let Some(sp) = params
+        .ship_point
+        .as_deref()
+        .filter(|v| !v.trim().is_empty())
+    {
+        if !set_ctext(session, &closed_id("ctxtS_VSTEL2-LOW"), sp)? {
+            return closed_fail("ship point field ctxtS_VSTEL2-LOW not found");
+        }
+    }
+
+    // dates (deliberately wide: the delivery list is the real filter)
+    let (low, high) = closed_date_fields(params);
+    if !set_ctext(session, &closed_id("ctxtS_DATE_2-LOW"), &low)? {
+        return closed_fail("date field ctxtS_DATE_2-LOW not found");
+    }
+    if !set_ctext(session, &closed_id("ctxtS_DATE_2-HIGH"), &high)? {
+        return closed_fail("date field ctxtS_DATE_2-HIGH not found");
+    }
+
+    // deliveries
+    if !paste_multi(
+        session,
+        "ZVT11 Closed",
+        &closed_id("btn%_S_VBELN2_%_APP_%-VALU_PUSH"),
+        &params.deliveries,
+    )? {
+        return closed_fail("could not paste the deliveries");
+    }
+
+    // display all deliveries, ALV output
+    if !select_radio(session, &closed_id("radR1"))? {
+        return closed_fail("radio button radR1 not found");
+    }
+    match session
+        .find_by_id(closed_id("chkP_ALV_2"))
+        .ok()
+        .and_then(|c| c.downcast::<GuiCheckBox>())
+    {
+        Some(chk) => chk.set_selected(true)?,
+        None => return closed_fail("checkbox chkP_ALV_2 not found"),
+    }
+
+    // execute
+    if !press(session, "wnd[0]/tbar[1]/btn[8]")? {
+        return closed_fail("execute button btn[8] not found");
+    }
+    let popup = exist_ctrl(session, 1, "/usr/txtMESSTXT1", true)?;
+    if popup.cband && is_no_data_popup(&popup.ctext) {
+        close_wnd1(session);
+        return Ok(ExportOutcome::NoData(popup.ctext.trim().to_string()));
+    }
+    let opts = ClassifyOptions {
+        ignore_display_error: params.ignore_display_error,
+    };
+    if let Some(o) = classify_after_execute(session, "ZVT11", "/usr/tabsTABSTRIP_BLK1", opts)? {
+        println!("ZVT11 Closed outcome after execute: {o:?}");
+        return Ok(o);
+    }
+
+    // layout: a missing one is a step error (no prompt when headless)
+    if let Some(layout) = params
+        .layout_row
+        .as_deref()
+        .filter(|l| !l.trim().is_empty())
+    {
+        if !select_closed_layout(session, layout)? {
+            return closed_fail(&format!("layout '{layout}' could not be selected"));
+        }
+        if let Some(o) = classify_screen(session, opts)? {
+            return Ok(o);
+        }
+    }
+
+    crate::utils::sap_export_utils::export_to_target(
+        session,
+        "ZVT11",
+        CLOSED_LOCAL_FILE_MENUS,
+        target,
+    )
+}
+
+#[cfg(test)]
+mod closed_tests {
+    use super::*;
+
+    fn d(y: i32, m: u32, day: u32) -> NaiveDate {
+        NaiveDate::from_ymd_opt(y, m, day).unwrap()
+    }
+
+    #[test]
+    fn window_is_100_days_each_side() {
+        assert_eq!(
+            closed_window(d(2026, 11, 5), d(2026, 11, 5), CLOSED_WINDOW_DAYS),
+            (d(2026, 7, 28), d(2027, 2, 13))
+        );
+        // a range widens its end; an inverted range and a negative count are tolerated
+        assert_eq!(
+            closed_window(d(2026, 11, 1), d(2026, 11, 7), 1),
+            (d(2026, 10, 31), d(2026, 11, 8))
+        );
+        assert_eq!(
+            closed_window(d(2026, 11, 7), d(2026, 11, 1), -5),
+            (d(2026, 11, 7), d(2026, 11, 7))
+        );
+    }
+
+    #[test]
+    fn date_fields_and_ids() {
+        let p = ZVT11ClosedParams {
+            date_start: d(2026, 7, 28),
+            date_end: d(2027, 2, 13),
+            ..ZVT11ClosedParams::default()
+        };
+        assert_eq!(
+            closed_date_fields(&p),
+            ("07/28/2026".into(), "02/13/2027".into())
+        );
+        let iso = ZVT11ClosedParams {
+            date_format: Some("yyyy-mm-dd".into()),
+            ..p
+        };
+        assert_eq!(closed_date_fields(&iso).0, "2026-07-28");
+        assert_eq!(
+            closed_id("ctxtS_DATE_2-LOW"),
+            "wnd[0]/usr/tabsTABSTRIP_BLK1/tabpTAB2/ssub%_SUBSCREEN_BLK1:ZSDR_SHIPMENT_REPORT:0102/ctxtS_DATE_2-LOW"
+        );
+        let def = ZVT11ClosedParams::default();
+        assert_eq!(def.t_code, "ZVT11");
+        assert!(def.export_target.is_none() && def.deliveries.is_empty());
+    }
+
+    #[test]
+    fn no_data_popup_text() {
+        assert!(is_no_data_popup(
+            "No data exists in the database for this selection"
+        ));
+        assert!(!is_no_data_popup("Something else"));
+    }
+}

@@ -39,10 +39,38 @@ for the mustgo steps only (2.1/2.2 subset), (3) mustgo post-process vs golden da
 (4) real SAP steps under the config-agnostic rule: VL06O (4.2), ZMDESNR by deliveries/TOs (4.3), LT23 (4.4).
 Drop the wasted history call in mustgo step 19 (spec item 10).
 
+**Update 2026-11-10 (mustgo steps 1-2 done offline):** fixtures `tests/fixtures/mustgo/` (xlsx-derived, approximate),
+`tests/mustgo_golden.rs`, `src/abc/mustgo.rs` + `tests/mustgo_pipeline.rs` (pure stages match spec 9.3; see "Design
+notes"). **Blocked on real exports (owner), do not guess formats:** the raw text-with-tabs loader, runner, SAP adapters,
+CLI/menu wiring. Needed, each via `export_type 1` (text with tabs): VT11 (variant `XD_ALL_EPDC_`, no layout), VL06O
+(item view, no layout), ZMDESNR by deliveries (variant `mg_k2xx`, layout `mg_view`), LT23 (E01, confirmed, layout
+`to_mg`), ZMDESNR by deliveries+TOs (same variant/layout). Same query as the 2026-11-05 xlsx exports.
+
 Offline = no SAP needed (unit/golden tests only). SAP = needs a live SAP GUI to verify; code is written and mock-tested
 offline.
 
 ---
+
+## Design notes: `mustgo` pure stages (`src/abc/mustgo.rs`)
+
+Stages (all pure over `Table`, columns by sanitised name, golden-tested in `tests/mustgo_pipeline.rs` on the fixtures in
+`tests/fixtures/mustgo/`):
+* `select_tpdc_shipments(vt11)` (row 10) -> distinct shipment list for VL06O; `delivery_list(vl06o)` -> list for ZMDESNR.
+* `filter_sn_del(sn_del)` (rows 13-15) + `transfer_order_list` -> 1011 visible rows, 87 TOs (list for LT23).
+* `lt23_postprocess(lt23)` (row 16 a-f) -> 15 rows x 13 cols, equal to `expected_lt23.tsv`.
+* `mark_sn_del_by_lt23(sn_del, lt23)` (rows 17-18) -> 128 rows, 10 deliveries, 15 TOs; `delivery_list` + `transfer_order_list`
+  give the inputs of the ZMDESNR by deliveries + TOs query. NOTE: the 476 of spec 9.3 is the size of that SAP result,
+  i.e. the rows of the *unfiltered* sn_del (`snr_orig`) whose delivery and TO are in these lists, not of the deduped table.
+* `snr_copy(sn_to, run_date)` (rows 19b-21) -> 92 rows x 21 cols (`week` at 19, `export_date` last), equal to
+  `expected_snr_copy.tsv`; `pivot_plant_by_date` -> long table plant / export_date / count; `write_outputs` writes
+  `lt23`, `snr_copy`, `pivot` TSV via `registry::output_path`.
+
+Planned SAP-step seam (not implemented): a runner owns a `HashMap<String, Table>` and a trait/closure per SAP step, e.g.
+`fn export(&mut self, step: Step, pasted: &[String]) -> Result<Table>` returning an already imported table
+(`Table::from_raw`). The runner calls: vt11 -> `select_tpdc_shipments` -> vl06o(ships) -> `delivery_list` -> zmdesnr(dels)
+-> `filter_sn_del` -> lt23(`transfer_order_list`) -> `lt23_postprocess` -> `mark_sn_del_by_lt23` -> zmdesnr(dels, TOs)
+-> `snr_copy`/`pivot_plant_by_date` -> `write_outputs`. Tests then use a fake seam returning the fixture tables. The raw
+export reader (SAP text/xlsx -> headers + rows) is separate and not written yet: the real raw format is unverified.
 
 ## Phase 0: owner answers (blocking input)
 

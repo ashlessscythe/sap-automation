@@ -13,11 +13,20 @@
 //! warehouse = "E01"
 //! delete_exports = true
 //! ignore_display_error = true
+//!
+//! [abc.xdock]
+//! vt11_variant = "XD_ALL_EPDC_"
+//! vt11_layout = "scorecard"
+//! vl06o_layout = "xdock"
+//! zmdetpc_variant = "EPDC_TONY"   # from the toyota row of the spec; check the variant exists
+//! delete_exports = true
+//! ignore_display_error = true
 //! ```
 //! `reports_dir` and `date_format` come from `--reports-dir`/`--date-format`, else `[global]`.
 #![allow(dead_code)]
 
 use super::adapters::{MustgoSapConfig, RealSapSteps};
+use super::inv_runner::{run_xdock, InvSelection, InvSummary};
 use super::raw::RawOptions;
 use super::registry;
 use super::run::RunDate;
@@ -118,17 +127,54 @@ pub fn resolve_mustgo(input: &ResolveInput) -> ResolvedMustgo {
     }
 }
 
+/// Effective settings of an `xdock` run.
+#[derive(Debug, Clone)]
+pub struct ResolvedXdock {
+    /// Export/session settings shared with `mustgo` (its VT11/ZMDESNR/LT23 names are unused).
+    pub cfg: MustgoSapConfig,
+    pub sel: InvSelection,
+    /// Root of the outputs (`<reports_dir>\INV\<today>\xdock\...`).
+    pub reports_dir: PathBuf,
+}
+
+/// CLI > `[abc.xdock]` > `[global]` > defaults.
+pub fn resolve_xdock(input: &ResolveInput) -> ResolvedXdock {
+    let base = resolve_mustgo(input);
+    let d = InvSelection::xdock();
+    let sel = InvSelection {
+        vt11_variant: s(&input.section, "vt11_variant").unwrap_or(d.vt11_variant),
+        vt11_layout: s(&input.section, "vt11_layout").unwrap_or(d.vt11_layout),
+        vl06o_layout: s(&input.section, "vl06o_layout").unwrap_or(d.vl06o_layout),
+        zmdetpc_variant: s(&input.section, "zmdetpc_variant").unwrap_or(d.zmdetpc_variant),
+    };
+    ResolvedXdock {
+        cfg: base.cfg,
+        sel,
+        reports_dir: base.reports_dir,
+    }
+}
+
 /// Resolve from the CLI overrides and `config.toml` (caller layer: this reads the config).
 pub fn resolve_from_environment() -> ResolvedMustgo {
+    resolve_mustgo(&environment_input("mustgo"))
+}
+
+/// Same for `xdock` (section `[abc.xdock]`).
+pub fn resolve_xdock_from_environment() -> ResolvedXdock {
+    resolve_xdock(&environment_input("xdock"))
+}
+
+/// The resolver input for report `name`: CLI overrides, `[global]` and `[abc.<name>]`.
+pub fn environment_input(name: &str) -> ResolveInput {
     let cli = crate::utils::cli_overrides::cli_overrides();
     let config = crate::utils::config_types::SapConfig::load().ok();
     let section = config
         .as_ref()
         .and_then(|c| c.raw_config.as_ref())
         .and_then(|r| r.get("abc"))
-        .and_then(|a| a.get("mustgo"))
+        .and_then(|a| a.get(name))
         .cloned();
-    resolve_mustgo(&ResolveInput {
+    ResolveInput {
         cli_reports_dir: cli.reports_dir.clone(),
         cli_date_format: cli.date_format.clone(),
         cli_ignore_display_error: cli.ignore_display_error,
@@ -141,12 +187,12 @@ pub fn resolve_from_environment() -> ResolvedMustgo {
             .and_then(|c| c.global.as_ref())
             .map(|g| g.date_format.clone()),
         section,
-    })
+    }
 }
 
 /// Names of the reports that have a runner.
 pub fn runnable_reports() -> &'static [&'static str] {
-    &["mustgo"]
+    &["mustgo", "xdock"]
 }
 
 /// Check that `name` is a registered report with a runner; returns the canonical name.
@@ -192,38 +238,73 @@ pub fn summary_lines(name: &str, s: &RunSummary) -> Vec<String> {
     v
 }
 
-/// Run report `name` for `date` on a live session and print the summary. Thin: attach/login
-/// checks are the caller's; everything else is tested through the pieces above.
-pub fn run_report(session: &GuiSession, name: &str, date: &RunDate) -> Result<RunSummary> {
+/// Printable summary lines of a finished `xdock` run.
+pub fn inv_summary_lines(name: &str, s: &InvSummary) -> Vec<String> {
+    let mut v = vec![
+        format!("{name} finished (date {})", s.export_date),
+        format!(
+            "  shipments {}, deliveries {}, zmdetpc rows {} ({} deliveries without one)",
+            s.shipments, s.deliveries, s.zmdetpc_rows, s.without_zmdetpc
+        ),
+        format!(
+            "  rows: vl06o {}, pivot {} (total {})",
+            s.vl06o_rows, s.pivot_rows, s.total
+        ),
+    ];
+    v.extend(s.outputs.iter().map(|p| format!("  wrote {}", p.display())));
+    v
+}
+
+/// Run report `name` for `date` on a live session and print the summary; returns the files
+/// written. Thin: attach/login checks are the caller's; everything else is tested through the
+/// pieces above.
+pub fn run_report(session: &GuiSession, name: &str, date: &RunDate) -> Result<Vec<PathBuf>> {
     let name = check_report(name)?;
-    let resolved = resolve_from_environment();
-    let out = OutputSpec {
-        reports_dir: resolved.reports_dir.clone(),
-        today: chrono::Local::now().date_naive(),
-    };
-    println!(
-        "Running report '{name}' for {} (exports under {}, outputs under {})",
-        super::runner::export_date_label(date),
-        resolved.cfg.export_dir,
-        out.reports_dir.display()
-    );
-    let mut steps = RealSapSteps::new(session, resolved.cfg);
-    let summary = match name {
-        "mustgo" => run_mustgo(&mut steps, date, &out),
+    let today = chrono::Local::now().date_naive();
+    let result: Result<(Vec<String>, Vec<PathBuf>)> = match name {
+        "mustgo" => {
+            let resolved = resolve_from_environment();
+            let out = OutputSpec {
+                reports_dir: resolved.reports_dir.clone(),
+                today,
+            };
+            announce(name, date, &resolved.cfg.export_dir, &out);
+            let mut steps = RealSapSteps::new(session, resolved.cfg);
+            run_mustgo(&mut steps, date, &out).map(|s| (summary_lines(name, &s), s.outputs))
+        }
+        "xdock" => {
+            let resolved = resolve_xdock_from_environment();
+            let out = OutputSpec {
+                reports_dir: resolved.reports_dir.clone(),
+                today,
+            };
+            announce(name, date, &resolved.cfg.export_dir, &out);
+            let mut steps = RealSapSteps::new(session, resolved.cfg);
+            run_xdock(&mut steps, date, &resolved.sel, &out)
+                .map(|s| (inv_summary_lines(name, &s), s.outputs))
+        }
         other => Err(anyhow!("no runner for '{other}'")),
     };
-    match summary {
-        Ok(s) => {
-            for l in summary_lines(name, &s) {
+    match result {
+        Ok((lines, outputs)) => {
+            for l in lines {
                 println!("{l}");
             }
-            Ok(s)
+            Ok(outputs)
         }
         Err(e) => {
             eprintln!("{}", describe_error(&e));
             Err(e)
         }
     }
+}
+
+fn announce(name: &str, date: &RunDate, export_dir: &str, out: &OutputSpec) {
+    println!(
+        "Running report '{name}' for {} (exports under {export_dir}, outputs under {})",
+        super::runner::export_date_label(date),
+        out.reports_dir.display()
+    );
 }
 
 #[cfg(test)]
@@ -293,7 +374,59 @@ mod tests {
     }
 
     #[test]
+    fn xdock_defaults_and_precedence() {
+        let r = resolve_xdock(&ResolveInput::default());
+        assert_eq!(r.sel, InvSelection::xdock());
+        assert_eq!(r.sel.vt11_variant, "XD_ALL_EPDC_");
+        assert_eq!(r.sel.vt11_layout, "scorecard");
+        assert_eq!(r.sel.vl06o_layout, "xdock");
+        assert_eq!(r.sel.zmdetpc_variant, "EPDC_TONY");
+        assert_eq!(r.reports_dir, PathBuf::from("reports"));
+        assert!(r.cfg.delete_exports && r.cfg.ignore_display_error);
+
+        let r = resolve_xdock(&ResolveInput {
+            cli_reports_dir: Some("C:/cli".into()),
+            global_reports_dir: Some("C:/global".into()),
+            cli_date_format: Some("mm/dd/yyyy".into()),
+            cli_ignore_display_error: Some(false),
+            section: section(
+                "zmdetpc_variant = \"MYVAR\"\nvl06o_layout = \"xd2\"\nvt11_layout = \"\"\ndelete_exports = false\nignore_display_error = true\n",
+            ),
+            ..ResolveInput::default()
+        });
+        assert_eq!(r.reports_dir, PathBuf::from("C:/cli"));
+        assert_eq!(r.cfg.date_format.as_deref(), Some("mm/dd/yyyy"));
+        assert!(!r.cfg.ignore_display_error, "CLI beats the section");
+        assert!(!r.cfg.delete_exports);
+        assert_eq!(r.sel.zmdetpc_variant, "MYVAR");
+        assert_eq!(r.sel.vl06o_layout, "xd2");
+        assert_eq!(r.sel.vt11_layout, "scorecard", "blank value falls through");
+        assert_eq!(r.sel.vt11_variant, "XD_ALL_EPDC_");
+    }
+
+    #[test]
+    fn inv_summary_text() {
+        let s = InvSummary {
+            outputs: vec![PathBuf::from("b.tsv")],
+            export_date: "2026-11-05".into(),
+            shipments: 91,
+            deliveries: 148,
+            zmdetpc_rows: 140,
+            without_zmdetpc: 8,
+            vl06o_rows: 148,
+            pivot_rows: 13,
+            total: "1493".into(),
+        };
+        let l = inv_summary_lines("xdock", &s);
+        assert!(l[0].contains("xdock") && l[0].contains("2026-11-05"));
+        assert!(l[1].contains("91") && l[1].contains("148") && l[1].contains('8'));
+        assert!(l[2].contains("1493"));
+        assert!(l.last().unwrap().contains("b.tsv"));
+    }
+
+    #[test]
     fn report_checks() {
+        assert_eq!(check_report(" XDock ").unwrap(), "xdock");
         assert_eq!(check_report(" MustGo ").unwrap(), "mustgo");
         let e = check_report("nope").unwrap_err().to_string();
         assert!(e.contains("unknown report") && e.contains("mustgo"), "{e}");

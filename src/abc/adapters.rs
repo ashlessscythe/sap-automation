@@ -1,5 +1,6 @@
-//! Real SAP adapter for the `mustgo` runner: [`RealSapSteps`] implements
-//! [`super::runner::SapSteps`] on top of the tcode steps (`vt11`, `vl06o`, `zmdesnr`, `lt23`).
+//! Real SAP adapter for the headless runners: [`RealSapSteps`] implements
+//! [`super::runner::SapSteps`] (`mustgo`) and [`super::inv_runner::InvSteps`] (`xdock`) on top
+//! of the tcode steps (`vt11`, `vl06o`, `zmdesnr`, `lt23`, `zmdetpc`).
 //!
 //! Nothing here reads config or CLI overrides: the caller builds a [`MustgoSapConfig`]
 //! (defaults below) and passes the session. Every step forces "text with tabs"
@@ -7,10 +8,11 @@
 //! `<export_dir>/<TCODE>/<yyyymmddhhmmss>_<TCODE>.txt`, loads it, and deletes it afterwards when
 //! `delete_exports` is set (a file that failed to load is kept for diagnosis).
 //!
-//! NOT run against SAP by the author. See "Live verification checklist (mustgo)" in
-//! `docs/abc_headless_plan.md` for every control id / behaviour that is unverified.
+//! NOT run against SAP by the author. See "Live verification checklist (mustgo)" and "(xdock)"
+//! in `docs/abc_headless_plan.md` for every control id / behaviour that is unverified.
 #![allow(dead_code)]
 
+use super::inv_runner::InvSteps;
 use super::raw::RawOptions;
 use super::run::RunDate;
 use super::runner::{outcome_to_output, SapSteps, StepOutput};
@@ -20,6 +22,7 @@ use crate::utils::sap_export_utils::{export_file_name, ExportTarget};
 use crate::vl06o::VL06OParams;
 use crate::vt11::VT11Params;
 use crate::zmdesnr::ZMDESNRParams;
+use crate::zmdetpc::ZMDETPCParams;
 use anyhow::{anyhow, Context, Result};
 use chrono::{Local, NaiveDate, NaiveDateTime};
 use sap_scripting::GuiSession;
@@ -183,6 +186,56 @@ pub fn lt23_params(
     }
 }
 
+/// `xdock` VT11: like [`vt11_params`] with the report's variant and a layout (`scorecard`).
+pub fn inv_vt11_params(
+    cfg: &MustgoSapConfig,
+    date: &RunDate,
+    variant: &str,
+    layout: &str,
+    target: ExportTarget,
+) -> VT11Params {
+    VT11Params {
+        sap_variant_name: Some(variant.to_string()),
+        layout_row: Some(layout.to_string()).filter(|l| !l.trim().is_empty()),
+        ..vt11_params(cfg, date, target)
+    }
+}
+
+/// `xdock` VL06O: like [`vl06o_params`] with a layout (`xdock`).
+pub fn inv_vl06o_params(
+    cfg: &MustgoSapConfig,
+    shipments: &[String],
+    layout: &str,
+    target: ExportTarget,
+    today: NaiveDate,
+) -> VL06OParams {
+    VL06OParams {
+        layout_row: Some(layout.to_string()).filter(|l| !l.trim().is_empty()),
+        ..vl06o_params(cfg, shipments, target, today)
+    }
+}
+
+/// ZMDETPC summarised for the deliveries; the dates are the run date (range for week runs).
+pub fn zmdetpc_params(
+    cfg: &MustgoSapConfig,
+    deliveries: &[String],
+    date: &RunDate,
+    variant: &str,
+    target: ExportTarget,
+) -> ZMDETPCParams {
+    let (start, end) = date.as_range();
+    ZMDETPCParams {
+        variant: Some(variant.to_string()).filter(|v| !v.trim().is_empty()),
+        date_start: start,
+        date_end: end,
+        date_format: cfg.date_format.clone(),
+        deliveries: deliveries.to_vec(),
+        export_target: Some(target),
+        ignore_display_error: cfg.ignore_display_error,
+        t_code: "ZMDETPC".to_string(),
+    }
+}
+
 /// Map an export outcome to a step output (via [`outcome_to_output`]) and, when configured,
 /// delete the export file after it loaded successfully. A file that failed to load stays.
 pub fn finish_step(
@@ -271,6 +324,38 @@ impl SapSteps for RealSapSteps<'_> {
         let outcome = crate::zmdesnr::run_export_outcome(self.session, &params)
             .map_err(|e| anyhow!("zmdesnr (by deliveries + TOs): SAP step failed: {e}"))?;
         finish_step(&self.cfg, "zmdesnr", outcome).context("zmdesnr (by deliveries + TOs)")
+    }
+}
+
+impl InvSteps for RealSapSteps<'_> {
+    fn vt11(&mut self, date: &RunDate, variant: &str, layout: &str) -> Result<StepOutput> {
+        let (target, _) = self.target("VT11");
+        let params = inv_vt11_params(&self.cfg, date, variant, layout, target);
+        let outcome = crate::vt11::run_export_outcome(self.session, &params)
+            .map_err(|e| anyhow!("vt11: SAP step failed: {e}"))?;
+        // the INV list layout (`scorecard`) has its own header aliases
+        finish_step(&self.cfg, "vt11_inv", outcome)
+    }
+
+    fn vl06o_by_shipments(&mut self, shipments: &[String], layout: &str) -> Result<StepOutput> {
+        let (target, today) = self.target("VL06O");
+        let params = inv_vl06o_params(&self.cfg, shipments, layout, target, today);
+        let outcome = crate::vl06o::run_export_outcome(self.session, &params)
+            .map_err(|e| anyhow!("vl06o: SAP step failed: {e}"))?;
+        finish_step(&self.cfg, "vl06o", outcome)
+    }
+
+    fn zmdetpc_summarised(
+        &mut self,
+        deliveries: &[String],
+        date: &RunDate,
+        variant: &str,
+    ) -> Result<StepOutput> {
+        let (target, _) = self.target("ZMDETPC");
+        let params = zmdetpc_params(&self.cfg, deliveries, date, variant, target);
+        let outcome = crate::zmdetpc::run_export_outcome(self.session, &params)
+            .map_err(|e| anyhow!("zmdetpc: SAP step failed: {e}"))?;
+        finish_step(&self.cfg, "zmdetpc", outcome)
     }
 }
 
@@ -373,6 +458,52 @@ mod tests {
         assert!(p.confirmed_only && !p.save_layout);
         assert_eq!(p.layout_row.as_deref(), Some("to_mg"));
         assert!(p.create_layout_columns.is_none());
+    }
+
+    #[test]
+    fn inv_params() {
+        let cfg = MustgoSapConfig {
+            date_format: Some("yyyy-mm-dd".into()),
+            ..MustgoSapConfig::default()
+        };
+        let single = RunDate {
+            date1: d(11, 5),
+            date2: None,
+        };
+        let t = export_target(&cfg, "VT11", now());
+        let p = inv_vt11_params(&cfg, &single, "XD_ALL_EPDC_", "scorecard", t.clone());
+        assert_eq!(p.sap_variant_name.as_deref(), Some("XD_ALL_EPDC_"));
+        assert_eq!(p.layout_row.as_deref(), Some("scorecard"));
+        assert_eq!(p.closed_range, Some((d(11, 5), d(11, 5))));
+        assert_eq!(p.export_target, Some(t.clone()));
+        assert!(inv_vt11_params(&cfg, &single, "V", " ", t.clone())
+            .layout_row
+            .is_none());
+
+        let v = inv_vl06o_params(&cfg, &s(&["1", "2"]), "xdock", t.clone(), d(11, 10));
+        assert_eq!(v.layout_row.as_deref(), Some("xdock"));
+        assert!(v.sap_variant_name.is_none());
+        assert_eq!(v.shipment_numbers, s(&["1", "2"]));
+
+        let week = RunDate {
+            date1: d(11, 1),
+            date2: Some(d(11, 7)),
+        };
+        let z = zmdetpc_params(&cfg, &s(&["8", "9"]), &week, "EPDC_TONY", t.clone());
+        assert_eq!(z.variant.as_deref(), Some("EPDC_TONY"));
+        assert_eq!((z.date_start, z.date_end), (d(11, 1), d(11, 7)));
+        assert_eq!(z.date_format.as_deref(), Some("yyyy-mm-dd"));
+        assert_eq!(z.deliveries, s(&["8", "9"]));
+        assert_eq!(z.export_target, Some(t));
+        let z1 = zmdetpc_params(
+            &cfg,
+            &s(&["8"]),
+            &single,
+            "",
+            export_target(&cfg, "ZMDETPC", now()),
+        );
+        assert!(z1.variant.is_none());
+        assert_eq!((z1.date_start, z1.date_end), (d(11, 5), d(11, 5)));
     }
 
     fn temp_file(tag: &str, content: &str) -> PathBuf {

@@ -9,9 +9,12 @@ Do not re-read the whole spec. One chunk per session; end by updating this file.
 ## RESUME HERE (state as of 2026-11-10)
 
 Working mode: **step by step; Claude codes, the owner runs it against live SAP and brings back the real exports.**
-`mustgo` is runnable end to end in code: `sap_automation --rname=mustgo --run-date=2026-11-05`. Everything that does not
-need SAP is unit/golden tested and reproduces the verified numbers of spec 9.3 on the real exports. **Nothing SAP-facing
-has been run live.** Next for the owner: the live verification checklist below. Next for Claude: `xdock` / `toyota`.
+`mustgo` and `xdock` are runnable end to end in code: `sap_automation --rname=mustgo --run-date=2026-11-05`,
+`sap_automation --rname=xdock --run-date=2026-11-05`. Everything that does not need SAP is unit/golden tested on the real
+exports (`mustgo` reproduces spec 9.3; `xdock` spec 9.6, with the two documented differences to the macro xlsx, see
+"Design notes: `xdock`"). **Nothing SAP-facing has been run live.** Next for the owner: the live verification checklists
+below (mustgo, then xdock). Next for Claude: `toyota` / `misc` (same INV stages in `abc/inv.rs`; add a runner next to
+`run_xdock`, VT11 variant `FG_TOYO_XD` / `MISC_EPDC_`, trailers table for toyota, regex step for misc).
 
 Done in code (fmt/clippy/test green; SAP parts not smoke-tested):
 * Foundation (4.0): `src/utils/export_outcome.rs` (`ExportOutcome`, P6 classifier, `classify_after_execute`,
@@ -52,8 +55,15 @@ Decisions made while building (all tested):
 * ZMDESNR by deliveries uses `scroll_paste` (the legacy per-cell loop only fills the visible dialog rows); a missing layout
   is a step error when headless; LT23 creates a missing layout only if `lt23_create_layout = true`.
 
-Suggested next steps: (1) owner runs the checklist below; fix control ids from the findings, keep the exports as fixtures;
-(2) `xdock` / `toyota` / `misc` (3.2): ZMDETPC summarised (4.5) and the VL06O dedup/merge rules; (3) `k2xx`, `relabel`,
+* **xdock (3.2, 4.5, 5.1 for xdock):** `src/zmdetpc.rs` (new tcode, summarised only, registered in lib.rs and main.rs),
+  `abc/inv_runner.rs` (`InvSteps` seam of its own so the mustgo seam is untouched, `run_xdock`), `RealSapSteps` implements both
+  seams, `dispatch` resolves `[abc.xdock]` (`vt11_variant`, `vt11_layout`, `vl06o_layout`, `zmdetpc_variant`, `delete_exports`,
+  `ignore_display_error`), registry `XDOCK` (folder `INV`), ABC menu entry. `raw.rs`: `zmdetpc` and `vt11_inv` alias sets,
+  VL06O aliases `gm`, `plnt`, and a header-detection fix for preambles of equally wide lines (ZMDETPC). Fixtures:
+  `tests/fixtures/xdock/` (+ `real/`, byte-exact, `-text`). Tests: `xdock_golden`, `xdock_runner`.
+
+Suggested next steps: (1) owner runs the checklists below; fix control ids from the findings, keep the exports as fixtures;
+(2) `toyota` / `misc` (3.2); (3) `k2xx`, `relabel`,
 `repack`, then the v2 list (ZVT11 Closed, VT22, VT03N); (4) per-day loop and `rname_overrides` if wanted (2.3 remainder).
 
 Offline = no SAP needed (unit/golden tests only). SAP = needs a live SAP GUI to verify.
@@ -115,6 +125,76 @@ control ids that needed changes so they can be fixed in code and recorded here.
 
 ---
 
+## Live verification checklist (xdock)
+
+Owner, after the mustgo checklist (A.1 and A.4 of it apply unchanged). Exports are text with tabs at
+`<reports_dir>\<TCODE>\<yyyymmddhhmmss>_<TCODE>.txt` for VT11, VL06O and ZMDETPC; deleted after a successful load unless
+`[abc.xdock] delete_exports = false`. Outputs: `<reports_dir>\INV\<today>\xdock\<date>_XDOCK_{VT11,VL06O,PIVOT}.tsv`.
+
+**A. Pre-flight.** Variants/layouts exist in SAP: VT11 variant `XD_ALL_EPDC_` and layout `scorecard`; VL06O layout `xdock`;
+ZMDETPC variant `EPDC_TONY` (**taken from the toyota row, spec 5.2 row 28; spec 5.3 only says "same as toyota"**, so confirm it
+is the variant the xdock macro uses and set `[abc.xdock] zmdetpc_variant` if not). Layouts must deliver the canonical columns
+(a missing one stops the run naming it): vt11 `shipment_number`; vl06o `delivery`, `number_of_packages`, `plant` (plus
+`shipto_party`, `name_of_the_shipto_party`, `external_delivery_id`, `total_gds_mvt_stat` for the output); zmdetpc `delivery`,
+`pallet`, `child`.
+
+**B. First run: single known date.** `sap_automation --rname=xdock --run-date=2026-11-05`. Expected on the data of the
+verification run (counts differ if SAP data changed): VT11 91 shipments, VL06O 1068 item rows = 148 deliveries, ZMDETPC 140
+rows (8 deliveries without one), pivot 13 rows (12 plants + `(blank)`), total 1493. Compare the three export files with
+`tests/fixtures/xdock/real/` and the outputs with `tests/fixtures/xdock/expected_*.tsv` (differences listed in the design notes).
+
+**C. Controls, per step.** All ZMDETPC ids are from the VBA spec only (nothing in this repo confirms them), in the order the
+step uses them:
+* Transaction start (`assert_tcode ZMDETPC`); variant via the shared `variant_select` (`btn[17]`, popup `txtV-LOW`; the ALV popup
+  path if the title contains `abap`); a missing variant is a step error.
+* `wnd[0]/usr/ctxtS_DATE-LOW`, `ctxtS_DATE-HIGH` (typed in the `[global].date_format` / `--date-format`; HIGH is always filled,
+  repeated for a single date).
+* `wnd[0]/usr/btn%_S_VBELN_%_APP_%-VALU_PUSH`, then in `wnd[1]`: clear `sendVKey 16`, paste cells `ctxt` or `txt`
+  (`tabsTAB_STRIP/tabpSIVA/ssubSCREEN_HEADER:SAPLALDB:3010/tblSAPLALDBSINGLE`), `wnd[2]/usr/btnBUTTON_1` answered up to 5 times,
+  row 0 non-empty, close with `sendVKey 8`. The spec's "delete a non-numeric first row (`wnd[1]/tbar[0]/btn[14]`)" is not
+  implemented (no header row is pasted).
+* `radR_SUMM`, `ctxtS_DATE-HIGH` again, `radR_COMPL`, `radR_SUMM` (the macro's refresh sequence), execute `wnd[0]/tbar[1]/btn[8]`.
+* "No list after execute" detection: the selection screen must keep `/usr/radR_SUMM` when SAP finds nothing; the popup text in
+  `wnd[1]/usr/txtMESSTXT1` is read by the shared classifier. Test with a date that has no pallets.
+* Export menu `wnd[0]/mbar/menu[0]/menu[3]/menu[1]` (`menu[2]` as a second candidate), accepted only if the dialog is titled
+  "save list in file"; then radio `radSPOPLI-SELFLAG[1,0]` and the shared save dialog.
+* VT11 layout `scorecard` via the existing layout path (a missing layout is only logged by VT11 and the export goes ahead with
+  the current layout: check the VT11 export has the 13 columns). VL06O layout `xdock` via the existing `check_select_layout`
+  (same caveat, nothing fails when it is missing; check the 7 columns).
+* The real list headers map through `raw::VT11_INV_ALIASES`, `VL06O_ALIASES` (`GM`, `Plnt`, `No.Pk`, `Ship-to`) and the
+  canonical ZMDETPC titles; free-text VT11 columns (`seal_number_2`, `descripof_shipment`, `forwarding_agent_tracking_id`) are
+  truncated to 14 characters by the list width.
+
+**D. Then** run a week (`--run-date=WK45`: VT11 and ZMDETPC get the whole range, the `date` column is `WK_45`), and keep a
+failing export as a new fixture.
+
+---
+
+## Design notes: `xdock` (`src/abc/inv.rs`, `inv_runner.rs`, `zmdetpc.rs`)
+
+Flow (`run_xdock`, spec 5.3 = toyota rows 25-30): VT11 (variant, layout) -> distinct `shipment_number` -> VL06O (layout `xdock`,
+item rows) -> `prepare_vl06o` (first row per delivery, `date` column = `yyyy-mm-dd` or `WK_<n>`) -> distinct deliveries ->
+ZMDETPC summarised (variant, run date) -> `merge_zmdetpc` -> `pivot_sum(plant, total)` -> outputs. The ZVT11 Closed step is
+dropped (item 10). Seam: `inv_runner::InvSteps` (`vt11`, `vl06o_by_shipments`, `zmdetpc_summarised`); the variant/layout names
+travel in `InvSelection` so a fake seam can record them. An empty shipment or delivery list, SAP no-data or any error stops the
+run; nothing is written.
+
+**Differences between our output and `11-05-2026_XDOCK.xlsx` (all asserted in `tests/xdock_golden.rs`):**
+1. The xlsx sheet has 3 extra trailing columns (`delivery_`, `pallet`, `child` again, M:O): leftovers of the macro's positional
+   append. Not data; our table ends at `total`.
+2. **For the 8 deliveries without a ZMDETPC row the xlsx has `total` = 0**, ours has `number_of_packages` (spec 4.12 step 5 and
+   9.6). In the xlsx `total` is the formula `SUM(pallet:child)` = 0, not blank, so the macro's "blank total takes
+   number_of_packages" did not fire, and the `0 -> 1` replace did not touch the formula cells either. Spec 9.6 states the
+   fallback and a Grand Total of 1493; **the xlsx we were given has 1328 and `(blank)` 0** (ours: 1493, `(blank)` 4; plants
+   `FV33` +1 etc.). We keep the spec rule. If the macro result must be reproduced instead, `merge_zmdetpc` has to leave `total`
+   at 0 for those rows (decision for the owner).
+3. The xlsx pivot has a `Grand Total` row and the header `Row Labels` / `Sum of total`; ours is a long table `plant`, `total`
+   without a grand total.
+4. Cosmetic: the xlsx stores dates as Excel dates (`actualshipmentend`, `date`), and turned the date-only `descripof_shipment`
+   texts into dates; the converter wrote them back as `yyyy-mm-dd` / `MM/DD/YYYY` text. The real list truncates three VT11 text
+   columns to 14 characters (our value is a prefix of the xlsx one).
+Everything else (148 rows, order, plants incl. the first-row rule `85614256`, `85650066`, `8012734818`) is identical.
+
 ## Design notes: `mustgo` stages (`src/abc/mustgo.rs`, `runner.rs`)
 
 Stages (pure over `Table`, columns by sanitised name; golden-tested on the fixtures in `tests/fixtures/mustgo/`):
@@ -171,7 +251,9 @@ Dependencies: 0.1 for naming/format decisions. Order is flexible except 2.4 need
 Each chunk is independent, depends on 2.1-2.4, and is verified against the section 9 golden data. Order by value:
 
 - [x] 3.1 *(done, matches 9.3 on xlsx-derived and real data)* `mustgo` post-process + `snr_copy` + `week` + pivot (5.1, 9.3).
-- [ ] 3.2 `xdock` / `toyota` / `misc` (5.2-5.4, 9.6): VL06O dedup, ZMDETPC merge rules, pivot, toyota trailers table.
+- [ ] 3.2 *(xdock done: matches 9.6 on the real exports, see "Design notes: `xdock`"; stages for toyota trailers and misc regex
+      exist in `abc/inv.rs` but have no runner)* `xdock` / `toyota` / `misc` (5.2-5.4, 9.6): VL06O dedup, ZMDETPC merge rules,
+      pivot, toyota trailers table.
 - [ ] 3.3 `k2xx` (5.5, 9.5).
 - [ ] 3.4 `relabel` -> `combined` (5.6, 9.5): effective-plant rule, explicit history flag (decision 35).
 - [ ] 3.5 `repack` -> `snr_repack` (5.7, 9.5).
@@ -238,7 +320,7 @@ Dependencies: none on Phase 2/3. 4.0 first; 4.1-4.5 are independent of each othe
       Warehouse `E01`, TO multi paste, `radT1_QUITA`, layout via `btn[33]` + grid `cntlGRID` (else `btn[32]` +
       `setup_layout_li`), export `menu[0]/menu[1]/menu[1]`. Register in `lib.rs` and `main.rs`. No menu option in v1.
       Smoke run with TOs from 4.3 (expect the 87-TO shape).
-- [ ] 4.5 **ZMDETPC, new, summarised only** (3.6): `zmdetpc.rs` + module; variant (P2), `S_DATE-LOW/HIGH`,
+- [x] 4.5 *(code done 2026-11-10 for the summarised flow, all ids unverified, see the xdock checklist)* **ZMDETPC, new, summarised only** (3.6): `zmdetpc.rs` + module; variant (P2), `S_DATE-LOW/HIGH`,
       `S_VBELN` paste with the non-numeric first-row delete (`btn[14]`) and `wnd[2]` answers, `radR_SUMM`/`radR_COMPL`
       refresh sequence, execute, `MESSTXT1` popup, export `menu[0]/menu[3]/menu[1]`. Output columns `delivery, pallet,
       child`. Detail flow and `pallet_pick_date` are v2.
@@ -254,7 +336,8 @@ live SAP, so some may differ).
 - [x] 5.1 *(mustgo: `abc/runner.rs`; per-report runners for the others pending)* Report runners composing SAP step + table logic per report, tables persisting across blocks in one run
       (decision 15), error semantics (skip rest of block, non-zero exit), export cleanup, logging.
 - [x] 5.2 *(done for one run per call: `--rname`/`--run-date`, `[abc.mustgo]`, TUI entry; per-day loop not done)* CLI/config: subcommand and flags for report list, date/range, per-day loop; TUI entry optional.
-- [ ] 5.3 First end-to-end live run: `mustgo` (needs 3.1, 4.1, 4.3, 4.4, 5.1, 5.2). Then widen report by report.
+- [ ] 5.3 First end-to-end live run: `mustgo` (needs 3.1, 4.1, 4.3, 4.4, 5.1, 5.2). Then widen report by report (`xdock` next:
+      needs 3.2, 4.1, 4.2, 4.5; its checklist is below).
 
 ## Phase 6: close-out
 

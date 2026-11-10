@@ -1,7 +1,7 @@
 //! "ABC Headless" submenu: entry point for the reports used by the headless ABC runner
-//! (see `docs/abc_headless_plan.md`). Entries for reports that are not implemented yet
-//! (ZMDETPC, standalone LT23) are shown but only print a notice. `mustgo` runs the whole
-//! headless report after asking for the run date.
+//! (see `docs/abc_headless_plan.md`). Entries for steps without a standalone run (ZMDETPC,
+//! LT23) are shown but only print a notice. `mustgo` and `xdock` run the whole headless report
+//! after asking for the run date.
 use sap_scripting::*;
 use std::thread;
 use std::time::Duration;
@@ -17,6 +17,7 @@ use crate::zmdesnr_module::run_zmdesnr_auto;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AbcChoice {
     Mustgo,
+    Xdock,
     Vt11,
     Vl06o,
     Zmdesnr,
@@ -27,10 +28,14 @@ pub enum AbcChoice {
 }
 
 /// Menu entries in display order.
-pub const ABC_ENTRIES: [(AbcChoice, &str); 8] = [
+pub const ABC_ENTRIES: [(AbcChoice, &str); 9] = [
     (
         AbcChoice::Mustgo,
         "mustgo - Headless report (asks for the run date)",
+    ),
+    (
+        AbcChoice::Xdock,
+        "xdock - Headless report (asks for the run date)",
     ),
     (AbcChoice::Vt11, "VT11 - Auto Run (from config)"),
     (AbcChoice::Vl06o, "VL06O - Auto Run (from config)"),
@@ -42,7 +47,7 @@ pub const ABC_ENTRIES: [(AbcChoice, &str); 8] = [
     ),
     (
         AbcChoice::Zmdetpc,
-        "ZMDETPC - Pallet Count (not implemented yet)",
+        "ZMDETPC - Pallet Count (runs inside xdock, no standalone run)",
     ),
     (AbcChoice::Back, "Back to Main Menu"),
 ];
@@ -63,13 +68,13 @@ pub fn validate_run_date_input(
     parse_run_date(raw, default_year).map_err(|e| e.to_string())
 }
 
-/// Ask for the run date (default today) and run `mustgo` against the connected session.
-fn run_mustgo_interactive(session: &GuiSession) {
+/// Ask for the run date (default today) and run report `name` against the connected session.
+fn run_report_interactive(session: &GuiSession, name: &str) {
     use chrono::Datelike;
     let today = chrono::Local::now().date_naive();
     let year = today.year();
     let raw: String = match dialoguer::Input::new()
-        .with_prompt("mustgo run date (YYYY-MM-DD, A..B or WKnn)")
+        .with_prompt(format!("{name} run date (YYYY-MM-DD, A..B or WKnn)"))
         .default(today.format("%Y-%m-%d").to_string())
         .validate_with(|s: &String| validate_run_date_input(s, year).map(|_| ()))
         .interact_text()
@@ -84,9 +89,9 @@ fn run_mustgo_interactive(session: &GuiSession) {
     let Ok(date) = validate_run_date_input(&raw, year) else {
         return;
     };
-    // Same dispatch as `--rname=mustgo --run-date=...` (CLI overrides/config resolved there).
-    if let Err(e) = dispatch::run_report(session, "mustgo", &date) {
-        eprintln!("mustgo failed: {}", dispatch::describe_error(&e));
+    // Same dispatch as `--rname=<name> --run-date=...` (CLI overrides/config resolved there).
+    if let Err(e) = dispatch::run_report(session, name, &date) {
+        eprintln!("{name} failed: {}", dispatch::describe_error(&e));
     }
     let _: std::result::Result<String, _> = dialoguer::Input::new()
         .with_prompt("Press Enter to continue")
@@ -121,7 +126,7 @@ pub fn run_abc_menu(session: Option<&GuiSession>) {
             return;
         }
         if matches!(choice, AbcChoice::Lt23 | AbcChoice::Zmdetpc) {
-            println!("Not implemented yet (see docs/abc_headless_plan.md, phases 4.4/4.5).");
+            println!("No standalone run: LT23 runs inside mustgo, ZMDETPC inside xdock.");
             pause();
             continue;
         }
@@ -130,8 +135,13 @@ pub fn run_abc_menu(session: Option<&GuiSession>) {
             pause();
             continue;
         };
-        if choice == AbcChoice::Mustgo {
-            run_mustgo_interactive(session);
+        if matches!(choice, AbcChoice::Mustgo | AbcChoice::Xdock) {
+            let name = if choice == AbcChoice::Mustgo {
+                "mustgo"
+            } else {
+                "xdock"
+            };
+            run_report_interactive(session, name);
             continue;
         }
         let result = match choice {
@@ -169,7 +179,8 @@ mod tests {
     #[test]
     fn back_is_last_and_indices_map() {
         assert_eq!(choice_from_index(0), Some(AbcChoice::Mustgo));
-        assert_eq!(choice_from_index(1), Some(AbcChoice::Vt11));
+        assert_eq!(choice_from_index(1), Some(AbcChoice::Xdock));
+        assert_eq!(choice_from_index(2), Some(AbcChoice::Vt11));
         assert_eq!(
             choice_from_index(ABC_ENTRIES.len() - 1),
             Some(AbcChoice::Back)

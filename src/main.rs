@@ -32,6 +32,7 @@ mod y_149_rcv;
 mod y_149_rcv_module;
 mod zmdesnr;
 mod zmdesnr_module;
+mod zmdetpc;
 mod zvt11;
 mod zvt11_module;
 

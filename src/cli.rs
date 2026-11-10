@@ -271,7 +271,7 @@ impl Cli {
         if !bad.is_empty() {
             return Err(anyhow!(
                 "{} can't be used with --rname; the report flow sets its own variants/layouts \
-                 (override them in [abc.mustgo] of config.toml)",
+                 (override them in the [abc.<report>] section of config.toml)",
                 bad.join(", ")
             ));
         }

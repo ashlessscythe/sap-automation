@@ -22,5 +22,6 @@ pub mod y_149_rcv;
 pub mod y_149_rcv_module;
 pub mod zmdesnr;
 pub mod zmdesnr_module;
+pub mod zmdetpc;
 pub mod zvt11;
 pub mod zvt11_module;

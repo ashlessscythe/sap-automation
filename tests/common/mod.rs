@@ -88,11 +88,16 @@ pub fn load_raw_fixture(dir: &str, file: &str) -> Table {
 /// Load a real SAP text export from `tests/fixtures/mustgo/real/` through the production
 /// loader (`abc::raw`), with the canonical header aliases of `tcode` applied.
 pub fn load_real(tcode: &str, file: &str) -> Table {
+    load_real_in("mustgo", tcode, file)
+}
+
+/// Like [`load_real`] for `tests/fixtures/<dir>/real/<file>`.
+pub fn load_real_in(dir: &str, tcode: &str, file: &str) -> Table {
     let path: PathBuf = [
         env!("CARGO_MANIFEST_DIR"),
         "tests",
         "fixtures",
-        "mustgo",
+        dir,
         "real",
         file,
     ]

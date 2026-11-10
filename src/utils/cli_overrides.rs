@@ -9,6 +9,7 @@
 //! linked from the binary does not see every `pub` use (policy 4.A).
 #![allow(dead_code)]
 
+use crate::abc::run::RunDate;
 use chrono::NaiveDate;
 use std::sync::OnceLock;
 
@@ -86,6 +87,12 @@ pub struct CliOverrides {
     /// Export subdirectory (`--rname-dir`). Relative = under the reports dir; files land
     /// in `<reports_dir>\<rname_dir>\<tcode>`. Absolute paths are used as is.
     pub rname_dir: Option<String>,
+
+    /// Headless report name (`--rname`), canonical registry name (e.g. `mustgo`).
+    pub rname: Option<String>,
+
+    /// Run date of a headless report (`--run-date`): single date, range or week.
+    pub run_date: Option<RunDate>,
 
     /// ZMDESNR-only: send vkey 3 (back) after export but before layout selection.
     /// Maps to `[tcode.ZMDESNR].pre_export_back` in `config.toml`.
@@ -270,6 +277,15 @@ impl CliOverrides {
         }
         if let Some(v) = &self.rname_dir {
             parts.push(format!("--rname-dir={v}"));
+        }
+        if let Some(v) = &self.rname {
+            parts.push(format!("--rname={v}"));
+        }
+        if let Some(v) = &self.run_date {
+            parts.push(format!(
+                "--run-date={}",
+                crate::abc::runner::export_date_label(v)
+            ));
         }
         if let Some(v) = self.pre_export_back {
             parts.push(format!("--pre-export-back={v}"));

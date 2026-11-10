@@ -372,6 +372,30 @@ pub fn run_single_tcode_unattended(
     Ok(())
 }
 
+/// Run a headless report (`--rname`/`--run-date`) once. No prompts; any failure (including
+/// "no data") is an `Err`, which the binary turns into a non-zero exit code.
+pub fn run_rname_unattended(
+    session: &GuiSession,
+    rname: &str,
+    date: &crate::abc::run::RunDate,
+    skip_sap_check: bool,
+) -> Result<()> {
+    println!("Starting unattended report '{rname}'...");
+
+    if !skip_sap_check {
+        let transaction = session.info()?.transaction()?;
+        if transaction.contains("S000") {
+            return Err(anyhow::anyhow!("Not logged into SAP. Please log in first."));
+        }
+    }
+
+    if let Some(line) = cli_overrides().summary_line() {
+        println!("CLI overrides applied (these win over config.toml): {line}");
+    }
+
+    crate::abc::dispatch::run_report(session, rname, date).map(|_| ())
+}
+
 /// Initialize SAP connection for unattended execution
 pub fn init_sap_connection() -> Result<(
     SAPComInstance,

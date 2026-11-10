@@ -1,0 +1,366 @@
+//! `run_k2xx` against a fake SAP seam serving the SYNTHETIC stand-in exports
+//! (tests/fixtures/k2xx/synthetic/, see the README there).
+mod common;
+
+use anyhow::{anyhow, Result};
+use chrono::NaiveDate;
+use common::{assert_tables_equal, load_fixture, load_synthetic_in};
+use sap_automation::abc::k2xx_runner::*;
+use sap_automation::abc::raw::RawOptions;
+use sap_automation::abc::run::RunDate;
+use sap_automation::abc::runner::{outcome_to_output, NoDataError, OutputSpec, StepOutput};
+use sap_automation::abc::table::Table;
+use sap_automation::utils::export_outcome::ExportOutcome;
+use std::collections::HashSet;
+use std::path::{Path, PathBuf};
+
+#[derive(Clone)]
+enum Ov {
+    NoData,
+    Err,
+    Table(Table),
+}
+
+#[derive(Default)]
+struct Fake {
+    calls: Vec<&'static str>,
+    dates: Vec<RunDate>,
+    vt11_args: Vec<(String, String, bool)>,
+    ships: Vec<String>,
+    vl_layout: String,
+    zv_dels: Vec<String>,
+    zv_window: Option<(NaiveDate, NaiveDate)>,
+    zv_args: (String, String),
+    zm_dels: Vec<String>,
+    zm_variant: String,
+    zm_date: Option<RunDate>,
+    over: Vec<(&'static str, Ov)>,
+}
+
+impl Fake {
+    fn serve(&mut self, step: &'static str, tcode: &str, file: &str) -> Result<StepOutput> {
+        self.calls.push(step);
+        if let Some((_, o)) = self.over.iter().find(|(s, _)| *s == step) {
+            return match o.clone() {
+                Ov::NoData => Ok(StepOutput::NoData("nothing".into())),
+                Ov::Err => Err(anyhow!("sap exploded")),
+                Ov::Table(t) => Ok(StepOutput::Table(t)),
+            };
+        }
+        Ok(StepOutput::Table(load_synthetic_in("k2xx", tcode, file)))
+    }
+}
+
+impl K2xxSteps for Fake {
+    fn vt11(
+        &mut self,
+        date: &RunDate,
+        variant: &str,
+        layout: &str,
+        monday_include_sunday: bool,
+    ) -> Result<StepOutput> {
+        self.dates.push(*date);
+        self.vt11_args
+            .push((variant.into(), layout.into(), monday_include_sunday));
+        self.serve("vt11", "vt11_inv", "raw_vt11.txt")
+    }
+    fn vl06o_by_shipments(&mut self, s: &[String], layout: &str) -> Result<StepOutput> {
+        self.ships = s.to_vec();
+        self.vl_layout = layout.into();
+        self.serve("vl06o", "vl06o", "raw_vl06o.txt")
+    }
+    fn zvt11_closed(
+        &mut self,
+        d: &[String],
+        from: NaiveDate,
+        to: NaiveDate,
+        variant: &str,
+        layout: &str,
+    ) -> Result<StepOutput> {
+        self.zv_dels = d.to_vec();
+        self.zv_window = Some((from, to));
+        self.zv_args = (variant.into(), layout.into());
+        self.serve("zvt11", "zvt11", "raw_zvt11.txt")
+    }
+    fn zmdetpc_summarised(
+        &mut self,
+        d: &[String],
+        date: &RunDate,
+        variant: &str,
+    ) -> Result<StepOutput> {
+        self.zm_dels = d.to_vec();
+        self.zm_date = Some(*date);
+        self.zm_variant = variant.into();
+        self.serve("zmdetpc", "zmdetpc", "raw_zmdetpc.txt")
+    }
+}
+
+fn ymd(y: i32, m: u32, d: u32) -> NaiveDate {
+    NaiveDate::from_ymd_opt(y, m, d).unwrap()
+}
+
+fn day() -> RunDate {
+    RunDate {
+        date1: ymd(2026, 11, 5),
+        date2: None,
+    }
+}
+
+fn temp_out(tag: &str) -> OutputSpec {
+    let dir = std::env::temp_dir().join(format!("k2xx_runner_{tag}_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    OutputSpec {
+        reports_dir: dir,
+        today: ymd(2026, 11, 10),
+    }
+}
+
+fn files_under(dir: &Path) -> usize {
+    fn walk(d: &Path, n: &mut usize) {
+        if let Ok(rd) = std::fs::read_dir(d) {
+            for e in rd.flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    walk(&p, n)
+                } else {
+                    *n += 1
+                }
+            }
+        }
+    }
+    let mut n = 0;
+    walk(dir, &mut n);
+    n
+}
+
+fn read(p: &PathBuf, n: &str) -> Table {
+    Table::from_tsv(n, &std::fs::read_to_string(p).unwrap()).unwrap()
+}
+
+#[test]
+fn full_run_on_the_stand_in_fixtures() {
+    let out = temp_out("full");
+    let mut f = Fake::default();
+    let sel = K2xxSelection::default();
+    let s = run_k2xx(&mut f, &day(), &sel, &out).unwrap();
+
+    // spec 5.5 order: VT11, VL06O, ZVT11 Closed, ZMDETPC
+    assert_eq!(f.calls, vec!["vt11", "vl06o", "zvt11", "zmdetpc"]);
+    assert_eq!(f.dates, vec![day()]);
+    assert_eq!(
+        f.vt11_args,
+        vec![("VT11_K2XX_VARIANT".to_string(), "scorecard".to_string(), true)]
+    );
+    assert_eq!(f.ships.len(), 54);
+    assert_eq!(f.ships.iter().collect::<HashSet<_>>().len(), 54);
+    assert_eq!(f.vl_layout, "pallets");
+    // ZVT11 Closed and ZMDETPC get the same 107 distinct deliveries
+    assert_eq!(f.zv_dels.len(), 107);
+    assert_eq!(f.zv_dels.iter().collect::<HashSet<_>>().len(), 107);
+    assert_eq!(f.zm_dels, f.zv_dels);
+    // run date -/+ 100 days
+    assert_eq!(f.zv_window, Some((ymd(2026, 7, 28), ymd(2027, 2, 13))));
+    assert_eq!(f.zv_args, ("k2xx_".to_string(), "add_del".to_string()));
+    assert_eq!(f.zm_date, Some(day()));
+    assert_eq!(f.zm_variant, "ZMDETPC_VARIANT");
+
+    assert_eq!(s.export_date, "2026-11-05");
+    assert_eq!((s.shipments, s.deliveries), (54, 107));
+    assert_eq!(
+        (s.zvt11_rows, s.zmdetpc_rows, s.without_zmdetpc),
+        (108, 104, 3)
+    );
+    assert_eq!(s.vl06o_rows, 107);
+    assert_eq!(s.total, "1144");
+
+    // outputs: <reports_dir>\K2XX\<today>\k2xx\<date>_K2XX_<TABLE>.tsv, macro sheet order, no pivot
+    assert_eq!(s.outputs.len(), 3);
+    let base = out.reports_dir.join("K2XX").join("2026-11-10").join("k2xx");
+    assert_eq!(s.outputs[0], base.join("11-05-2026_K2XX_ZVT11.tsv"));
+    assert_eq!(s.outputs[1], base.join("11-05-2026_K2XX_VT11.tsv"));
+    assert_eq!(s.outputs[2], base.join("11-05-2026_K2XX_VL06O.tsv"));
+    assert_eq!(files_under(&out.reports_dir), 3);
+    assert_tables_equal(
+        &load_fixture("k2xx", "expected_zvt11.tsv"),
+        &read(&s.outputs[0], "expected_zvt11.tsv"),
+    );
+    let vt = read(&s.outputs[1], "vt11");
+    assert_eq!((vt.nrows(), vt.headers.len()), (54, 13));
+    assert_tables_equal(
+        &load_fixture("k2xx", "expected_vl06o.tsv"),
+        &read(&s.outputs[2], "expected_vl06o.tsv"),
+    );
+    let _ = std::fs::remove_dir_all(&out.reports_dir);
+}
+
+#[test]
+fn selection_is_passed_through() {
+    let out = temp_out("sel");
+    let mut f = Fake::default();
+    let sel = K2xxSelection {
+        vt11_variant: "V".into(),
+        vt11_layout: "L".into(),
+        monday_include_sunday: false,
+        vl06o_layout: "P".into(),
+        zvt11_variant: "ZV".into(),
+        zvt11_layout: "ZL".into(),
+        zvt11_days: 10,
+        zmdetpc_variant: "ZM".into(),
+    };
+    run_k2xx(&mut f, &day(), &sel, &out).unwrap();
+    assert_eq!(f.vt11_args, vec![("V".into(), "L".into(), false)]);
+    assert_eq!(f.vl_layout, "P");
+    assert_eq!(f.zv_args, ("ZV".to_string(), "ZL".to_string()));
+    assert_eq!(f.zv_window, Some((ymd(2026, 10, 26), ymd(2026, 11, 15))));
+    assert_eq!(f.zm_variant, "ZM");
+    let _ = std::fs::remove_dir_all(&out.reports_dir);
+}
+
+#[test]
+fn range_run_labels_date_and_widens_both_ends() {
+    let out = temp_out("range");
+    let mut f = Fake::default();
+    let rd = RunDate {
+        date1: ymd(2026, 11, 1),
+        date2: Some(ymd(2026, 11, 7)),
+    };
+    let s = run_k2xx(&mut f, &rd, &K2xxSelection::default(), &out).unwrap();
+    assert_eq!(s.export_date, "WK_45");
+    assert_eq!(f.dates, vec![rd], "VT11 gets the whole range");
+    assert_eq!(f.zm_date, Some(rd), "ZMDETPC gets the whole range");
+    assert_eq!(f.zv_window, Some((ymd(2026, 7, 24), ymd(2027, 2, 15))));
+    let vl = read(&s.outputs[2], "vl06o");
+    let c = vl.col("date").unwrap();
+    assert!(vl.rows.iter().all(|r| r[c] == "WK_45"));
+    assert!(s.outputs[2].to_string_lossy().contains("WK_45_K2XX_VL06O"));
+    let _ = std::fs::remove_dir_all(&out.reports_dir);
+}
+
+fn run_fail(tag: &str, over: Vec<(&'static str, Ov)>) -> (anyhow::Error, Fake) {
+    let out = temp_out(tag);
+    let mut f = Fake {
+        over,
+        ..Fake::default()
+    };
+    let e = run_k2xx(&mut f, &day(), &K2xxSelection::default(), &out).unwrap_err();
+    assert_eq!(files_under(&out.reports_dir), 0, "no partial output");
+    (e, f)
+}
+
+#[test]
+fn no_data_stops_the_run_at_each_step() {
+    for (step, calls) in [
+        ("vt11", vec!["vt11"]),
+        ("vl06o", vec!["vt11", "vl06o"]),
+        ("zvt11", vec!["vt11", "vl06o", "zvt11"]),
+        ("zmdetpc", vec!["vt11", "vl06o", "zvt11", "zmdetpc"]),
+    ] {
+        let (e, f) = run_fail(&format!("nd_{step}"), vec![(step, Ov::NoData)]);
+        let nd = e.downcast_ref::<NoDataError>().expect("NoDataError");
+        assert_eq!(nd.step, step);
+        assert_eq!(f.calls, calls);
+    }
+}
+
+#[test]
+fn empty_lists_stop_the_run() {
+    let empty = |tcode: &str, file: &str| {
+        let mut t = load_synthetic_in("k2xx", tcode, file);
+        t.rows.clear();
+        t.visible.clear();
+        t
+    };
+    let (e, f) = run_fail(
+        "novt",
+        vec![("vt11", Ov::Table(empty("vt11_inv", "raw_vt11.txt")))],
+    );
+    assert_eq!(e.downcast_ref::<NoDataError>().unwrap().step, "vt11");
+    assert_eq!(f.calls, vec!["vt11"]);
+
+    let (e, f) = run_fail(
+        "novl",
+        vec![("vl06o", Ov::Table(empty("vl06o", "raw_vl06o.txt")))],
+    );
+    assert_eq!(e.downcast_ref::<NoDataError>().unwrap().step, "vl06o");
+    assert_eq!(f.calls, vec!["vt11", "vl06o"], "ZVT11 is skipped");
+
+    // an empty ZVT11 list stops the run before ZMDETPC
+    let (e, f) = run_fail(
+        "nozv",
+        vec![("zvt11", Ov::Table(empty("zvt11", "raw_zvt11.txt")))],
+    );
+    assert_eq!(e.downcast_ref::<NoDataError>().unwrap().step, "zvt11");
+    assert_eq!(f.calls, vec!["vt11", "vl06o", "zvt11"]);
+    let (e, _) = run_fail(
+        "nozv2",
+        vec![("zvt11", Ov::Table(Table::new("z", Vec::new(), Vec::new())))],
+    );
+    assert_eq!(e.downcast_ref::<NoDataError>().unwrap().step, "zvt11");
+}
+
+#[test]
+fn errors_and_missing_columns() {
+    let (e, f) = run_fail("err", vec![("zvt11", Ov::Err)]);
+    assert!(format!("{e:#}").contains("sap exploded"), "{e:#}");
+    assert!(e.downcast_ref::<NoDataError>().is_none());
+    assert_eq!(f.calls.last(), Some(&"zvt11"));
+
+    let mut z = load_synthetic_in("k2xx", "zmdetpc", "raw_zmdetpc.txt");
+    z.headers[1] = "something_else".into();
+    let (e, _) = run_fail("cols", vec![("zmdetpc", Ov::Table(z))]);
+    let m = format!("{e:#}");
+    assert!(m.contains("missing column") && m.contains("pallet"), "{m}");
+
+    let mut vl = load_synthetic_in("k2xx", "vl06o", "raw_vl06o.txt");
+    vl.headers[0] = "something_else".into();
+    let (e, _) = run_fail("cols2", vec![("vl06o", Ov::Table(vl))]);
+    assert!(format!("{e:#}").contains("delivery"), "{e:#}");
+}
+
+/// The ZVT11 table is written as exported, whatever its header titles are (the titles of the
+/// real text export are unknown), and VL06O only needs `delivery`.
+#[test]
+fn zvt11_headers_and_extra_vl06o_columns_are_not_checked() {
+    let out = temp_out("anyhdr");
+    let mut zv = load_synthetic_in("k2xx", "zvt11", "raw_zvt11.txt");
+    zv.headers = (0..zv.headers.len()).map(|i| format!("c{i}")).collect();
+    let mut vl = load_synthetic_in("k2xx", "vl06o", "raw_vl06o.txt");
+    let pk = vl.col("number_of_packages").unwrap();
+    vl.headers[pk] = "nopk_renamed".into();
+    let mut f = Fake {
+        over: vec![("zvt11", Ov::Table(zv)), ("vl06o", Ov::Table(vl))],
+        ..Fake::default()
+    };
+    let s = run_k2xx(&mut f, &day(), &K2xxSelection::default(), &out).unwrap();
+    assert_eq!(read(&s.outputs[0], "zvt11").headers[0], "c0");
+    assert_eq!(s.total, "1144");
+    let _ = std::fs::remove_dir_all(&out.reports_dir);
+}
+
+/// The production file loader (`outcome_to_output`) reads each stand-in export.
+#[test]
+fn outcome_adapter_loads_the_files() {
+    for (tc, file) in [
+        ("vt11_inv", "raw_vt11.txt"),
+        ("vl06o", "raw_vl06o.txt"),
+        ("zvt11", "raw_zvt11.txt"),
+        ("zmdetpc", "raw_zmdetpc.txt"),
+    ] {
+        let p: PathBuf = [
+            env!("CARGO_MANIFEST_DIR"),
+            "tests",
+            "fixtures",
+            "k2xx",
+            "synthetic",
+            file,
+        ]
+        .iter()
+        .collect();
+        let out = outcome_to_output(tc, ExportOutcome::File(p), &RawOptions::default()).unwrap();
+        let StepOutput::Table(t) = out else {
+            panic!("expected a table")
+        };
+        assert_eq!(t.headers, load_synthetic_in("k2xx", tc, file).headers);
+        assert!(t.nrows() > 0);
+    }
+}

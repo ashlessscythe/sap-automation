@@ -159,7 +159,9 @@ ignore_display_error = true     # treat "no display authorization" as harmless (
 
 Optional, same rules as the other `[abc.<report>]` sections (CLI flag > `[abc.k2xx]` > `[global]` > default; wrong or empty
 values fall back). Used only by `--rname=k2xx` (and the ABC Headless > k2xx menu entry). **Not verified on live SAP yet**: the
-names below are the ones of the macro; the ZVT11 Closed step and its control ids come from the spec only.
+names below are the ones of the macro; the ZVT11 Closed step and its control ids come from the spec only. The run also writes
+a pivot (`plant`, sum of `total`), so the `vl06o_layout` must contain the plant column (the `pallets` layout does); there is no
+key to switch the pivot off.
 
 ```toml
 [abc.k2xx]

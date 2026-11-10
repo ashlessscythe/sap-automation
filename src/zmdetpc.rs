@@ -16,8 +16,8 @@
 //! * the refresh sequence `radR_COMPL` then `radR_SUMM` before execute (spec 3.6),
 //! * that the selection screen keeps `radR_SUMM` when nothing is found, and the popup text in
 //!   `wnd[1]/usr/txtMESSTXT1` (read by the shared screen classifier),
-//! * the local file export menu `menu[0]/menu[3]/menu[1]` (spec 2/3.6; `menu[2]` is tried as a
-//!   second candidate, a dialog that is not titled "save list in file" is rejected).
+//! * the local file export menu `menu[0]/menu[3]/menu[2]` (`menu[1]` is the spreadsheet export
+//!   and is not used; a dialog that is not titled "save list in file" is rejected).
 //!
 //! Not implemented (v2): the detail flow (`radR_DETA`, `.txt` export), `S_ADATE` (pallet pick
 //! date) and the layout button. The spec's "delete a non-numeric first row" is not needed
@@ -38,10 +38,9 @@ use crate::utils::sap_wnd_utils::answer_popup_yes;
 
 const MULTI_TABLE_ID: &str =
     "tabsTAB_STRIP/tabpSIVA/ssubSCREEN_HEADER:SAPLALDB:3010/tblSAPLALDBSINGLE";
-const LOCAL_FILE_MENUS: &[&str] = &[
-    "wnd[0]/mbar/menu[0]/menu[3]/menu[1]",
-    "wnd[0]/mbar/menu[0]/menu[3]/menu[2]",
-];
+// `menu[3]/menu[1]` is the spreadsheet export ("Select Spreadsheet"), `menu[3]/menu[2]` is
+// "Local file" (owner's recording, 2026-11-10); only the local file entry is tried.
+const LOCAL_FILE_MENUS: &[&str] = &["wnd[0]/mbar/menu[0]/menu[3]/menu[2]"];
 
 /// ZMDETPC (summarised) parameters.
 #[derive(Debug, Clone)]

@@ -175,6 +175,12 @@ pub struct Cli {
     /// value in PowerShell so `*` is not expanded (`--bin-filter="64EP*"`).
     #[arg(long, value_name = "BIN")]
     pub bin_filter: Option<String>,
+
+    /// Days added before the start and after the end of the run date range of every tcode that
+    /// sets one (VT11, ZMDETPC). When omitted: 3 for ZMDETPC on a week run (`WK<n>`), else 0.
+    /// Overrides `[abc.<report>] date_range_buffer`.
+    #[arg(long, value_name = "DAYS", value_parser = clap::value_parser!(u32).range(0..=366))]
+    pub date_range_buffer: Option<u32>,
 }
 
 #[derive(Subcommand)]
@@ -251,6 +257,7 @@ impl Cli {
             pre_export_back: self.pre_export_back,
             tab_number: self.tab_number,
             bin_filter: self.bin_filter.clone(),
+            date_range_buffer: self.date_range_buffer,
         })
     }
 }

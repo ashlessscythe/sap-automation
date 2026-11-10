@@ -52,6 +52,35 @@ pub struct MustgoSapConfig {
     pub delete_exports: bool,
     /// How the exports are parsed (date format of the SAP user, raw text columns).
     pub raw: RawOptions,
+    /// Explicit buffer (`--date-range-buffer` / `[abc.<report>] date_range_buffer`): days added
+    /// before the start and after the end of the run date range of every tcode that sets one.
+    /// `None` = the defaults of [`buffer_days`].
+    pub date_range_buffer: Option<i64>,
+}
+
+/// Default buffer for ZMDETPC when the run date is a week (`WK<n>`): 3 days on either side
+/// (owner decision 2026-11-10). Every other case defaults to 0.
+pub const DEFAULT_WEEK_BUFFER_DAYS: i64 = 3;
+
+/// Days added on each side of the run date range of `tcode`: the explicit setting (negative
+/// counts as 0) when given, else [`DEFAULT_WEEK_BUFFER_DAYS`] for ZMDETPC on a week run, else 0.
+pub fn buffer_days(cfg: &MustgoSapConfig, date: &RunDate, tcode: &str) -> i64 {
+    match cfg.date_range_buffer {
+        Some(n) => n.max(0),
+        None if tcode.eq_ignore_ascii_case("ZMDETPC") && date.is_week() => DEFAULT_WEEK_BUFFER_DAYS,
+        None => 0,
+    }
+}
+
+/// The run date range of `tcode` widened by [`buffer_days`] on both sides.
+pub fn buffered_range(
+    cfg: &MustgoSapConfig,
+    date: &RunDate,
+    tcode: &str,
+) -> (NaiveDate, NaiveDate) {
+    let (start, end) = date.as_range();
+    let b = chrono::Duration::days(buffer_days(cfg, date, tcode));
+    (start - b, end + b)
 }
 
 impl Default for MustgoSapConfig {
@@ -68,6 +97,7 @@ impl Default for MustgoSapConfig {
             ignore_display_error: true,
             delete_exports: true,
             raw: RawOptions::default(),
+            date_range_buffer: None,
         }
     }
 }
@@ -91,14 +121,15 @@ pub fn export_target(cfg: &MustgoSapConfig, tcode: &str, now: NaiveDateTime) -> 
     }
 }
 
-/// `(start, end)` the VT11 closed-date range for a run date (single date: both equal).
-pub fn vt11_range(date: &RunDate) -> (NaiveDate, NaiveDate) {
-    date.as_range()
+/// `(start, end)` the VT11 closed-date range for a run date (single date: both equal); widened
+/// only by an explicit buffer (VT11 has no default buffer).
+pub fn vt11_range(cfg: &MustgoSapConfig, date: &RunDate) -> (NaiveDate, NaiveDate) {
+    buffered_range(cfg, date, "VT11")
 }
 
 /// Step 9: VT11 with the variant, the closed date (`K_DATEN`) range, no layout (export as-is).
 pub fn vt11_params(cfg: &MustgoSapConfig, date: &RunDate, target: ExportTarget) -> VT11Params {
-    let (start, end) = vt11_range(date);
+    let (start, end) = vt11_range(cfg, date);
     VT11Params {
         start_date: start,
         end_date: end,
@@ -215,7 +246,13 @@ pub fn inv_vl06o_params(
     }
 }
 
-/// ZMDETPC summarised for the deliveries; the dates are the run date (range for week runs).
+/// `(start, end)` typed into ZMDETPC `S_DATE-LOW` / `-HIGH`: the run date range widened by
+/// [`buffer_days`] (3 each side for a week run unless set explicitly, else none).
+pub fn zmdetpc_range(cfg: &MustgoSapConfig, date: &RunDate) -> (NaiveDate, NaiveDate) {
+    buffered_range(cfg, date, "ZMDETPC")
+}
+
+/// ZMDETPC summarised for the deliveries; the dates are [`zmdetpc_range`].
 pub fn zmdetpc_params(
     cfg: &MustgoSapConfig,
     deliveries: &[String],
@@ -223,7 +260,7 @@ pub fn zmdetpc_params(
     variant: &str,
     target: ExportTarget,
 ) -> ZMDETPCParams {
-    let (start, end) = date.as_range();
+    let (start, end) = zmdetpc_range(cfg, date);
     ZMDETPCParams {
         variant: Some(variant.to_string()).filter(|v| !v.trim().is_empty()),
         date_start: start,
@@ -501,7 +538,8 @@ mod tests {
         };
         let z = zmdetpc_params(&cfg, &s(&["8", "9"]), &week, "ZMDETPC_VARIANT", t.clone());
         assert_eq!(z.variant.as_deref(), Some("ZMDETPC_VARIANT"));
-        assert_eq!((z.date_start, z.date_end), (d(11, 1), d(11, 7)));
+        // week 11-01..11-07 buffered by 3 days on each side
+        assert_eq!((z.date_start, z.date_end), (d(10, 29), d(11, 10)));
         assert_eq!(z.date_format.as_deref(), Some("yyyy-mm-dd"));
         assert_eq!(z.deliveries, s(&["8", "9"]));
         assert_eq!(z.export_target, Some(t));
@@ -513,7 +551,77 @@ mod tests {
             export_target(&cfg, "ZMDETPC", now()),
         );
         assert!(z1.variant.is_none());
+        // a single date gets no default buffer
         assert_eq!((z1.date_start, z1.date_end), (d(11, 5), d(11, 5)));
+    }
+
+    #[test]
+    fn default_buffer_is_3_for_zmdetpc_weeks_only() {
+        let cfg = MustgoSapConfig::default();
+        assert_eq!(cfg.date_range_buffer, None);
+        let single = RunDate {
+            date1: d(11, 5),
+            date2: None,
+        };
+        let week = RunDate {
+            date1: d(11, 1),
+            date2: Some(d(11, 7)),
+        };
+        let other_range = RunDate {
+            date1: d(11, 2),
+            date2: Some(d(11, 12)),
+        };
+        // ZMDETPC: week -> 3 days each side; single date and non-week range -> none
+        assert_eq!(zmdetpc_range(&cfg, &week), (d(10, 29), d(11, 10)));
+        assert_eq!(zmdetpc_range(&cfg, &single), (d(11, 5), d(11, 5)));
+        assert_eq!(zmdetpc_range(&cfg, &other_range), (d(11, 2), d(11, 12)));
+        // every other tcode: no default buffer, week or not
+        assert_eq!(vt11_range(&cfg, &week), (d(11, 1), d(11, 7)));
+        assert_eq!(vt11_range(&cfg, &single), (d(11, 5), d(11, 5)));
+        assert_eq!(buffer_days(&cfg, &week, "VL06O"), 0);
+        assert_eq!(buffer_days(&cfg, &week, "zmdetpc"), 3);
+        // a week crossing the year boundary
+        let ny = RunDate {
+            date1: NaiveDate::from_ymd_opt(2026, 12, 27).unwrap(),
+            date2: Some(NaiveDate::from_ymd_opt(2027, 1, 2).unwrap()),
+        };
+        assert_eq!(
+            zmdetpc_range(&cfg, &ny),
+            (
+                NaiveDate::from_ymd_opt(2026, 12, 24).unwrap(),
+                NaiveDate::from_ymd_opt(2027, 1, 5).unwrap()
+            )
+        );
+    }
+
+    #[test]
+    fn explicit_buffer_applies_to_every_tcode_range() {
+        let single = RunDate {
+            date1: d(11, 5),
+            date2: None,
+        };
+        let week = RunDate {
+            date1: d(11, 1),
+            date2: Some(d(11, 7)),
+        };
+        let mut cfg = MustgoSapConfig {
+            date_range_buffer: Some(5),
+            ..MustgoSapConfig::default()
+        };
+        // explicit value: also single dates, also VT11
+        assert_eq!(zmdetpc_range(&cfg, &single), (d(10, 31), d(11, 10)));
+        assert_eq!(vt11_range(&cfg, &single), (d(10, 31), d(11, 10)));
+        assert_eq!(vt11_range(&cfg, &week), (d(10, 27), d(11, 12)));
+        let t = export_target(&cfg, "VT11", now());
+        assert_eq!(
+            vt11_params(&cfg, &single, t).closed_range,
+            Some((d(10, 31), d(11, 10)))
+        );
+        // explicit 0 switches the ZMDETPC week default off; a negative value counts as 0
+        cfg.date_range_buffer = Some(0);
+        assert_eq!(zmdetpc_range(&cfg, &week), (d(11, 1), d(11, 7)));
+        cfg.date_range_buffer = Some(-2);
+        assert_eq!(zmdetpc_range(&cfg, &week), (d(11, 1), d(11, 7)));
     }
 
     fn temp_file(tag: &str, content: &str) -> PathBuf {

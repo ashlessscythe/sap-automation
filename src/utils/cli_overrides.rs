@@ -111,6 +111,10 @@ pub struct CliOverrides {
     /// `[tcode.ZMDESNR].bin_filter` in `config.toml`. When set, the export
     /// fills LGPLA-LOW and skips delivery multi-paste.
     pub bin_filter: Option<String>,
+
+    /// `--date-range-buffer`: days added on each side of the run date range where a headless
+    /// report sets a buffered date range (ZMDETPC today). `None` = config, else 3.
+    pub date_range_buffer: Option<u32>,
 }
 
 impl CliOverrides {
@@ -274,6 +278,9 @@ impl CliOverrides {
             if let Some((s, e)) = range {
                 parts.push(format!("{flag}={s}..{e}"));
             }
+        }
+        if let Some(v) = self.date_range_buffer {
+            parts.push(format!("--date-range-buffer={v}"));
         }
         if let Some(v) = &self.rname_dir {
             parts.push(format!("--rname-dir={v}"));

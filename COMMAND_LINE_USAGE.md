@@ -157,8 +157,10 @@ The file extension drives the parser:
 | `--rname=<name>` | Report to run. `mustgo`, `xdock`, `toyota` and `misc` have a runner today (case-insensitive). Unknown names fail with the list of known reports. |
 | `--run-date=<DATE\|A..B\|WKnn>` | `YYYY-MM-DD`, `YYYY-MM-DD..YYYY-MM-DD`, or a week `WK45` / `WK45/2026` (Sunday..Saturday, Excel WEEKNUM; the year defaults to the current year). A range or week is **one run**: VT11 gets the whole range and `export_date` becomes `WK_<n>` (a single date gives `yyyy-mm-dd`). |
 
+| `--date-range-buffer=<DAYS>` | Days added before the start and after the end of the run date range of every tcode that sets one (VT11, ZMDETPC). **Omitted**: ZMDETPC gets **3** days each side when the run is a week (`WKnn`, or the exact Sunday..Saturday range), everything else gets **0**, so a single date or other range is not widened. An explicit value (also `0`) applies to every such tcode and to single dates too. Overrides `[abc.<report>] date_range_buffer`. |
+
 `--rname` and `--run-date` require each other. Allowed with them: `--skip-sap-check`, `--keep-awake`, `--reports-dir`,
-`--date-format`, `--timezone`, `--ignore-display-error`. Defaults for variants, layouts, warehouse and clean-up come from the
+`--date-format`, `--timezone`, `--ignore-display-error`, `--date-range-buffer`. Defaults for variants, layouts, warehouse and clean-up come from the
 optional `[abc.mustgo]` / `[abc.xdock]` / `[abc.toyota]` / `[abc.misc]` section (see [CONFIG.md](CONFIG.md)); there are no per-tcode flags for a report.
 
 ```bash
@@ -168,6 +170,8 @@ optional `[abc.mustgo]` / `[abc.xdock]` / `[abc.toyota]` / `[abc.misc]` section 
 ./sap_automation.exe --rname=xdock --run-date=2026-11-05
 ./sap_automation.exe --rname=toyota --run-date=2026-11-05
 ./sap_automation.exe --rname=misc --run-date=2026-11-05
+./sap_automation.exe --rname=toyota --run-date=WK45                          # ZMDETPC 2026-10-29..2026-11-10
+./sap_automation.exe --rname=toyota --run-date=WK45 --date-range-buffer=0    # ZMDETPC 2026-11-01..2026-11-07
 ```
 
 The run needs a logged-in SAP GUI session (checked unless `--skip-sap-check`), asks nothing, and prints the step row counts

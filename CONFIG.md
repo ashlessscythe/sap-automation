@@ -150,6 +150,9 @@ vl06o_layout = "xdock"          # VL06O layout (delivery, ship-to, name, externa
 zmdetpc_variant = "ZMDETPC_VARIANT"   # ZMDETPC variant (taken from the toyota row of the spec; check it exists)
 delete_exports = true           # delete each temporary export after it was loaded
 ignore_display_error = true     # treat "no display authorization" as harmless (VT11)
+# date_range_buffer = 3         # optional, any [abc.<report>]: days added each side of the run date range
+                                # of every tcode that sets one (VT11, ZMDETPC). Unset: ZMDETPC gets 3 on a
+                                # week run (WKnn), everything else 0. `--date-range-buffer` wins.
 ```
 
 ## Migration from Legacy Format

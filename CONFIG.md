@@ -85,6 +85,40 @@ param_set_value = ""
 - `delay_seconds`: Delay between iterations
 - Additional parameters with `param_` prefix
 
+### ABC Headless Section (`[abc.mustgo]`)
+
+Optional. Used only by `--rname=mustgo` (and the ABC Headless > mustgo menu entry). Every key is optional; a missing,
+empty or wrongly typed key falls back to the default. Precedence: CLI flag > `[abc.mustgo]` > `[global]` > default
+(`--reports-dir` / `--date-format` / `--ignore-display-error` are the CLI side).
+
+```toml
+[abc.mustgo]
+vt11_variant = "VT11_XDOCK_VARIANT"   # VT11 variant (carries the shipment selection)
+zmdesnr_variant = "mg_k2xx"     # ZMDESNR variant (carries the date)
+zmdesnr_layout = "mg_view"      # ZMDESNR layout (19 columns)
+lt23_layout = "to_mg"           # LT23 layout
+lt23_create_layout = false      # true: create the LT23 layout from the built-in column list when it is missing
+warehouse = "E01"               # LT23 warehouse
+delete_exports = true           # delete each temporary export after it was loaded
+ignore_display_error = true     # treat "no display authorization" as harmless (VT11)
+```
+
+| Key | Default |
+| --- | --- |
+| `vt11_variant` | `VT11_XDOCK_VARIANT` |
+| `zmdesnr_variant` | `mg_k2xx` |
+| `zmdesnr_layout` | `mg_view` |
+| `lt23_layout` | `to_mg` |
+| `lt23_create_layout` | `false` (a missing layout fails the run; the creation path has not been run live) |
+| `warehouse` | `E01` |
+| `delete_exports` | `true` |
+| `ignore_display_error` | `true` |
+
+`reports_dir` and `date_format` are not part of the section: they come from `--reports-dir` / `--date-format`, else
+`[global]`. **`[global].date_format` must match the date format of the SAP user**: the same text is typed into VT11
+(`K_DATEN`), and it is also the format used to read dates from the exports (ISO dates, as seen in the real exports, are
+accepted whichever name is set). The built-in default is `mm/dd/yyyy`.
+
 ## Migration from Legacy Format
 
 If you're upgrading from a previous version, you can use the migration tool to convert your configuration file to the new format:

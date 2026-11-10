@@ -97,6 +97,10 @@ The application also supports command-line operation for automation scenarios. T
 ./sap_automation.exe run-loop
 ./sap_automation.exe --run-loop
 
+# Headless report (all SAP steps + TSV outputs); see COMMAND_LINE_USAGE.md
+./sap_automation.exe --rname=mustgo --run-date=2026-11-05
+./sap_automation.exe --rname=mustgo --run-date=WK45
+
 # Sequence (uses [sequence] from config.toml)
 ./sap_automation.exe run-sequence
 ./sap_automation.exe --run-sequence
@@ -133,6 +137,16 @@ CLI flags **always win** over `config.toml`, and they work even when `config.tom
 - **Backward Compatible**: Interactive mode remains unchanged
 
 For the full flag reference, validation rules, source-file resolution, and end-to-end examples, see [COMMAND_LINE_USAGE.md](COMMAND_LINE_USAGE.md).
+
+### ABC Headless reports
+
+`--rname=<name> --run-date=<DATE|A..B|WKnn>` runs a whole report unattended (today: `mustgo`): the SAP exports are forced to
+text with tabs, loaded, post-processed offline and written as TSV under `<reports_dir>\K2XX\<today>\mustgo\`. In the TUI it is
+the first entry of the **ABC Headless** submenu (main menu option 30); it asks for the run date and runs the same code. There is
+deliberately **no sequence menu id** for it: the sequence runner is config-driven and has no run date. Options live in the
+optional `[abc.mustgo]` section ([CONFIG.md](CONFIG.md)); flags, exit codes and file locations are in
+[COMMAND_LINE_USAGE.md](COMMAND_LINE_USAGE.md). The SAP steps have not been verified on a live system yet; see the live
+verification checklist in `docs/abc_headless_plan.md`.
 
 ## Sequence Menu Option IDs
 

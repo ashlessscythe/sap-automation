@@ -52,20 +52,32 @@ pub fn export_file_name(tcode: &str, export_type: u8, now: chrono::NaiveDateTime
 pub fn open_local_file_dialog(session: &GuiSession, candidates: &[&str]) -> bool {
     for path in candidates {
         let Ok(menu) = session.find_by_id((*path).to_string()) else {
+            println!("Export menu {path}: not found on the current screen");
             continue;
         };
         let Some(item) = menu.downcast::<GuiMenu>() else {
+            println!("Export menu {path}: found but is not a menu item");
             continue;
         };
-        if item.select().is_err() {
+        if let Err(e) = item.select() {
+            println!("Export menu {path}: select failed: {e}");
             continue;
         }
-        let Ok(w) = exist_ctrl(session, 1, "", true) else {
+        // the dialog can take a moment to open (heavier reports): wait up to ~3 s
+        let mut w = None;
+        for _ in 0..15 {
+            if let Ok(c) = exist_ctrl(session, 1, "", true) {
+                if c.cband {
+                    w = Some(c);
+                    break;
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(200));
+        }
+        let Some(w) = w else {
+            println!("Export menu {path}: selected, but no dialog (wnd[1]) opened");
             continue;
         };
-        if !w.cband {
-            continue;
-        }
         if dialog_title_is_save_list(&w.ctext) {
             return true;
         }
@@ -73,13 +85,44 @@ pub fn open_local_file_dialog(session: &GuiSession, candidates: &[&str]) -> bool
             "Menu {path} opened a dialog titled '{}', not the local file export; closing it",
             w.ctext
         );
-        if let Ok(win) = session.find_by_id("wnd[1]".to_string()) {
-            if let Some(f) = win.downcast::<GuiFrameWindow>() {
-                let _ = f.close();
-            }
-        }
+        close_dialog_wnd1(session);
     }
     false
+}
+
+/// Close `wnd[1]` and make sure it is gone (close, then F12, polling up to ~1 s each), so a
+/// stale dialog cannot be mistaken for the next candidate's dialog.
+fn close_dialog_wnd1(session: &GuiSession) {
+    let gone = || {
+        !exist_ctrl(session, 1, "", true)
+            .map(|c| c.cband)
+            .unwrap_or(false)
+    };
+    let wait_gone = || {
+        for _ in 0..5 {
+            if gone() {
+                return true;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(200));
+        }
+        gone()
+    };
+    if let Ok(win) = session.find_by_id("wnd[1]".to_string()) {
+        if let Some(f) = win.downcast::<GuiFrameWindow>() {
+            let _ = f.close();
+        }
+    }
+    if wait_gone() {
+        return;
+    }
+    if let Ok(win) = session.find_by_id("wnd[1]".to_string()) {
+        if let Some(m) = win.downcast::<GuiModalWindow>() {
+            let _ = m.send_v_key(12);
+        }
+    }
+    if !wait_gone() {
+        println!("Warning: dialog wnd[1] could not be closed");
+    }
 }
 
 /// True for the "Save list in file..." dialog title (case-insensitive).

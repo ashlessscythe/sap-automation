@@ -24,6 +24,12 @@
 //! zvt11_days = 100                # ZVT11 Closed dates = run date -/+ this many days
 //! zmdetpc_variant = "EPDC_TONY"
 //!
+//! [abc.relabel]                      # needs the k2xx output of the same run (same date, today's folder)
+//! zmdesnr_variant = "relabel_k2xx"   # used by both ZMDESNR calls (by deliveries, by serial / History)
+//! zmdesnr_layout = "epdc_relabel"
+//! delete_exports = true
+//! ignore_display_error = true
+//!
 //! [abc.misc]                         # vt11_variant = "MISC_EPDC_", vt11_layout, vl06o_layout = "inv"
 //!
 //! [abc.toyota]                       # same keys as [abc.xdock]; only the defaults differ
@@ -47,6 +53,7 @@ use super::inv_runner::{run_misc, run_toyota, run_xdock, InvSelection, InvSummar
 use super::k2xx_runner::{run_k2xx, K2xxSelection, K2xxSummary};
 use super::raw::RawOptions;
 use super::registry;
+use super::relabel_runner::{run_relabel, RelabelSelection, RelabelSummary};
 use super::run::RunDate;
 use super::runner::{run_mustgo, NoDataError, OutputSpec, RunSummary};
 use anyhow::{anyhow, Result};
@@ -253,6 +260,59 @@ pub fn k2xx_summary_lines(name: &str, s: &K2xxSummary) -> Vec<String> {
     v
 }
 
+/// Effective settings of a `relabel` run.
+#[derive(Debug, Clone)]
+pub struct ResolvedRelabel {
+    /// Export/session settings shared with `mustgo` (its VT11/ZMDESNR/LT23 names are unused).
+    pub cfg: MustgoSapConfig,
+    pub sel: RelabelSelection,
+    /// Root of the outputs (`<reports_dir>\K2XX\<today>\relabel\...`) and where the k2xx
+    /// block's `vl06o` TSV is read from (`...\K2XX\<today>\k2xx\`).
+    pub reports_dir: PathBuf,
+}
+
+/// CLI > `[abc.relabel]` > `[global]` > defaults (spec 5.6).
+pub fn resolve_relabel(input: &ResolveInput) -> ResolvedRelabel {
+    let base = resolve_mustgo(input);
+    let d = RelabelSelection::default();
+    let sel = RelabelSelection {
+        zmdesnr_variant: s(&input.section, "zmdesnr_variant").unwrap_or(d.zmdesnr_variant),
+        zmdesnr_layout: s(&input.section, "zmdesnr_layout").unwrap_or(d.zmdesnr_layout),
+    };
+    ResolvedRelabel {
+        cfg: base.cfg,
+        sel,
+        reports_dir: base.reports_dir,
+    }
+}
+
+/// Resolve `relabel` from the CLI overrides and `config.toml` (section `[abc.relabel]`).
+pub fn resolve_relabel_from_environment() -> ResolvedRelabel {
+    resolve_relabel(&environment_input("relabel"))
+}
+
+/// Printable summary lines of a finished `relabel` run.
+pub fn relabel_summary_lines(name: &str, s: &RelabelSummary) -> Vec<String> {
+    let b = s.blocks;
+    let mut v = vec![
+        format!("{name} finished (date {})", s.export_date),
+        format!(
+            "  deliveries {} (from the k2xx vl06o file), sn_del rows {} ({} treated as GM55)",
+            s.deliveries, s.sn_del_rows, s.gm55_rows
+        ),
+        format!(
+            "  blocks B1 {}, B2 {}, B3 {}, B4 {} (history: {} serials, {} rows), B5 {}, B6 {}, B7 {}",
+            b[0], b[1], b[2], b[3], s.history_serials, s.history_rows, b[4], b[5], b[6]
+        ),
+        format!(
+            "  rows: combined {} ({} yellow, {} with 4 labels), pivot {} (labels {})",
+            s.combined_rows, s.yellow_rows, s.rows_with_4, s.pivot_rows, s.labels
+        ),
+    ];
+    v.extend(s.outputs.iter().map(|p| format!("  wrote {}", p.display())));
+    v
+}
+
 /// Resolve from the CLI overrides and `config.toml` (caller layer: this reads the config).
 pub fn resolve_from_environment() -> ResolvedMustgo {
     resolve_mustgo(&environment_input("mustgo"))
@@ -302,7 +362,7 @@ pub fn environment_input(name: &str) -> ResolveInput {
 
 /// Names of the reports that have a runner.
 pub fn runnable_reports() -> &'static [&'static str] {
-    &["mustgo", "xdock", "toyota", "misc", "k2xx"]
+    &["mustgo", "xdock", "toyota", "misc", "k2xx", "relabel"]
 }
 
 /// Check that `name` is a registered report with a runner; returns the canonical name.
@@ -446,6 +506,17 @@ pub fn run_report(session: &GuiSession, name: &str, date: &RunDate) -> Result<Ve
             let mut steps = RealSapSteps::new(session, resolved.cfg);
             run_k2xx(&mut steps, date, &resolved.sel, &out)
                 .map(|s| (k2xx_summary_lines(name, &s), s.outputs))
+        }
+        "relabel" => {
+            let resolved = resolve_relabel_from_environment();
+            let out = OutputSpec {
+                reports_dir: resolved.reports_dir.clone(),
+                today,
+            };
+            announce(name, date, &resolved.cfg.export_dir, &out);
+            let mut steps = RealSapSteps::new(session, resolved.cfg);
+            run_relabel(&mut steps, date, &resolved.sel, &out)
+                .map(|s| (relabel_summary_lines(name, &s), s.outputs))
         }
         other => Err(anyhow!("no runner for '{other}'")),
     };
@@ -711,6 +782,55 @@ mod tests {
         assert!(l[1].contains("54") && l[1].contains("107") && l[1].contains("106"));
         assert!(l[2].contains("409") && l[2].contains("pivot 12") && l[2].contains("900"));
         assert!(l.last().unwrap().contains("k.tsv"));
+    }
+
+    #[test]
+    fn relabel_defaults_precedence_and_summary() {
+        let r = resolve_relabel(&ResolveInput::default());
+        assert_eq!(r.sel, RelabelSelection::default());
+        assert_eq!(r.sel.zmdesnr_variant, "relabel_k2xx");
+        assert_eq!(r.sel.zmdesnr_layout, "epdc_relabel");
+        assert_eq!(r.reports_dir, PathBuf::from("reports"));
+
+        let r = resolve_relabel(&ResolveInput {
+            cli_reports_dir: Some("C:/cli".into()),
+            cli_ignore_display_error: Some(false),
+            global_reports_dir: Some("C:/global".into()),
+            section: section(
+                "zmdesnr_variant = \"V\"
+zmdesnr_layout = \"  \"
+delete_exports = false
+",
+            ),
+            ..ResolveInput::default()
+        });
+        assert_eq!(r.reports_dir, PathBuf::from("C:/cli"));
+        assert!(!r.cfg.ignore_display_error && !r.cfg.delete_exports);
+        assert_eq!(r.sel.zmdesnr_variant, "V");
+        assert_eq!(r.sel.zmdesnr_layout, "epdc_relabel", "blank falls through");
+
+        assert_eq!(check_report(" RELABEL ").unwrap(), "relabel");
+        let s = RelabelSummary {
+            outputs: vec![PathBuf::from("r.tsv")],
+            export_date: "2026-11-05".into(),
+            deliveries: 107,
+            sn_del_rows: 6939,
+            gm55_rows: 11,
+            blocks: [87, 262, 48, 5, 9, 15, 0],
+            history_serials: 5,
+            history_rows: 5,
+            combined_rows: 421,
+            yellow_rows: 5,
+            rows_with_4: 4,
+            labels: "850".into(),
+            pivot_rows: 20,
+        };
+        let l = relabel_summary_lines("relabel", &s);
+        assert!(l[0].contains("relabel") && l[0].contains("2026-11-05"));
+        assert!(l[1].contains("107") && l[1].contains("6939") && l[1].contains("11"));
+        assert!(l[2].contains("B1 87") && l[2].contains("B3 48") && l[2].contains("5 serials"));
+        assert!(l[3].contains("421") && l[3].contains("4 with 4") && l[3].contains("850"));
+        assert!(l.last().unwrap().contains("r.tsv"));
     }
 
     #[test]

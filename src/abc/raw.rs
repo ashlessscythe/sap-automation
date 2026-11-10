@@ -248,6 +248,7 @@ pub const VL06O_ALIASES: &[(&str, &str)] = &[
     ("shipto", "shipto_party"),
     ("gm", "total_gds_mvt_stat"),
     ("plnt", "plant"),
+    ("shpt", "shipping_pointreceiving_pt"),
     ("nopk", "number_of_packages"),
     ("delivdate", "deliv_datefromto"),
     ("su", "sales_unit"),

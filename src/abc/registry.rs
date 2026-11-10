@@ -29,6 +29,8 @@ pub enum Step {
     Zmdetpc,
     /// Merge ZMDETPC into `vl06o` (spec 4.12, xdock/toyota rules).
     MergeZmdetpc,
+    /// `misc`: replace an `PLACEHOLDER_SP` shipping point by the parenthesised ship-to name part.
+    ShipToRegex,
     /// Trailer estimate per plant (toyota, spec 5.2 rows 31-32).
     Trailers,
     /// Write output tables.
@@ -93,7 +95,16 @@ pub const TOYOTA: ReportDef = ReportDef {
     output_tables: &["vt11", "vl06o", "pivot", "trailers"],
 };
 
-const REPORTS: &[ReportDef] = &[MUSTGO, XDOCK, TOYOTA];
+/// `misc` (spec 5.4): VT11 -> VL06O (layout `inv`) -> dedup + date -> regex on the shipping
+/// point -> pivot of `number_of_packages` by `shipping_pointreceiving_pt`. No ZMDETPC.
+pub const MISC: ReportDef = ReportDef {
+    name: "misc",
+    folder: "INV",
+    steps: &[Step::Vt11, Step::Vl06o, Step::ShipToRegex, Step::Save],
+    output_tables: &["vt11", "vl06o", "pivot"],
+};
+
+const REPORTS: &[ReportDef] = &[MUSTGO, XDOCK, TOYOTA, MISC];
 
 /// Case-insensitive lookup by rName.
 pub fn find_report(name: &str) -> Option<&'static ReportDef> {
@@ -202,6 +213,23 @@ mod tests {
                 .join("2026-11-10")
                 .join("toyota")
                 .join("11-05-2026_TOYOTA_TRAILERS.tsv")
+        );
+    }
+
+    #[test]
+    fn misc_output_path() {
+        let rd = RunDate {
+            date1: d(2026, 11, 5),
+            date2: None,
+        };
+        let p = output_path(Path::new("r"), &MISC, d(2026, 11, 10), &rd, "pivot");
+        assert_eq!(
+            p,
+            Path::new("r")
+                .join("INV")
+                .join("2026-11-10")
+                .join("misc")
+                .join("11-05-2026_MISC_PIVOT.tsv")
         );
     }
 

@@ -14,6 +14,8 @@
 //! delete_exports = true
 //! ignore_display_error = true
 //!
+//! [abc.misc]                         # vt11_variant = "VT11_MISC_VARIANT", vt11_layout, vl06o_layout = "inv"
+//!
 //! [abc.toyota]                       # same keys as [abc.xdock]; only the defaults differ
 //! vt11_variant = "VT11_TOYOTA_VARIANT"        # (vt11_layout, vl06o_layout, zmdetpc_variant: as xdock)
 //!
@@ -29,7 +31,7 @@
 #![allow(dead_code)]
 
 use super::adapters::{MustgoSapConfig, RealSapSteps};
-use super::inv_runner::{run_toyota, run_xdock, InvSelection, InvSummary};
+use super::inv_runner::{run_misc, run_toyota, run_xdock, InvSelection, InvSummary};
 use super::raw::RawOptions;
 use super::registry;
 use super::run::RunDate;
@@ -130,7 +132,7 @@ pub fn resolve_mustgo(input: &ResolveInput) -> ResolvedMustgo {
     }
 }
 
-/// Effective settings of an INV run (`xdock`, `toyota`).
+/// Effective settings of an INV run (`xdock`, `toyota`, `misc`).
 #[derive(Debug, Clone)]
 pub struct ResolvedInv {
     /// Export/session settings shared with `mustgo` (its VT11/ZMDESNR/LT23 names are unused).
@@ -148,6 +150,11 @@ pub fn resolve_xdock(input: &ResolveInput) -> ResolvedInv {
 /// CLI > `[abc.toyota]` > `[global]` > defaults.
 pub fn resolve_toyota(input: &ResolveInput) -> ResolvedInv {
     resolve_inv(input, InvSelection::toyota())
+}
+
+/// CLI > `[abc.misc]` > `[global]` > defaults.
+pub fn resolve_misc(input: &ResolveInput) -> ResolvedInv {
+    resolve_inv(input, InvSelection::misc())
 }
 
 fn resolve_inv(input: &ResolveInput, d: InvSelection) -> ResolvedInv {
@@ -180,6 +187,11 @@ pub fn resolve_toyota_from_environment() -> ResolvedInv {
     resolve_toyota(&environment_input("toyota"))
 }
 
+/// Same for `misc` (section `[abc.misc]`).
+pub fn resolve_misc_from_environment() -> ResolvedInv {
+    resolve_misc(&environment_input("misc"))
+}
+
 /// The resolver input for report `name`: CLI overrides, `[global]` and `[abc.<name>]`.
 pub fn environment_input(name: &str) -> ResolveInput {
     let cli = crate::utils::cli_overrides::cli_overrides();
@@ -208,7 +220,7 @@ pub fn environment_input(name: &str) -> ResolveInput {
 
 /// Names of the reports that have a runner.
 pub fn runnable_reports() -> &'static [&'static str] {
-    &["mustgo", "xdock", "toyota"]
+    &["mustgo", "xdock", "toyota", "misc"]
 }
 
 /// Check that `name` is a registered report with a runner; returns the canonical name.
@@ -275,6 +287,23 @@ pub fn inv_summary_lines(name: &str, s: &InvSummary) -> Vec<String> {
     v
 }
 
+/// Printable summary lines of a finished `misc` run.
+pub fn misc_summary_lines(name: &str, s: &InvSummary) -> Vec<String> {
+    let mut v = vec![
+        format!("{name} finished (date {})", s.export_date),
+        format!(
+            "  shipments {}, deliveries {}, PLACEHOLDER_SP shipping points replaced {}",
+            s.shipments, s.deliveries, s.regex_replaced
+        ),
+        format!(
+            "  rows: vl06o {}, pivot {} (total packages {})",
+            s.vl06o_rows, s.pivot_rows, s.total
+        ),
+    ];
+    v.extend(s.outputs.iter().map(|p| format!("  wrote {}", p.display())));
+    v
+}
+
 /// Run report `name` for `date` on a live session and print the summary; returns the files
 /// written. Thin: attach/login checks are the caller's; everything else is tested through the
 /// pieces above.
@@ -313,6 +342,17 @@ pub fn run_report(session: &GuiSession, name: &str, date: &RunDate) -> Result<Ve
             let mut steps = RealSapSteps::new(session, resolved.cfg);
             run_toyota(&mut steps, date, &resolved.sel, &out)
                 .map(|s| (inv_summary_lines(name, &s), s.outputs))
+        }
+        "misc" => {
+            let resolved = resolve_misc_from_environment();
+            let out = OutputSpec {
+                reports_dir: resolved.reports_dir.clone(),
+                today,
+            };
+            announce(name, date, &resolved.cfg.export_dir, &out);
+            let mut steps = RealSapSteps::new(session, resolved.cfg);
+            run_misc(&mut steps, date, &resolved.sel, &out)
+                .map(|s| (misc_summary_lines(name, &s), s.outputs))
         }
         other => Err(anyhow!("no runner for '{other}'")),
     };
@@ -456,6 +496,36 @@ mod tests {
     }
 
     #[test]
+    fn misc_defaults_and_summary() {
+        let r = resolve_misc(&ResolveInput::default());
+        assert_eq!(r.sel, InvSelection::misc());
+        assert_eq!(r.sel.vt11_variant, "VT11_MISC_VARIANT");
+        assert_eq!(r.sel.vt11_layout, "scorecard");
+        assert_eq!(r.sel.vl06o_layout, "inv");
+        let r = resolve_misc(&ResolveInput {
+            section: section("vl06o_layout = \"inv2\"\n"),
+            ..ResolveInput::default()
+        });
+        assert_eq!(r.sel.vl06o_layout, "inv2");
+        assert_eq!(check_report("MISC").unwrap(), "misc");
+        let s = InvSummary {
+            outputs: vec![PathBuf::from("m.tsv")],
+            export_date: "2026-11-05".into(),
+            shipments: 3,
+            deliveries: 3,
+            vl06o_rows: 3,
+            pivot_rows: 2,
+            total: "2".into(),
+            regex_replaced: 1,
+            ..InvSummary::default()
+        };
+        let l = misc_summary_lines("misc", &s);
+        assert!(l[1].contains("replaced 1") && l[2].contains("pivot 2"));
+        assert!(!l.iter().any(|x| x.contains("zmdetpc")));
+        assert!(l.last().unwrap().contains("m.tsv"));
+    }
+
+    #[test]
     fn inv_summary_text() {
         let s = InvSummary {
             outputs: vec![PathBuf::from("b.tsv")],
@@ -468,6 +538,7 @@ mod tests {
             pivot_rows: 13,
             total: "1493".into(),
             trailers: vec![("PL55".into(), "0".into())],
+            regex_replaced: 0,
         };
         let l = inv_summary_lines("xdock", &s);
         assert!(l[0].contains("xdock") && l[0].contains("2026-11-05"));

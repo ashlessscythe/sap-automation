@@ -111,6 +111,15 @@ ignore_display_error = true     # treat "no display authorization" as harmless (
 vt11_variant = "VT11_TOYOTA_VARIANT"
 ```
 
+`[abc.misc]` (used by `--rname=misc`) takes `vt11_variant` (default `VT11_MISC_VARIANT`), `vt11_layout` (`scorecard`), `vl06o_layout`
+(default `inv`), `delete_exports` and `ignore_display_error`; `misc` does not call ZMDETPC, so `zmdetpc_variant` is ignored.
+
+```toml
+[abc.misc]
+vt11_variant = "VT11_MISC_VARIANT"
+vl06o_layout = "inv"
+```
+
 | Key | Default |
 | --- | --- |
 | `vt11_variant` | `VT11_XDOCK_VARIANT` |
@@ -127,7 +136,7 @@ vt11_variant = "VT11_TOYOTA_VARIANT"
 (`K_DATEN`), and it is also the format used to read dates from the exports (ISO dates, as seen in the real exports, are
 accepted whichever name is set). The built-in default is `mm/dd/yyyy`.
 
-### ABC Headless Section (`[abc.xdock]`, `[abc.toyota]`)
+### ABC Headless Section (`[abc.xdock]`, `[abc.toyota]`, `[abc.misc]`)
 
 Optional, same rules as `[abc.mustgo]` (CLI flag > `[abc.xdock]` > `[global]` > default; wrong or empty values fall back).
 Used only by `--rname=xdock` (and the ABC Headless > xdock menu entry). `reports_dir` and `date_format` come from the CLI /

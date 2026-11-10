@@ -23,7 +23,7 @@
 #![allow(dead_code)]
 
 use super::inv;
-use super::registry::{self, ReportDef, TOYOTA, XDOCK};
+use super::registry::{self, ReportDef, MISC, TOYOTA, XDOCK};
 use super::run::RunDate;
 use super::runner::{export_date_label, NoDataError, OutputSpec, StepOutput};
 use super::table::Table;
@@ -75,6 +75,26 @@ pub trait InvSteps {
     ) -> Result<StepOutput>;
 }
 
+/// The two SAP calls of `misc` (no ZMDETPC); [`InvSteps`] stays as it is for xdock/toyota.
+pub trait MiscSteps {
+    /// VT11 for the run date with `variant` and `layout`.
+    fn vt11(&mut self, date: &RunDate, variant: &str, layout: &str) -> Result<StepOutput>;
+    /// VL06O (item view) for the shipments with `layout` (`inv`).
+    fn vl06o_by_shipments(&mut self, shipments: &[String], layout: &str) -> Result<StepOutput>;
+}
+
+impl InvSelection {
+    /// Defaults of `misc` (spec 5.4): VT11 variant `VT11_MISC_VARIANT`, layout `scorecard`, VL06O
+    /// layout `inv`. `zmdetpc_variant` is not used.
+    pub fn misc() -> Self {
+        Self {
+            vt11_variant: "VT11_MISC_VARIANT".to_string(),
+            vl06o_layout: "inv".to_string(),
+            ..Self::xdock()
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct InvSummary {
     /// `vt11`, `vl06o`, `pivot` files.
@@ -90,6 +110,8 @@ pub struct InvSummary {
     pub pivot_rows: usize,
     /// Sum of `total` over all plants.
     pub total: String,
+    /// `misc` only: rows whose `PLACEHOLDER_SP` shipping point was replaced by the ship-to name part.
+    pub regex_replaced: usize,
     /// `toyota` only: `(plant, trailers)` rows of the trailers table (empty for `xdock`).
     pub trailers: Vec<(String, String)>,
 }
@@ -313,6 +335,94 @@ fn run_inv(
         vl06o_rows: merged.nrows(),
         pivot_rows: pivot.nrows(),
         total: format!("{total}"),
+        regex_replaced: 0,
         trailers: trailer_rows,
+    })
+}
+
+/// Run `misc` (spec 5.4): VT11 -> VL06O -> one row per delivery + `date` -> regex on
+/// `shipping_pointreceiving_pt` -> pivot of `number_of_packages` by `shipping_pointreceiving_pt`
+/// (long table, same shape as the xdock pivot) -> outputs `vt11`, `vl06o`, `pivot`.
+pub fn run_misc(
+    steps: &mut impl MiscSteps,
+    date: &RunDate,
+    sel: &InvSelection,
+    out: &OutputSpec,
+) -> Result<InvSummary> {
+    let rep = MISC.name;
+    let vt11 = take(
+        rep,
+        "vt11",
+        steps.vt11(date, &sel.vt11_variant, &sel.vt11_layout),
+        &["shipment_number"],
+    )?;
+    let shipments = stage(rep, "vt11 shipments", shipment_list(&vt11))?;
+    if shipments.is_empty() {
+        return Err(no_data("vt11", "no shipments"));
+    }
+    log(rep, &format!("{} shipments", shipments.len()));
+
+    let mut vl06o = take(
+        rep,
+        "vl06o",
+        steps.vl06o_by_shipments(&shipments, &sel.vl06o_layout),
+        &[
+            "delivery",
+            "name_of_the_shipto_party",
+            "shipping_pointreceiving_pt",
+            "number_of_packages",
+        ],
+    )?;
+    let export_date = export_date_label(date);
+    stage(
+        rep,
+        "vl06o prepare",
+        inv::prepare_vl06o(&mut vl06o, &export_date),
+    )?;
+    let deliveries = match inv::delivery_values(&vl06o) {
+        Ok(d) => d,
+        Err(_) => return Err(no_data("vl06o", "no deliveries")),
+    };
+    log(rep, &format!("{} deliveries", deliveries.len()));
+
+    let pc = vl06o.col("shipping_pointreceiving_pt")?;
+    let before: Vec<String> = vl06o.rows.iter().map(|r| r[pc].clone()).collect();
+    stage(rep, "regex", inv::misc_ship_to_regex(&mut vl06o))?;
+    let replaced = vl06o
+        .rows
+        .iter()
+        .zip(&before)
+        .filter(|(r, b)| &r[pc] != *b)
+        .count();
+    if replaced > 0 {
+        log(rep, &format!("{replaced} PLACEHOLDER_SP shipping points replaced"));
+    }
+
+    let pivot = stage(
+        rep,
+        "pivot",
+        inv::pivot_sum(&vl06o, "shipping_pointreceiving_pt", "number_of_packages"),
+    )?;
+    let total: f64 = pivot
+        .rows
+        .iter()
+        .filter_map(|r| r[1].parse::<f64>().ok())
+        .sum();
+
+    let tables: Vec<(&str, &Table)> = vec![("vt11", &vt11), ("vl06o", &vl06o), ("pivot", &pivot)];
+    let outputs = stage(rep, "save", write_outputs(&MISC, out, date, &tables))?;
+    for p in &outputs {
+        log(rep, &format!("wrote {}", p.display()));
+    }
+    Ok(InvSummary {
+        outputs,
+        export_date,
+        shipments: shipments.len(),
+        deliveries: deliveries.len(),
+        vl06o_rows: vl06o.nrows(),
+        pivot_rows: pivot.nrows(),
+        total: format!("{total}"),
+        regex_replaced: replaced,
+        ..InvSummary::default()
     })
 }

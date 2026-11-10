@@ -9,6 +9,8 @@ pub mod mustgo;
 pub mod ops;
 pub mod raw;
 pub mod registry;
+pub mod relabel;
+pub mod relabel_runner;
 pub mod run;
 pub mod runner;
 pub mod table;

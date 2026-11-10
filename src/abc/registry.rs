@@ -37,6 +37,12 @@ pub enum Step {
     Zvt11Closed,
     /// Merge ZMDETPC into `vl06o` without the xdock/toyota rules (k2xx, spec 4.12 steps 1-4).
     MergeZmdetpcPlain,
+    /// Read the delivery list from the k2xx block's `vl06o` TSV of the same run (relabel).
+    ReadK2xxVl06o,
+    /// ZMDESNR by serial / History (relabel: FV55 pallet 1 serials).
+    ZmdesnrHistory,
+    /// `filter_copy_snr`: GM55 effective plant, blocks B1-B7, `_of_labels`, `export_date`, pivot.
+    FilterCopyRelabel,
     /// Write output tables.
     Save,
 }
@@ -125,7 +131,23 @@ pub const K2XX: ReportDef = ReportDef {
     output_tables: &["zvt11", "vt11", "vl06o", "pivot"],
 };
 
-const REPORTS: &[ReportDef] = &[MUSTGO, XDOCK, TOYOTA, MISC, K2XX];
+/// `relabel` (spec 5.6, 9.5): the deliveries come from the k2xx block's `vl06o` TSV of the same
+/// run (owner decision), ZMDESNR by deliveries, ZMDESNR History for the FV55 pallet-1 serials,
+/// then the blocks / `_of_labels` / pivot customer x plant. `save full_label` (A!62) is left out.
+pub const RELABEL: ReportDef = ReportDef {
+    name: "relabel",
+    folder: "K2XX",
+    steps: &[
+        Step::ReadK2xxVl06o,
+        Step::ZmdesnrByDeliveries,
+        Step::ZmdesnrHistory,
+        Step::FilterCopyRelabel,
+        Step::Save,
+    ],
+    output_tables: &["combined", "sn_del", "snr_orig", "pivot"],
+};
+
+const REPORTS: &[ReportDef] = &[MUSTGO, XDOCK, TOYOTA, MISC, K2XX, RELABEL];
 
 /// Case-insensitive lookup by rName.
 pub fn find_report(name: &str) -> Option<&'static ReportDef> {
@@ -258,6 +280,26 @@ mod tests {
         );
         let p = output_path(Path::new("r"), &K2XX, d(2026, 11, 10), &rd, "pivot");
         assert!(p.ends_with("11-05-2026_K2XX_PIVOT.tsv"));
+    }
+
+    #[test]
+    fn relabel_output_path() {
+        let rd = RunDate {
+            date1: d(2026, 11, 5),
+            date2: None,
+        };
+        let p = output_path(Path::new("r"), &RELABEL, d(2026, 11, 10), &rd, "combined");
+        assert_eq!(
+            p,
+            Path::new("r")
+                .join("K2XX")
+                .join("2026-11-10")
+                .join("relabel")
+                .join("11-05-2026_RELABEL_COMBINED.tsv")
+        );
+        let r = find_report("Relabel").unwrap();
+        assert_eq!(r.folder, "K2XX");
+        assert_eq!(r.output_tables, ["combined", "sn_del", "snr_orig", "pivot"]);
     }
 
     #[test]

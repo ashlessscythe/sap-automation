@@ -334,6 +334,11 @@ pub const ZMDESNR_ALIASES: &[(&str, &str)] = &[
 /// ZMDETPC summarised: the list titles already are the canonical names (`Delivery`, `Pallet`,
 /// `Child`; a blank column sits between `Pallet` and `Child` and is dropped by the loader).
 pub const ZMDETPC_ALIASES: &[(&str, &str)] = &[];
+/// ZVT11 (Closed, layout `add_del`). Canonical names are the sanitised layout titles of spec
+/// 3.2 / 8.2: `date`, `trailer_number`, `shipment_number`, `delivery_number`, `plant`,
+/// `ship_tofrom_name`, `shipment_end_date`. **No real text export has been seen**, so the short
+/// list titles (if the list shortens them) are unknown and nothing is mapped yet.
+pub const ZVT11_ALIASES: &[(&str, &str)] = &[];
 pub const LT23_ALIASES: &[(&str, &str)] = &[
     ("to_number", "transfer_order_number"),
     ("created_on", "creation_date"),
@@ -344,7 +349,8 @@ pub const LT23_ALIASES: &[(&str, &str)] = &[
     ("cs", "confirmation_status"),
 ];
 
-/// Load + rename in one go. `tcode` is `vt11`, `vt11_inv` (INV list layout), `vl06o`, `zmdesnr`, `lt23` or `zmdetpc`.
+/// Load + rename in one go. `tcode` is `vt11`, `vt11_inv` (INV list layout), `vl06o`, `zmdesnr`,
+/// `lt23`, `zmdetpc` or `zvt11`.
 pub fn load_export_canonical(
     tcode: &str,
     name: &str,
@@ -358,6 +364,7 @@ pub fn load_export_canonical(
         "zmdesnr" => ZMDESNR_ALIASES,
         "lt23" => LT23_ALIASES,
         "zmdetpc" => ZMDETPC_ALIASES,
+        "zvt11" => ZVT11_ALIASES,
         other => return Err(anyhow!("no header aliases known for tcode '{other}'")),
     };
     let mut t = load_export(name, bytes, opts)?;
@@ -550,6 +557,27 @@ mod tests {
                 "number_of_packages"
             ]
         );
+    }
+
+    #[test]
+    fn zvt11_headers_are_trimmed_before_sanitising() {
+        // spec 9.5: the ZVT11 header ` Date` becomes `date`
+        let txt = "\t Date\tTrailer Number\tShipment Number\tDelivery Number\tPlant\tShip To/From Name\tShipment End date\r\n\r\n\t2026-11-05\t53145\t24625349\t0085650001\tFW63\tACME (1)\t2026-11-05\r\n";
+        let t =
+            load_export_canonical("zvt11", "t", txt.as_bytes(), &RawOptions::default()).unwrap();
+        assert_eq!(
+            t.headers,
+            vec![
+                "date",
+                "trailer_number",
+                "shipment_number",
+                "delivery_number",
+                "plant",
+                "ship_tofrom_name",
+                "shipment_end_date"
+            ]
+        );
+        assert_eq!(t.rows[0][3], "85650001");
     }
 
     #[test]

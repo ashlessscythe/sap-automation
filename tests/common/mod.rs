@@ -112,3 +112,27 @@ pub fn load_real_in(dir: &str, tcode: &str, file: &str) -> Table {
     )
     .unwrap_or_else(|e| panic!("load {file}: {e}"))
 }
+
+/// Like [`load_real_in`] for `tests/fixtures/<dir>/synthetic/<file>`: stand-in exports that
+/// were derived from other fixtures (not real SAP exports of that report), loaded through the
+/// production loader.
+pub fn load_synthetic_in(dir: &str, tcode: &str, file: &str) -> Table {
+    let path: PathBuf = [
+        env!("CARGO_MANIFEST_DIR"),
+        "tests",
+        "fixtures",
+        dir,
+        "synthetic",
+        file,
+    ]
+    .iter()
+    .collect();
+    let bytes = std::fs::read(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    sap_automation::abc::raw::load_export_canonical(
+        tcode,
+        file,
+        &bytes,
+        &sap_automation::abc::raw::RawOptions::default(),
+    )
+    .unwrap_or_else(|e| panic!("load {file}: {e}"))
+}

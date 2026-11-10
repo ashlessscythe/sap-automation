@@ -200,3 +200,82 @@ fn differs_from_the_inv_merge_only_where_the_rules_say() {
     }
     assert_eq!(differing, NO_ZMDETPC);
 }
+
+/// Pivot (owner decision of 2026-11-10, overrides spec 7.0 item 1): plant rows, sum of `total`
+/// over the merged table. `expected_pivot.tsv` was computed by a one-off script straight from
+/// the raw stand-in exports (first row per delivery, pallet + child of its ZMDETPC row),
+/// independently of the code under test.
+#[test]
+fn pivot_equals_the_expected_table() {
+    let p = k2xx::pivot_plant_total(&merged()).unwrap();
+    let x = load_fixture("k2xx", "expected_pivot.tsv");
+    assert_eq!(x.headers, ["plant", "total"]);
+    assert_eq!(x.nrows(), 12);
+    assert_tables_equal(&x, &p);
+
+    // long form: ascending by plant, no grand-total row, the sum is that of the vl06o table
+    let plants = col(&p, "plant");
+    assert!(plants.windows(2).all(|w| w[0] < w[1]), "ascending");
+    assert!(!plants.iter().any(|v| v.to_lowercase().contains("total")));
+    let sum: u64 = col(&p, "total")
+        .iter()
+        .map(|v| v.parse::<u64>().unwrap())
+        .sum();
+    assert_eq!(sum, 1144);
+    // the deliveries without a ZMDETPC row (blank total) add nothing to their plants
+    let row = |plant: &str| p.rows.iter().find(|r| r[0] == plant).unwrap()[1].clone();
+    assert_eq!(
+        (row("PL58"), row("PL63")),
+        ("158".to_string(), "2".to_string())
+    );
+}
+
+/// Pivot conventions on hand-made rows (the stand-in data has no blank plant): `(blank)` last,
+/// labels grouped case-insensitively, `total` parsed numerically (thousands separator, blank
+/// and text cells add nothing), no grand-total row, columns found by name wherever they are.
+#[test]
+fn pivot_edge_cases() {
+    let rows: &[[&str; 4]] = &[
+        ["9", "PL61", "x", "1,200"],
+        ["1", "", "x", "4"],
+        ["2", "PL55", "x", "2.5"],
+        ["3", "pl55", "x", "3"],
+        ["4", "PL33", "x", ""],
+        ["5", " ", "x", "1"],
+        ["6", "PL33", "x", "n/a"],
+        ["7", "PL50", "x", "10"],
+        ["8", "PL50", "x", "0"],
+    ];
+    let m = Table::new(
+        "vl06o",
+        ["delivery", "plant", "other", "total"]
+            .map(String::from)
+            .to_vec(),
+        rows.iter().map(|r| r.map(String::from).to_vec()).collect(),
+    );
+    let p = k2xx::pivot_plant_total(&m).unwrap();
+    assert_eq!(p.headers, ["plant", "total"]);
+    assert_eq!(
+        p.rows,
+        vec![
+            vec!["PL33", "0"],
+            vec!["PL50", "10"],
+            vec!["PL55", "5.5"],
+            vec!["PL61", "1200"],
+            vec!["(blank)", "5"],
+        ]
+    );
+
+    // columns are matched by name, not by position
+    let swapped = Table::new(
+        "vl06o",
+        ["total", "other", "plant"].map(String::from).to_vec(),
+        vec![["7", "x", "PL55"].map(String::from).to_vec()],
+    );
+    assert_eq!(
+        k2xx::pivot_plant_total(&swapped).unwrap().rows,
+        vec![vec!["PL55", "7"]]
+    );
+    let no_plant = Table::new("vl06o", vec!["total".to_string()], Vec::new());
+    assert!(k2xx::pivot_plant_total(&no_plant).is_err());
+}

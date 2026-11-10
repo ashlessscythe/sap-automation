@@ -237,8 +237,9 @@ run; nothing is written.
    9.6). In the xlsx `total` is the formula `SUM(pallet:child)` = 0, not blank, so the macro's "blank total takes
    number_of_packages" did not fire, and the `0 -> 1` replace did not touch the formula cells either. Spec 9.6 states the
    fallback and a Grand Total of 1493; **the xlsx we were given has 1328 and `(blank)` 0** (ours: 1493, `(blank)` 4; plants
-   `FV33` +1 etc.). We keep the spec rule. If the macro result must be reproduced instead, `merge_zmdetpc` has to leave `total`
-   at 0 for those rows (decision for the owner).
+   `FV33` +1 etc.). **Owner decision (2026-11-10): `total` = ZMDETPC `pallet + child` when non-zero, otherwise
+   `number_of_packages`** (blank or zero ZMDETPC total, or no ZMDETPC row); a `total` still exactly 0 becomes 1. The real xdock
+   and toyota data have no matched delivery with pallet + child = 0, so their numbers (1493) are unchanged.
 3. The xlsx pivot has a `Grand Total` row and the header `Row Labels` / `Sum of total`; ours is a long table `plant`, `total`
    without a grand total.
 4. Cosmetic: the xlsx stores dates as Excel dates (`actualshipmentend`, `date`), and turned the date-only `descripof_shipment`

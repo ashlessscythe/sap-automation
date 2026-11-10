@@ -8,8 +8,12 @@
 //! Decisions (spec 7.0 / 9.6):
 //! * **Q36:** the VL06O dedup keeps the *first* row of a delivery (what the macro does), not a
 //!   row that happens to have a plant.
+//! * **Total (owner, 2026-11-10):** `total` is the ZMDETPC `pallet + child` when that is
+//!   non-zero, else the delivery's `number_of_packages` (blank or zero ZMDETPC total, or no
+//!   ZMDETPC row).
 //! * **Item 3:** the macro's `Columns.Replace "0","1"` is applied as "a `total` cell that is
-//!   exactly `0` becomes `1`" (the substring reading, `10` -> `11`, is taken to be a bug).
+//!   exactly `0` becomes `1`" (the substring reading, `10` -> `11`, is taken to be a bug); it
+//!   only matters now when `number_of_packages` is itself `0`.
 //! * **Pivot:** long form, sorted ascending by label, a blank label is `(blank)` and sorts last
 //!   (as Excel shows it), no grand-total row (the same shape as the `mustgo` pivot).
 //! * **Trailers (toyota):** a separate `trailers` table (`plant`, `trailers` = `ROUND(total /
@@ -97,10 +101,11 @@ pub fn delivery_values(vl06o: &Table) -> Result<Vec<String>> {
 ///
 /// Outer join on the delivery number, ordered ascending by it; the result has the `vl06o`
 /// columns followed by `delivery_`, `pallet`, `child`, `total`:
-/// * `total = pallet + child` for a row that has a ZMDETPC row, else blank, then blank `total`
-///   takes `number_of_packages`;
+/// * `total = pallet + child` for a row that has a ZMDETPC row; when that is blank, `0` or
+///   there is no ZMDETPC row, `total` takes `number_of_packages` (owner decision, replaces the
+///   macro's formula result of 0);
 /// * blank `delivery_` takes `delivery`;
-/// * `total` exactly `0` becomes `1`.
+/// * a `total` that is still exactly `0` (packages `0`) becomes `1`.
 ///
 /// `vl06o` must already be one row per delivery ([`prepare_vl06o`]); a delivery repeated in
 /// `zmdetpc` keeps its first row.
@@ -153,7 +158,9 @@ pub fn merge_zmdetpc(vl06o: &Table, zmdetpc: &Table) -> Result<Table> {
             child = zr[zc].trim().to_string();
             total = fmt_num(parse_num(&pallet).unwrap_or(0.0) + parse_num(&child).unwrap_or(0.0));
         }
-        if total.is_empty() {
+        // owner decision (2026-11-10): a blank or zero ZMDETPC total falls back to the
+        // delivery's `number_of_packages`
+        if parse_num(&total).unwrap_or(0.0) == 0.0 {
             total = row[vn].trim().to_string();
         }
         if delivery_.is_empty() {
@@ -319,8 +326,8 @@ mod tests {
         );
         let d: Vec<&str> = m.rows.iter().map(|r| r[0].as_str()).collect();
         assert_eq!(d, vec!["100", "200", "300", "400"], "ascending by delivery");
-        // 100: pallet+child = 0 -> 1 (item 3)
-        assert_eq!(m.rows[0][4..], ["100", "0", "0", "1"]);
+        // 100: pallet+child = 0 -> number_of_packages (2)
+        assert_eq!(m.rows[0][4..], ["100", "0", "0", "2"]);
         // 200: 1 + blank
         assert_eq!(m.rows[1][7], "1");
         // 300: zero padded ZMDETPC delivery, 2 + 3
@@ -336,6 +343,30 @@ mod tests {
         let z = t("z", &["delivery", "pallet", "child"], &[&["1", "10", "0"]]);
         let m = merge_zmdetpc(&v, &z).unwrap();
         assert_eq!(m.rows[0].last().unwrap(), "10");
+    }
+
+    #[test]
+    fn zero_or_blank_total_falls_back_to_packages_then_zero_becomes_one() {
+        let v = t(
+            "v",
+            &["delivery", "number_of_packages"],
+            &[&["1", "6"], &["2", "0"], &["3", ""], &["4", "8"]],
+        );
+        let z = t(
+            "z",
+            &["delivery", "pallet", "child"],
+            &[
+                &["1", "0", "0"],
+                &["2", "0", "0"],
+                &["3", "0", "0"],
+                &["4", "3", "0"],
+            ],
+        );
+        let m = merge_zmdetpc(&v, &z).unwrap();
+        let total: Vec<&str> = m.rows.iter().map(|r| r[5].as_str()).collect();
+        // 1: zero total -> packages 6; 2: packages 0 -> 1; 3: packages blank -> stays blank;
+        // 4: non-zero ZMDETPC total wins over packages
+        assert_eq!(total, vec!["6", "1", "", "3"]);
     }
 
     #[test]

@@ -16,6 +16,18 @@ impl RunDate {
     pub fn as_range(&self) -> (NaiveDate, NaiveDate) {
         (self.date1, self.date2.unwrap_or(self.date1))
     }
+
+    /// True for a whole week as `WK<n>` produces it: Sunday through Saturday (7 days). A
+    /// hand-typed range with exactly those dates is the same week and counts as one.
+    pub fn is_week(&self) -> bool {
+        match self.date2 {
+            Some(end) => {
+                self.date1.weekday().num_days_from_sunday() == 0
+                    && (end - self.date1).num_days() == 6
+            }
+            None => false,
+        }
+    }
 }
 
 /// Sunday that starts week `week` of `year`, using Excel `WEEKNUM` defaults: week 1 is the
@@ -109,6 +121,24 @@ mod tests {
     fn week_1_starts_in_previous_year() {
         // 2026-01-01 is a Thursday; week 1 starts Sunday 2025-12-28
         assert_eq!(week_start(1, 2026).unwrap(), d(2025, 12, 28));
+    }
+
+    #[test]
+    fn is_week_only_for_sunday_to_saturday() {
+        let wk = parse_run_date("WK45", 2026).unwrap();
+        assert!(wk.is_week());
+        assert!(parse_run_date("WK1", 2026).unwrap().is_week());
+        assert!(!parse_run_date("2026-11-05", 2026).unwrap().is_week());
+        // other ranges are not weeks
+        assert!(!parse_run_date("2026-11-01..2026-11-10", 2026)
+            .unwrap()
+            .is_week());
+        assert!(!parse_run_date("2026-11-02..2026-11-08", 2026)
+            .unwrap()
+            .is_week());
+        assert!(!parse_run_date("2026-11-01..2026-11-01", 2026)
+            .unwrap()
+            .is_week());
     }
 
     #[test]

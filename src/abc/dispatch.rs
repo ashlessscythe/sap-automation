@@ -26,6 +26,8 @@
 //! zmdetpc_variant = "EPDC_TONY"   # from the toyota row of the spec; check the variant exists
 //! delete_exports = true
 //! ignore_display_error = true
+//! date_range_buffer = 3           # any [abc.<report>]: days added each side of the run date range of
+//!                                 # every tcode; unset = 3 for ZMDETPC on a week (WK<n>), else 0
 //! ```
 //! `reports_dir` and `date_format` come from `--reports-dir`/`--date-format`, else `[global]`.
 #![allow(dead_code)]
@@ -46,6 +48,8 @@ pub struct ResolveInput {
     pub cli_reports_dir: Option<String>,
     pub cli_date_format: Option<String>,
     pub cli_ignore_display_error: Option<bool>,
+    /// `--date-range-buffer` (days).
+    pub cli_date_range_buffer: Option<u32>,
     pub global_reports_dir: Option<String>,
     pub global_date_format: Option<String>,
     /// The `[abc.mustgo]` table, if present.
@@ -80,6 +84,10 @@ fn s(section: &Option<toml::Value>, key: &str) -> Option<String> {
         .map(str::trim)
         .filter(|v| !v.is_empty())
         .map(str::to_string)
+}
+
+fn int(section: &Option<toml::Value>, key: &str) -> Option<i64> {
+    section.as_ref()?.get(key)?.as_integer()
 }
 
 fn b(section: &Option<toml::Value>, key: &str) -> Option<bool> {
@@ -125,6 +133,12 @@ pub fn resolve_mustgo(input: &ResolveInput) -> ResolvedMustgo {
             .unwrap_or(d.ignore_display_error),
         delete_exports: b(&input.section, "delete_exports").unwrap_or(d.delete_exports),
         raw,
+        // CLI > `[abc.<report>] date_range_buffer` > none (the per-tcode defaults apply:
+        // 3 days for ZMDETPC on a week run, otherwise 0)
+        date_range_buffer: input
+            .cli_date_range_buffer
+            .map(i64::from)
+            .or_else(|| int(&input.section, "date_range_buffer")),
     };
     ResolvedMustgo {
         cfg,
@@ -206,6 +220,7 @@ pub fn environment_input(name: &str) -> ResolveInput {
         cli_reports_dir: cli.reports_dir.clone(),
         cli_date_format: cli.date_format.clone(),
         cli_ignore_display_error: cli.ignore_display_error,
+        cli_date_range_buffer: cli.date_range_buffer,
         global_reports_dir: config
             .as_ref()
             .and_then(|c| c.global.as_ref())
@@ -408,6 +423,7 @@ mod tests {
             cli_date_format: Some("mm/dd/yyyy".into()),
             global_date_format: Some("yyyy-mm-dd".into()),
             cli_ignore_display_error: Some(false),
+            cli_date_range_buffer: None,
             section: section(
                 "vt11_variant = \"V1\"\nwarehouse = \"E02\"\ndelete_exports = false\nignore_display_error = true\nlt23_create_layout = true\n",
             ),
@@ -473,6 +489,40 @@ mod tests {
         assert_eq!(r.sel.vl06o_layout, "xd2");
         assert_eq!(r.sel.vt11_layout, "scorecard", "blank value falls through");
         assert_eq!(r.sel.vt11_variant, "XD_ALL_EPDC_");
+    }
+
+    #[test]
+    fn date_range_buffer_default_and_override() {
+        // nothing set: no explicit value (the per-tcode defaults apply later)
+        assert_eq!(
+            resolve_xdock(&ResolveInput::default())
+                .cfg
+                .date_range_buffer,
+            None
+        );
+        let r = resolve_toyota(&ResolveInput {
+            section: section("date_range_buffer = 5\n"),
+            ..ResolveInput::default()
+        });
+        assert_eq!(r.cfg.date_range_buffer, Some(5));
+        // the CLI flag beats the section, and 0 is a valid value (no buffer)
+        let r = resolve_toyota(&ResolveInput {
+            cli_date_range_buffer: Some(0),
+            section: section("date_range_buffer = 5\n"),
+            ..ResolveInput::default()
+        });
+        assert_eq!(r.cfg.date_range_buffer, Some(0));
+        let r = resolve_xdock(&ResolveInput {
+            cli_date_range_buffer: Some(7),
+            ..ResolveInput::default()
+        });
+        assert_eq!(r.cfg.date_range_buffer, Some(7));
+        // a wrong type is ignored
+        let r = resolve_xdock(&ResolveInput {
+            section: section("date_range_buffer = \"x\"\n"),
+            ..ResolveInput::default()
+        });
+        assert_eq!(r.cfg.date_range_buffer, None);
     }
 
     #[test]

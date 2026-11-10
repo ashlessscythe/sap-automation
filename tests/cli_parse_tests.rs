@@ -370,6 +370,25 @@ fn ignore_display_error_flag() {
 }
 
 #[test]
+fn date_range_buffer_flag() {
+    let o = parse(&["--date-range-buffer=5"])
+        .unwrap()
+        .to_overrides()
+        .unwrap();
+    assert_eq!(o.date_range_buffer, Some(5));
+    let o = parse(&["--date-range-buffer", "0"])
+        .unwrap()
+        .to_overrides()
+        .unwrap();
+    assert_eq!(o.date_range_buffer, Some(0));
+    // omitted: None here, the default of 3 is applied by the resolver
+    let o = parse(&[]).unwrap().to_overrides().unwrap();
+    assert_eq!(o.date_range_buffer, None);
+    assert!(parse(&["--date-range-buffer=-1"]).is_err());
+    assert!(parse(&["--date-range-buffer=abc"]).is_err());
+}
+
+#[test]
 fn rname_dir_flag() {
     let o = parse(&["--rname-dir=./mustgo"])
         .unwrap()

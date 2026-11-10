@@ -110,8 +110,29 @@ pub fn delivery_values(vl06o: &Table) -> Result<Vec<String>> {
 /// `vl06o` must already be one row per delivery ([`prepare_vl06o`]); a delivery repeated in
 /// `zmdetpc` keeps its first row.
 pub fn merge_zmdetpc(vl06o: &Table, zmdetpc: &Table) -> Result<Table> {
+    merge_zmdetpc_with(vl06o, zmdetpc, MergeRules::XdockToyota)
+}
+
+/// Which step-5 rules of spec 4.12 a merge applies.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MergeRules {
+    /// rName contains `xdock` or `toyota`: the fallbacks described at [`merge_zmdetpc`].
+    XdockToyota,
+    /// Every other report (`k2xx`): steps 1-4 only. `total = pallet + child` for a row that has
+    /// a ZMDETPC row (so `0` stays `0`); a delivery without one keeps `delivery_`, `pallet`,
+    /// `child` and `total` blank (spec 9.5). `number_of_packages` is not needed.
+    Plain,
+}
+
+/// Spec 4.12 with the given rule set; see [`merge_zmdetpc`] for the shape of the result.
+pub fn merge_zmdetpc_with(vl06o: &Table, zmdetpc: &Table, rules: MergeRules) -> Result<Table> {
+    let fallbacks = rules == MergeRules::XdockToyota;
     let vd = vl06o.col("delivery")?;
-    let vn = vl06o.col("number_of_packages")?;
+    let vn = if fallbacks {
+        Some(vl06o.col("number_of_packages")?)
+    } else {
+        None
+    };
     let (zd, zp, zc) = (
         zmdetpc.col("delivery")?,
         zmdetpc.col("pallet")?,
@@ -160,14 +181,16 @@ pub fn merge_zmdetpc(vl06o: &Table, zmdetpc: &Table) -> Result<Table> {
         }
         // owner decision (2026-11-10): a blank or zero ZMDETPC total falls back to the
         // delivery's `number_of_packages`
-        if parse_num(&total).unwrap_or(0.0) == 0.0 {
-            total = row[vn].trim().to_string();
-        }
-        if delivery_.is_empty() {
-            delivery_ = row[vd].trim().to_string();
-        }
-        if parse_num(&total) == Some(0.0) {
-            total = "1".to_string();
+        if let Some(vn) = vn {
+            if parse_num(&total).unwrap_or(0.0) == 0.0 {
+                total = row[vn].trim().to_string();
+            }
+            if delivery_.is_empty() {
+                delivery_ = row[vd].trim().to_string();
+            }
+            if parse_num(&total) == Some(0.0) {
+                total = "1".to_string();
+            }
         }
         row.extend([delivery_, pallet, child, total]);
         rows.push(row);
@@ -377,6 +400,38 @@ mod tests {
         assert_eq!(m.nrows(), 2);
         assert_eq!(m.rows[0], vec!["", "", "1", "1", "1", "2"]);
         assert_eq!(m.rows[1], vec!["2", "5", "2", "", "", "5"]);
+    }
+
+    #[test]
+    fn plain_rules_keep_blanks_and_zeros() {
+        // no number_of_packages column needed
+        let v = t(
+            "v",
+            &["delivery", "plant"],
+            &[&["3", "C"], &["1", "A"], &["2", "B"]],
+        );
+        let z = t(
+            "z",
+            &["delivery", "pallet", "child"],
+            &[&["0001", "0", "0"], &["3", "2", ""], &["9", "1", "1"]],
+        );
+        let m = merge_zmdetpc_with(&v, &z, MergeRules::Plain).unwrap();
+        assert_eq!(
+            m.headers,
+            vec!["delivery", "plant", "delivery_", "pallet", "child", "total"]
+        );
+        assert_eq!(
+            m.rows,
+            vec![
+                // 0 + 0 stays 0 (no `0 -> 1`, no packages fallback)
+                vec!["1", "A", "0001", "0", "0", "0"],
+                // no ZMDETPC row: everything blank, delivery_ included
+                vec!["2", "B", "", "", "", ""],
+                vec!["3", "C", "3", "2", "", "2"],
+                // ZMDETPC-only row (outer join)
+                vec!["", "", "9", "1", "1", "2"],
+            ]
+        );
     }
 
     #[test]

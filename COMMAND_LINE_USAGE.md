@@ -185,7 +185,8 @@ one row per delivery) -> a shipping point `EPDC` is replaced by the first parent
 `number_of_packages` by shipping point; it has no ZMDETPC step. `k2xx` is VT11 (variant `TIER_VT11_K2XX`, layout `scorecard`;
 a Monday run date starts on the Sunday before) -> VL06O for all shipments (layout `pallets`, one row per delivery) -> ZVT11
 Closed for the deliveries (variant `k2xx_`, layout `add_del`, run date -/+ 100 days) -> ZMDETPC summarised for the deliveries
--> merge (`total` = pallet + child; **blank** for a delivery without a ZMDETPC row, unlike xdock/toyota); no pivot. `k2xx` has
+-> merge (`total` = pallet + child; **blank** for a delivery without a ZMDETPC row, unlike xdock/toyota) -> pivot of `total`
+by plant (the macro has no pivot for k2xx; it was added on the owner's request). `k2xx` has
 not run against live SAP yet and is tested on synthetic stand-in data only (checklist in `docs/abc_headless_plan.md`). The
 first empty result or error stops the run and **nothing is written**.
 
@@ -205,7 +206,9 @@ non-zero before SAP is touched (clap errors exit with 2).
 * Outputs `misc`: `<reports_dir>\INV\<today yyyy-mm-dd>\misc\<date>_MISC_VT11.tsv`, `..._VL06O.tsv`, `..._PIVOT.tsv`
   (`shipping_pointreceiving_pt`, `number_of_packages`; same shape rules as the xdock pivot).
 * Outputs `k2xx`: `<reports_dir>\K2XX\<today yyyy-mm-dd>\k2xx\<date>_K2XX_ZVT11.tsv` (as exported), `..._VT11.tsv`,
-  `..._VL06O.tsv` (merged table, sorted by delivery, last columns `date`, `delivery_`, `pallet`, `child`, `total`). No pivot.
+  `..._VL06O.tsv` (merged table, sorted by delivery, last columns `date`, `delivery_`, `pallet`, `child`, `total`),
+  `..._PIVOT.tsv` (`plant`, `total` = sum of `total` of the `VL06O` table; same shape rules as the xdock pivot; a delivery
+  with a blank `total` adds nothing).
 * Temporary SAP exports (text with tabs, forced): `<reports_dir>\<TCODE>\<yyyymmddhhmmss>_<TCODE>.txt`; deleted after a
   successful load unless `[abc.<report>] delete_exports = false`. A file that failed to load is kept.
 

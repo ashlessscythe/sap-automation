@@ -34,6 +34,9 @@ the next report first; golden tests need them. Work like the existing reports: p
 * ZMDETPC date range = run date widened by 3 days each side **only for week runs**; every other tcode 0. `--date-range-buffer=<n>`
   (or `[abc.<report>] date_range_buffer`) overrides for every tcode that sets a range from the run date (VT11, ZMDETPC); see
   "Date range buffer".
+* **`k2xx` writes a pivot** (`<date>_K2XX_PIVOT.tsv`: rows = `plant`, value = sum of `total` of the final `vl06o` table, same
+  shape as the INV pivots). **This overrides spec 7.0 item 1** ("Reproduce as-is. k2xx ... produce no pivot"): a deliberate
+  departure from the macro, whose K2XX workbook has no pivot sheet. Item 1 still holds for rma, add_del and nc_masterpack.
 * Headless runner exports text with tabs only; Excel export for all tcodes is future work (see "Future work").
 * Commit workflow: separate commits per change, never `sync_public.*` without being asked (it force-pushes; when `public` is an
   ancestor of `dev` a plain `git push origin dev:public` gives the same result). Tags are annotated `v<version>`.
@@ -110,7 +113,8 @@ Decisions made while building (all tested):
   `run_k2xx`), `inv::merge_zmdetpc_with(.., MergeRules::Plain)` (spec 4.12 without the xdock/toyota rules; the INV merge is
   unchanged), `zvt11::run_closed_export_outcome` + `ZVT11ClosedParams` (new headless ZVT11 Closed step, tab 2; the legacy
   ZVT11 flow is untouched; `zmdetpc::paste_multi` is shared for the delivery paste), `RealSapSteps` implements the seam,
-  `dispatch` resolves `[abc.k2xx]`, registry `K2XX` (folder `K2XX`, outputs `zvt11`, `vt11`, `vl06o`, no pivot), ABC menu
+  `dispatch` resolves `[abc.k2xx]`, registry `K2XX` (folder `K2XX`, outputs `zvt11`, `vt11`, `vl06o`, `pivot`; the pivot is `k2xx::pivot_plant_total` =
+  `inv::pivot_sum(merged, "plant", "total")`, owner decision overriding spec item 1), ABC menu
   entry, `raw::ZVT11_ALIASES` (empty: real titles unknown). Fixtures `tests/fixtures/k2xx/` are **synthetic** (README
   there). Tests: `k2xx_golden`, `k2xx_runner`.
 
@@ -274,12 +278,13 @@ shipping point): when a run has such rows, compare the pivot labels with the mac
 **Nothing of k2xx has run against SAP.** A.1 and A.4 of the mustgo checklist apply. Exports are text with tabs at
 `<reports_dir>\<TCODE>\<yyyymmddhhmmss>_<TCODE>.txt` for VT11, VL06O, ZVT11 and ZMDETPC; deleted after a successful load
 unless `[abc.k2xx] delete_exports = false` (**keep them on the first runs: they are the fixtures we need**). Outputs:
-`<reports_dir>\K2XX\<today>\k2xx\<date>_K2XX_{ZVT11,VT11,VL06O}.tsv`.
+`<reports_dir>\K2XX\<today>\k2xx\<date>_K2XX_{ZVT11,VT11,VL06O,PIVOT}.tsv`.
 
 **A. Pre-flight.** Variants/layouts exist in SAP (names from spec 5.5; override in `[abc.k2xx]`): VT11 variant
 `TIER_VT11_K2XX` + layout `scorecard`; VL06O layout `pallets`; ZVT11 variant `k2xx_` + layout `add_del`; ZMDETPC variant
-`EPDC_TONY`. Columns the run needs (a missing one stops it naming it): vt11 `shipment_number`; vl06o `delivery`; zmdetpc
-`delivery`, `pallet`, `child`. ZVT11 is written as exported (no column is required by name, at least 2 columns and 1 row).
+`EPDC_TONY`. Columns the run needs (a missing one stops it naming it): vt11 `shipment_number`; vl06o `delivery`, `plant` (the
+pivot rows; **check that the `pallets` list titles its plant column `Plnt` or `Plant`**, else the run stops at VL06O with
+"missing column(s) plant" and the title has to go into `raw::VL06O_ALIASES`); zmdetpc `delivery`, `pallet`, `child`. ZVT11 is written as exported (no column is required by name, at least 2 columns and 1 row).
 
 **B. First run: single known date.** `sap_automation --rname=k2xx --run-date=2026-11-05`. Spec 9.5 saw on that date: VL06O
 840 item rows = 107 deliveries, ZMDETPC 106 rows (only `8012734818` without one), ZVT11 409 rows x 7 columns. Then a Monday
@@ -316,7 +321,18 @@ date (VT11 must show Sunday..Monday in `K_DATEN`) and a week (`WK45`).
 Flow (`run_k2xx`, spec 5.5 rows 52-58): VT11 (variant, layout, `monday_include_sunday`) -> distinct `shipment_number` -> VL06O
 (layout `pallets`, item rows) -> `prepare_vl06o` (first row per delivery, `date` = `yyyy-mm-dd` or `WK_<n>`) -> distinct
 deliveries -> ZVT11 Closed (variant, layout, run date -/+ 100 days) -> ZMDETPC summarised (variant, run date) ->
-`k2xx::merge_zmdetpc` (spec 4.12 steps 1-4) -> outputs `zvt11` (as exported), `vt11`, `vl06o` (merged). No pivot (item 1).
+`k2xx::merge_zmdetpc` (spec 4.12 steps 1-4) -> `k2xx::pivot_plant_total` -> outputs `zvt11` (as exported), `vt11`, `vl06o`
+(merged), `pivot`.
+
+**Pivot (owner decision 2026-11-10, departs from spec 7.0 item 1 "k2xx produces no pivot").** Built from the final (merged)
+`vl06o` table with the existing INV helper `inv::pivot_sum(merged, "plant", "total")`, so the INV conventions apply unchanged:
+long table `plant`, `total`; rows ascending by plant (case-insensitive grouping), a blank plant is `(blank)` and last; no
+grand-total row; `total` parsed numerically (blank or text adds nothing, so a delivery without a ZMDETPC row adds 0 to its
+plant, and a plant with only such deliveries shows `0`). Written last, as `<date>_K2XX_PIVOT.tsv`, in the same save step as
+the other outputs (after the last SAP step and the merge), so a failed run leaves no pivot. `plant` is now a required VL06O
+column (by sanitised name; a list without it stops the run at step `vl06o`, before ZVT11). `K2xxSummary.pivot_rows` and the
+summary line (`rows: zvt11 n, vl06o n, pivot n (total n)`) report it. The macro's K2XX workbook has no pivot sheet, so this
+output can never be compared with the macro; on the stand-in data it is 12 plants, sum 1144 (`expected_pivot.tsv`).
 Seam: `k2xx_runner::K2xxSteps` (`vt11`, `vl06o_by_shipments`, `zvt11_closed`, `zmdetpc_summarised`); names travel in
 `K2xxSelection`. An empty shipment / delivery / ZVT11 list, SAP no-data or any error stops the run; nothing is written.
 
@@ -338,15 +354,17 @@ show equality with the macro's `11-05-2026_K2XX.xlsx`.
    run stops and writes nothing. **Should an empty ZVT11 really stop k2xx**, given that VL06O is what relabel/repack need?
 5. **ZVT11 columns are not checked** (header titles of the text export unknown) and the table is written as exported. Spec 9.5
    says the macro's sheet is the unformatted export too.
-6. **VL06O**: only `delivery` is required; the `pallets` column order of spec 3.3 is not enforced. Is the list layout name
+6. **VL06O**: `delivery` and `plant` (for the pivot) are required; the `pallets` column order of spec 3.3 is not enforced. Is the list layout name
    really `pallets` on the owner's SAP (as `xdock` / `inv` were)?
 7. **ZMDETPC-only rows** (a delivery in ZMDETPC that is not in VL06O) are kept as rows with blank VL06O columns, as in the
    INV merge (the macro's spacer rows). Not expected in practice because ZMDETPC is queried with the VL06O deliveries.
 8. **Output order/names**: `<date>_K2XX_ZVT11.tsv`, `_VT11.tsv`, `_VL06O.tsv` (the macro's sheet order `zvt11`, `vt11`,
-   `vl06o`). relabel/repack (3.4/3.5) will need this run's `vl06o`: within one process, or re-read from the TSV (spec 7.0
+   `vl06o`), then `_PIVOT.tsv` (not in the macro). relabel/repack (3.4/3.5) will need this run's `vl06o`: within one process, or re-read from the TSV (spec 7.0
    item 15 says "from the k2xx block's `vl06o` TSV of the same run"); to be decided with 3.4.
 9. **VT11 stand-in**: the fixtures assume `TIER_VT11_K2XX` selects the TPDC shipments (the spec 9.5 run had 107 deliveries,
    like mustgo's TPDC set). Unconfirmed; irrelevant for the code, only for the fixture story.
+10. **Pivot and the blank `total`** (follows from question 1): a delivery without a ZMDETPC row counts as 0 in the pivot. If
+    the owner wants the INV fallback (`number_of_packages`) for k2xx, the pivot changes with it (stand-in data: FV58, FW63).
 
 ## Design notes: `misc`
 

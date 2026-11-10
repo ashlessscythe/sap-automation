@@ -4,6 +4,7 @@ pub mod app;
 pub mod cli;
 pub mod inbond_shipment;
 pub mod inbond_shipment_module;
+pub mod lt23;
 pub mod lx03;
 pub mod lx03_module;
 pub mod tui;

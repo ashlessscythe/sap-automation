@@ -6,8 +6,8 @@ use sap_scripting::*;
 use windows::core::Result;
 // Import specific functions to avoid ambiguity
 use crate::utils::config_types::SapConfig;
-use crate::utils::sap_ctrl_utils::hit_ctrl;
-use crate::utils::sap_export_utils::export_local_file;
+use crate::utils::sap_ctrl_utils::{hit_ctrl, paste_values_with_scroll};
+use crate::utils::sap_export_utils::{export_local_file, export_to_target, ExportTarget};
 use crate::utils::sap_tcode_utils::*;
 use crate::utils::sap_wnd_utils::*;
 
@@ -32,6 +32,16 @@ pub struct ZMDESNRParams {
     /// Storage bin filter (e.g. `64EP*`). When set, skips delivery paste.
     pub bin_filter: Option<String>,
     pub additional_params: ZMDESNRAdditionalParams,
+    /// Transfer order numbers pasted into `S_TANUM` after the deliveries (deliveries + TOs mode).
+    pub transfer_numbers: Vec<String>,
+    /// Paste the multi-selection lists with scrolling (all values), instead of only the
+    /// rows visible in the multi-selection dialog (legacy behaviour).
+    pub scroll_paste: bool,
+    /// Headless runner: write a local text/HTML file straight to this target and read no config.
+    /// `None` keeps the legacy behaviour (export type from config, else Excel).
+    pub export_target: Option<ExportTarget>,
+    /// With `export_target`: treat "no display authorization" as harmless.
+    pub ignore_display_error: bool,
 }
 
 impl Default for ZMDESNRParams {
@@ -47,6 +57,10 @@ impl Default for ZMDESNRParams {
             tab_number: None,
             bin_filter: None,
             additional_params: ZMDESNRAdditionalParams::default(),
+            transfer_numbers: Vec::new(),
+            scroll_paste: false,
+            export_target: None,
+            ignore_display_error: false,
         }
     }
 }
@@ -169,6 +183,23 @@ pub fn run_export_outcome(session: &GuiSession, params: &ZMDESNRParams) -> Resul
         ));
     }
 
+    // Headless runner: no list after execute means no data (or an error).
+    // UNVERIFIED live: that the tab strip stays on screen when ZMDESNR returns nothing, and the
+    // wording of the status message.
+    if params.export_target.is_some() {
+        if let Some(outcome) = crate::utils::export_outcome::classify_after_execute(
+            session,
+            "ZMDESNR",
+            "/usr/tabsTABSTRIP_TABB1",
+            crate::utils::export_outcome::ClassifyOptions {
+                ignore_display_error: params.ignore_display_error,
+            },
+        )? {
+            println!("ZMDESNR outcome after execute: {outcome:?}");
+            return Ok(outcome);
+        }
+    }
+
     // Check if we need to send vkey 3 after export (before layout selection)
     if let Some(pre_export_back) = &params.additional_params.pre_export_back {
         if pre_export_back == "true" {
@@ -185,7 +216,13 @@ pub fn run_export_outcome(session: &GuiSession, params: &ZMDESNRParams) -> Resul
     // Apply layout if provided (common for all tabs)
     if let Some(layout_row) = &params.layout_row {
         if !layout_row.is_empty() {
-            apply_layout(session, layout_row)?;
+            let applied = apply_layout(session, layout_row)?;
+            if !applied && params.export_target.is_some() {
+                // Headless: never export with an unexpected column set.
+                return Ok(ExportOutcome::Error(format!(
+                    "ZMDESNR: layout '{layout_row}' could not be selected"
+                )));
+            }
         }
     }
 
@@ -211,6 +248,18 @@ pub fn run_export_outcome(session: &GuiSession, params: &ZMDESNRParams) -> Resul
     if let Err(e) = add_layout_columns(session, params) {
         println!("Error adding layout columns: {e}");
         // Continue with export even if adding columns failed
+    }
+
+    // Headless runner: explicit target, no config, no Excel fallback.
+    // UNVERIFIED live: the local-file menu path `menu[0]/menu[3]/menu[2]` (sibling of the
+    // Excel export `menu[3]/menu[1]` of spec P5).
+    if let Some(target) = &params.export_target {
+        return export_to_target(
+            session,
+            "ZMDESNR",
+            &["wnd[0]/mbar/menu[0]/menu[3]/menu[2]"],
+            target,
+        );
     }
 
     // Try local file export if configured (0..=4). Fallback to Excel export.
@@ -263,6 +312,78 @@ pub fn run_export_outcome(session: &GuiSession, params: &ZMDESNRParams) -> Resul
 /// Boolean wrapper kept for menus/sequence; see [`run_export_outcome`].
 pub fn run_export(session: &GuiSession, params: &ZMDESNRParams) -> Result<bool> {
     Ok(run_export_outcome(session, params)?.into_bool())
+}
+
+const MULTI_TABLE_ID: &str =
+    "tabsTAB_STRIP/tabpSIVA/ssubSCREEN_HEADER:SAPLALDB:3010/tblSAPLALDBSINGLE";
+
+/// Paste `params.transfer_numbers` into the `S_TANUM` multi-selection (spec 3.4, deliveries + TOs).
+///
+/// UNVERIFIED live: the button id `btn%_S_TANUM_%_APP_%-VALU_PUSH` (from the spec), whether the
+/// value cells are `txt` or `ctxt` (both are tried), and the `wnd[2]` warning popup.
+fn paste_transfer_orders(session: &GuiSession, params: &ZMDESNRParams) -> Result<bool> {
+    let btn_id = "wnd[0]/usr/tabsTABSTRIP_TABB1/tabpUCOMM2/ssub%_SUBSCREEN_TABB1:ZMDE_SERIALNUMBER_HISTORY:9002/btn%_S_TANUM_%_APP_%-VALU_PUSH";
+    match session
+        .find_by_id(btn_id.to_string())
+        .ok()
+        .and_then(|b| b.downcast::<GuiButton>())
+    {
+        Some(b) => b.press()?,
+        None => {
+            println!("ZMDESNR: TO multi-selection button (S_TANUM) not found");
+            return Ok(false);
+        }
+    }
+    if let Ok(window) = session.find_by_id("wnd[1]".to_string()) {
+        if let Some(modal_window) = window.downcast::<GuiModalWindow>() {
+            modal_window.send_v_key(16)?; // clear previous entries
+        }
+    }
+    let mut pasted = false;
+    for prefix in ["txt", "ctxt"] {
+        if paste_values_with_scroll(
+            session,
+            1,
+            MULTI_TABLE_ID,
+            &params.transfer_numbers,
+            7,
+            prefix,
+        )? {
+            pasted = true;
+            break;
+        }
+    }
+    if !pasted {
+        println!("ZMDESNR: could not paste transfer orders");
+        return Ok(false);
+    }
+    // "Yes" to warnings (e.g. non-numeric values), then verify row 0 is filled
+    let _ = answer_popup_yes(session, 2, 5)?;
+    let first_ok = ["txt", "ctxt"].iter().any(|prefix| {
+        session
+            .find_by_id(format!(
+                "wnd[1]/usr/{MULTI_TABLE_ID}/{prefix}RSCSEL_255-SLOW_I[1,0]"
+            ))
+            .ok()
+            .map(|c| {
+                c.downcast::<GuiTextField>()
+                    .and_then(|t| t.text().ok())
+                    .or_else(|| c.downcast::<GuiCTextField>().and_then(|t| t.text().ok()))
+                    .is_some_and(|t| !t.trim().is_empty())
+            })
+            .unwrap_or(false)
+    });
+    if !first_ok {
+        println!("ZMDESNR: transfer order paste not visible in the multi-selection window");
+        return Ok(false);
+    }
+    if let Ok(window) = session.find_by_id("wnd[1]".to_string()) {
+        if let Some(modal_window) = window.downcast::<GuiModalWindow>() {
+            modal_window.send_v_key(8)?; // close multi-window
+        }
+    }
+    let _ = answer_popup_yes(session, 2, 5)?;
+    Ok(true)
 }
 
 /// Handle operations specific to tab 2
@@ -338,13 +459,28 @@ fn handle_tab2_operations(session: &GuiSession, params: &ZMDESNRParams) -> Resul
     }
 
     // Paste delivery numbers
-    let mut j = 0;
-    for delivery_number in &params.delivery_numbers {
-        let input_field_id = format!("wnd[1]/usr/tabsTAB_STRIP/tabpSIVA/ssubSCREEN_HEADER:SAPLALDB:3010/tblSAPLALDBSINGLE/txtRSCSEL_255-SLOW_I[1,{j}]");
-        if let Ok(txt) = session.find_by_id(input_field_id) {
-            if let Some(text_field) = txt.downcast::<GuiTextField>() {
-                text_field.set_text(delivery_number.clone())?;
-                j += 1;
+    if params.scroll_paste {
+        let ok = paste_values_with_scroll(
+            session,
+            1,
+            MULTI_TABLE_ID,
+            &params.delivery_numbers,
+            7,
+            "txt",
+        )?;
+        if !ok {
+            println!("Failed to paste delivery numbers (scroll paste)");
+            return Ok(false);
+        }
+    } else {
+        let mut j = 0;
+        for delivery_number in &params.delivery_numbers {
+            let input_field_id = format!("wnd[1]/usr/tabsTAB_STRIP/tabpSIVA/ssubSCREEN_HEADER:SAPLALDB:3010/tblSAPLALDBSINGLE/txtRSCSEL_255-SLOW_I[1,{j}]");
+            if let Ok(txt) = session.find_by_id(input_field_id) {
+                if let Some(text_field) = txt.downcast::<GuiTextField>() {
+                    text_field.set_text(delivery_number.clone())?;
+                    j += 1;
+                }
             }
         }
     }
@@ -363,6 +499,11 @@ fn handle_tab2_operations(session: &GuiSession, params: &ZMDESNRParams) -> Resul
         if let Some(modal_window) = window.downcast::<GuiModalWindow>() {
             modal_window.send_v_key(8)?; // Close Multi-Window
         }
+    }
+
+    // Transfer orders (deliveries + TOs mode)
+    if !params.transfer_numbers.is_empty() && !paste_transfer_orders(session, params)? {
+        return Ok(false);
     }
 
     // Handle exclude serials if provided

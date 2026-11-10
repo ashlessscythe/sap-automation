@@ -10,7 +10,7 @@ use crate::utils::{choose_layout, sap_file_utils::*};
 // Import specific functions to avoid ambiguity
 use crate::utils::config_types::SapConfig;
 use crate::utils::sap_ctrl_utils::*;
-use crate::utils::sap_export_utils::export_local_file;
+use crate::utils::sap_export_utils::{export_local_file, export_to_target, ExportTarget};
 use crate::utils::sap_tcode_utils::*;
 use crate::utils::sap_wnd_utils::*;
 
@@ -31,6 +31,11 @@ pub struct VL06OParams {
     pub by_date: bool,
     pub column_name: Option<String>,
     pub t_code: String,
+    /// Headless runner: write a local text/HTML file straight to this target and read no config.
+    /// `None` keeps the legacy behaviour (export type from config, else Excel).
+    pub export_target: Option<ExportTarget>,
+    /// With `export_target`: treat "no display authorization" as harmless (VT11 parity).
+    pub ignore_display_error: bool,
 }
 
 impl Default for VL06OParams {
@@ -89,6 +94,8 @@ impl Default for VL06OParams {
             by_date: false,
             column_name: column,
             t_code: "VL06O".to_string(),
+            export_target: None,
+            ignore_display_error: false,
         }
     }
 }
@@ -264,6 +271,14 @@ fn pause(time: Option<u64>) {
     }
 }
 
+/// Menu paths tried (in order) by the headless export; same list as `try_open_local_file_export`.
+const VL06O_LOCAL_FILE_MENUS: &[&str] = &[
+    "wnd[0]/mbar/menu[0]/menu[5]/menu[2]",
+    "wnd[0]/mbar/menu[0]/menu[5]/menu[0]",
+    "wnd[0]/mbar/menu[0]/menu[3]/menu[2]",
+    "wnd[0]/mbar/menu[0]/menu[3]/menu[0]",
+];
+
 fn try_open_local_file_export(session: &GuiSession) -> bool {
     // Prioritize VB-observed path for 'Save list in file...'
     let candidates = [
@@ -400,6 +415,23 @@ pub fn run_export_outcome(session: &GuiSession, params: &VL06OParams) -> Result<
         }
     }
 
+    // Headless runner: no list after execute means no data (or an error), not a silent export.
+    // UNVERIFIED live: that the selection screen keeps `btn%_IT_TKNUM_%_APP_%-VALU_PUSH` when
+    // VL06O finds nothing, and the wording of its status message.
+    if params.export_target.is_some() {
+        if let Some(outcome) = crate::utils::export_outcome::classify_after_execute(
+            session,
+            "VL06O",
+            "/usr/btn%_IT_TKNUM_%_APP_%-VALU_PUSH",
+            crate::utils::export_outcome::ClassifyOptions {
+                ignore_display_error: params.ignore_display_error,
+            },
+        )? {
+            println!("VL06O outcome after execute: {outcome:?}");
+            return Ok(outcome);
+        }
+    }
+
     // check for popup
     let sbar = hit_ctrl(session, 0, "/sbar", "Text", "Get", "");
     match sbar {
@@ -431,6 +463,12 @@ pub fn run_export_outcome(session: &GuiSession, params: &VL06OParams) -> Result<
     // Get statusbar message
     let err_msg = hit_ctrl(session, 0, "/sbar", "Text", "Get", "")?;
     println!("Statusbar message: ({err_msg})");
+
+    // Headless runner: explicit target, no config, no Excel fallback.
+    // UNVERIFIED live: local-file menu path of VL06O (candidates of `try_open_local_file_export`).
+    if let Some(target) = &params.export_target {
+        return export_to_target(session, "VL06O", VL06O_LOCAL_FILE_MENUS, target);
+    }
 
     // Export preference: try local file export if configured; otherwise Excel
     if let Ok(config) = SapConfig::load() {

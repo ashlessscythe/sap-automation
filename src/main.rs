@@ -14,6 +14,7 @@ mod abc_menu;
 mod app;
 mod inbond_shipment;
 mod inbond_shipment_module;
+mod lt23;
 mod lx03;
 mod lx03_module;
 mod tui;

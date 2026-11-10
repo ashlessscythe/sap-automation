@@ -155,6 +155,27 @@ ignore_display_error = true     # treat "no display authorization" as harmless (
                                 # week run (WKnn), everything else 0. `--date-range-buffer` wins.
 ```
 
+### ABC Headless Section (`[abc.k2xx]`)
+
+Optional, same rules as the other `[abc.<report>]` sections (CLI flag > `[abc.k2xx]` > `[global]` > default; wrong or empty
+values fall back). Used only by `--rname=k2xx` (and the ABC Headless > k2xx menu entry). **Not verified on live SAP yet**: the
+names below are the ones of the macro; the ZVT11 Closed step and its control ids come from the spec only.
+
+```toml
+[abc.k2xx]
+vt11_variant = "TIER_VT11_K2XX" # VT11 variant
+vt11_layout = "scorecard"       # VT11 layout (13 columns incl. shipment_number)
+monday_include_sunday = true    # a Monday run date makes VT11 start on the Sunday before (Sunday..Monday)
+vl06o_layout = "pallets"        # VL06O layout (delivery, ship-to, name, deliv. date, GM, plant, external id, no. of packages)
+zvt11_variant = "k2xx_"         # ZVT11 Closed variant
+zvt11_layout = "add_del"        # ZVT11 layout (date, trailer, shipment, delivery, plant, ship to/from name, shipment end date)
+zvt11_days = 100                # ZVT11 Closed date window: run date minus/plus this many days (the delivery list is the filter)
+zmdetpc_variant = "EPDC_TONY"   # ZMDETPC variant
+delete_exports = true           # delete each temporary export after it was loaded
+ignore_display_error = true     # treat "no display authorization" as harmless
+# date_range_buffer = 3         # as in [abc.xdock]: VT11 and ZMDETPC only; it is not added to the ZVT11 window
+```
+
 ## Migration from Legacy Format
 
 If you're upgrading from a previous version, you can use the migration tool to convert your configuration file to the new format:

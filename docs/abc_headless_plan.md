@@ -17,8 +17,10 @@ a single worker subagent codes one report at a time; the lead re-runs the four C
 Status: `mustgo`, `xdock`, `toyota` and `misc` are runnable end to end (`sap_automation --rname=<name> --run-date=<DATE|A..B|WKnn>`)
 and **the owner has run all four live successfully** (2026-11-10, after the live fixes listed under "Live findings"). Offline
 they are unit/golden tested on the owner's real exports (`mustgo` reproduces spec 9.3; `xdock` spec 9.6 with the documented
-differences to the macro xlsx, see "Design notes: `xdock`"). Chunk 3.2 is complete. **Next for Claude: `k2xx` (3.3), then
-`relabel` (3.4), `repack` (3.5).** Ask the owner for the raw exports (VT11, VL06O, ZMDETPC, ZMDESNR ...) and the macro xlsx of
+differences to the macro xlsx, see "Design notes: `xdock`"). Chunk 3.2 is complete. **`k2xx` (3.3) is coded but NOT run live
+and NOT verified on real data** (no raw k2xx export or macro xlsx was available: fixtures are synthetic stand-ins, see "Design
+notes: `k2xx`" for the open questions and "Live verification checklist (k2xx)"). **Next for Claude: get the owner's k2xx
+exports + answers, then `relabel` (3.4), `repack` (3.5).** Ask the owner for the raw exports (VT11, VL06O, ZMDETPC, ZMDESNR ...) and the macro xlsx of
 the next report first; golden tests need them. Work like the existing reports: pure stages in `src/abc/`, a seam trait in
 `inv_runner.rs`/`runner.rs`, `registry` entry, `dispatch` resolver + `[abc.<report>]`, ABC menu entry, fixtures byte-exact, docs.
 
@@ -104,7 +106,15 @@ Decisions made while building (all tested):
   `RealSapSteps` implements both), registry `MISC` (folder `INV`), `[abc.misc]` (`vt11_variant` `MISC_EPDC_`, `vt11_layout`,
   `vl06o_layout` `inv`), ABC menu entry, `raw::VL06O_ALIASES` `shpt` -> `shipping_pointreceiving_pt`. Tests: `misc_golden`.
 
-Suggested next steps: (1) `k2xx`, `relabel`, `repack` (3.3-3.5); (2) the v2 list (ZVT11 Closed, VT22, VT03N); (3) per-day loop
+* **k2xx (3.3, code only, 2026-11-10):** `abc/k2xx.rs` (pure stages), `abc/k2xx_runner.rs` (`K2xxSteps` seam of its own,
+  `run_k2xx`), `inv::merge_zmdetpc_with(.., MergeRules::Plain)` (spec 4.12 without the xdock/toyota rules; the INV merge is
+  unchanged), `zvt11::run_closed_export_outcome` + `ZVT11ClosedParams` (new headless ZVT11 Closed step, tab 2; the legacy
+  ZVT11 flow is untouched; `zmdetpc::paste_multi` is shared for the delivery paste), `RealSapSteps` implements the seam,
+  `dispatch` resolves `[abc.k2xx]`, registry `K2XX` (folder `K2XX`, outputs `zvt11`, `vt11`, `vl06o`, no pivot), ABC menu
+  entry, `raw::ZVT11_ALIASES` (empty: real titles unknown). Fixtures `tests/fixtures/k2xx/` are **synthetic** (README
+  there). Tests: `k2xx_golden`, `k2xx_runner`.
+
+Suggested next steps: (1) owner: k2xx exports, answers to the k2xx open questions and a first live run; then `relabel`, `repack` (3.4-3.5); (2) the v2 list (ZVT11 Closed, VT22, VT03N); (3) per-day loop
 and `rname_overrides` if wanted (2.3 remainder); (4) Excel export for the headless runner (Future work). The live verification
 checklists below stay useful for any control id the owner has not exercised yet (the runs above succeeded, so ids they use are
 confirmed; ZMDETPC `S_ADATE`, detail flow and layout button are still unimplemented).
@@ -259,6 +269,85 @@ column stops the run naming it). Run `sap_automation --rname=misc --run-date=202
 deliveries, pivot `FV55` 1, `FV59` 1. **The `EPDC` replacement has never been seen on real data** (the export has no `EPDC`
 shipping point): when a run has such rows, compare the pivot labels with the macro's.
 
+## Live verification checklist (k2xx)
+
+**Nothing of k2xx has run against SAP.** A.1 and A.4 of the mustgo checklist apply. Exports are text with tabs at
+`<reports_dir>\<TCODE>\<yyyymmddhhmmss>_<TCODE>.txt` for VT11, VL06O, ZVT11 and ZMDETPC; deleted after a successful load
+unless `[abc.k2xx] delete_exports = false` (**keep them on the first runs: they are the fixtures we need**). Outputs:
+`<reports_dir>\K2XX\<today>\k2xx\<date>_K2XX_{ZVT11,VT11,VL06O}.tsv`.
+
+**A. Pre-flight.** Variants/layouts exist in SAP (names from spec 5.5; override in `[abc.k2xx]`): VT11 variant
+`TIER_VT11_K2XX` + layout `scorecard`; VL06O layout `pallets`; ZVT11 variant `k2xx_` + layout `add_del`; ZMDETPC variant
+`EPDC_TONY`. Columns the run needs (a missing one stops it naming it): vt11 `shipment_number`; vl06o `delivery`; zmdetpc
+`delivery`, `pallet`, `child`. ZVT11 is written as exported (no column is required by name, at least 2 columns and 1 row).
+
+**B. First run: single known date.** `sap_automation --rname=k2xx --run-date=2026-11-05`. Spec 9.5 saw on that date: VL06O
+840 item rows = 107 deliveries, ZMDETPC 106 rows (only `8012734818` without one), ZVT11 409 rows x 7 columns. Then a Monday
+date (VT11 must show Sunday..Monday in `K_DATEN`) and a week (`WK45`).
+
+**C. Controls that come from the spec only (never seen live), in the order the run uses them:**
+* VT11, VL06O, ZMDETPC: as confirmed by the xdock runs; new here are only the names (variant `TIER_VT11_K2XX`, VL06O layout
+  `pallets`) and `monday_include_sunday` (existing VT11 code of chunk 4.1, never exercised live: LOW = Sunday, HIGH = Monday).
+* ZVT11 Closed (`zvt11::run_closed_export_outcome`), **every id below is unverified**:
+  * tab `wnd[0]/usr/tabsTABSTRIP_BLK1/tabpTAB2`; sub-screen prefix
+    `wnd[0]/usr/tabsTABSTRIP_BLK1/tabpTAB2/ssub%_SUBSCREEN_BLK1:ZSDR_SHIPMENT_REPORT:0102/` for all fields below;
+  * variant via the shared `variant_select` (`btn[17]`, popup `txtV-LOW`) **after** the tab is selected; a missing variant is
+    a step error;
+  * `ctxtS_DATE_2-LOW` / `ctxtS_DATE_2-HIGH` (run date - 100 / + 100 days, typed in `[global].date_format`);
+  * `btn%_S_VBELN2_%_APP_%-VALU_PUSH`, then the shared multi-selection paste (`wnd[1]`: `sendVKey 16`, cells `ctxt` or `txt`
+    of `tblSAPLALDBSINGLE`, `wnd[2]/usr/btnBUTTON_1` up to 5 times, row 0 non-empty, `sendVKey 8`);
+  * `radR1` (display all deliveries), `chkP_ALV_2` = selected; `ctxtS_VSTEL2-LOW` (ship point) is not touched;
+  * execute `wnd[0]/tbar[1]/btn[8]`; popup `wnd[1]/usr/txtMESSTXT1` containing "No data exists" = clean NO DATA; "still on the
+    selection screen" is detected by `/usr/tabsTABSTRIP_BLK1` being present;
+  * layout via `wnd[0]/tbar[1]/btn[33]` and the grid
+    `wnd[1]/usr/ssubD0500_SUBSCREEN:SAPLSLVC_DIALOG:0501/cntlG51_CONTAINER/shellcont/shell` (the id of the legacy ZVT11 layout
+    code), name looked up in the columns `VARIANT`, `LAYOUT`, `NAME`, `TEXT`, `DESCRIPTION`, row selected + `clickCurrentCell`;
+    a layout that is not found is a step error (no console prompt);
+  * local file export `wnd[0]/mbar/menu[0]/menu[3]/menu[2]`, else `menu[0]/menu[9]/menu[2]` (accepted only if the dialog is
+    titled "save list in file"). **With `chkP_ALV_2` the result is probably an ALV grid, whose export may only be reachable
+    through the grid toolbar / context menu: this is the most likely first failure. Record the export steps if it fails.**
+* The header titles of the real ZVT11 and `pallets` VL06O text exports are unknown (`raw::ZVT11_ALIASES` is empty; the VL06O
+  aliases are those of the xdock/mustgo lists).
+
+**D. Then** send the four export files and the macro's `K2XX.xlsx` of the same date: they replace the synthetic fixtures.
+
+## Design notes: `k2xx` (`src/abc/k2xx.rs`, `k2xx_runner.rs`, `zvt11.rs`)
+
+Flow (`run_k2xx`, spec 5.5 rows 52-58): VT11 (variant, layout, `monday_include_sunday`) -> distinct `shipment_number` -> VL06O
+(layout `pallets`, item rows) -> `prepare_vl06o` (first row per delivery, `date` = `yyyy-mm-dd` or `WK_<n>`) -> distinct
+deliveries -> ZVT11 Closed (variant, layout, run date -/+ 100 days) -> ZMDETPC summarised (variant, run date) ->
+`k2xx::merge_zmdetpc` (spec 4.12 steps 1-4) -> outputs `zvt11` (as exported), `vt11`, `vl06o` (merged). No pivot (item 1).
+Seam: `k2xx_runner::K2xxSteps` (`vt11`, `vl06o_by_shipments`, `zvt11_closed`, `zmdetpc_summarised`); names travel in
+`K2xxSelection`. An empty shipment / delivery / ZVT11 list, SAP no-data or any error stops the run; nothing is written.
+
+**Test data is synthetic** (`tests/fixtures/k2xx/README.txt`): VT11/VL06O/ZMDETPC are derived from the real xdock and mustgo
+exports of 2026-11-05 (54 TPDC shipments, 834 item rows, 107 deliveries, 104 ZMDETPC rows), the ZVT11 file is invented, and
+the expected tables were computed from the spec text by a one-off script. So the tests pin spec 9.5's rules; they do **not**
+show equality with the macro's `11-05-2026_K2XX.xlsx`.
+
+**Open questions for the owner (each is a guess or an unconfirmed reading; the code does what is written here):**
+1. **`total` without a ZMDETPC row stays blank** (also `delivery_`, `pallet`, `child`), and a ZMDETPC `0 + 0` stays `0`: this
+   is spec 9.5 (macro output) and spec 4.12 (the fallbacks are for rNames containing `xdock`/`toyota`). The owner's INV
+   decision of 2026-11-10 (`total` falls back to `number_of_packages`, `0 -> 1`) is **not** applied to k2xx. Should it be?
+2. **`monday_include_sunday`**: the spec says "if `date1` is a Monday, replace the date with the previous day". The existing
+   VT11 code (chunk 4.1) types LOW = Sunday, HIGH = Monday (Sunday **and** Monday). Is that right, or Sunday only? The `date`
+   column, ZVT11 and ZMDETPC keep using the run date (Monday) either way. On by default; `[abc.k2xx] monday_include_sunday`.
+3. **ZVT11 window on a range/week run**: spec 3.2 only defines `date1 - 100` .. `date1 + 100`; a range uses `start - 100` ..
+   `end + 100`. `--date-range-buffer` is not added to it (`[abc.k2xx] zvt11_days` changes the 100).
+4. **ZVT11 "No data exists" popup**: the spec calls it an error; here it is a clean `NO DATA at step 'zvt11'`. Either way the
+   run stops and writes nothing. **Should an empty ZVT11 really stop k2xx**, given that VL06O is what relabel/repack need?
+5. **ZVT11 columns are not checked** (header titles of the text export unknown) and the table is written as exported. Spec 9.5
+   says the macro's sheet is the unformatted export too.
+6. **VL06O**: only `delivery` is required; the `pallets` column order of spec 3.3 is not enforced. Is the list layout name
+   really `pallets` on the owner's SAP (as `xdock` / `inv` were)?
+7. **ZMDETPC-only rows** (a delivery in ZMDETPC that is not in VL06O) are kept as rows with blank VL06O columns, as in the
+   INV merge (the macro's spacer rows). Not expected in practice because ZMDETPC is queried with the VL06O deliveries.
+8. **Output order/names**: `<date>_K2XX_ZVT11.tsv`, `_VT11.tsv`, `_VL06O.tsv` (the macro's sheet order `zvt11`, `vt11`,
+   `vl06o`). relabel/repack (3.4/3.5) will need this run's `vl06o`: within one process, or re-read from the TSV (spec 7.0
+   item 15 says "from the k2xx block's `vl06o` TSV of the same run"); to be decided with 3.4.
+9. **VT11 stand-in**: the fixtures assume `TIER_VT11_K2XX` selects the TPDC shipments (the spec 9.5 run had 107 deliveries,
+   like mustgo's TPDC set). Unconfirmed; irrelevant for the code, only for the fixture story.
+
 ## Design notes: `misc`
 
 Flow (`run_misc`, spec 5.4): VT11 -> distinct shipments -> VL06O (layout `inv`) -> `prepare_vl06o` (first row per delivery,
@@ -369,7 +458,8 @@ Each chunk is independent, depends on 2.1-2.4, and is verified against the secti
 - [x] 3.2 *(xdock, toyota and misc done. xdock: matches 9.6 on the real exports, see "Design notes: `xdock`"; stages for toyota trailers and misc regex
       exist in `abc/inv.rs` but have no runner)* `xdock` / `toyota` / `misc` (5.2-5.4, 9.6): VL06O dedup, ZMDETPC merge rules,
       pivot, toyota trailers table.
-- [ ] 3.3 `k2xx` (5.5, 9.5).
+- [x] 3.3 *(code + tests on SYNTHETIC stand-in data, 2026-11-10; not verified against the macro output or live SAP: needs the
+      owner's raw exports and K2XX xlsx, see "Design notes: `k2xx`")* `k2xx` (5.5, 9.5).
 - [ ] 3.4 `relabel` -> `combined` (5.6, 9.5): effective-plant rule, explicit history flag (decision 35).
 - [ ] 3.5 `repack` -> `snr_repack` (5.7, 9.5).
 - [ ] 3.6 `nc_tsp`, `nc_masterpack`, `redtag`, `busbar`, `inb_*`, `out_*` (5.8-5.17, 9.4): filters from 8.1.
@@ -439,7 +529,8 @@ Dependencies: none on Phase 2/3. 4.0 first; 4.1-4.5 are independent of each othe
       `S_VBELN` paste with the non-numeric first-row delete (`btn[14]`) and `wnd[2]` answers, `radR_SUMM`/`radR_COMPL`
       refresh sequence, execute, `MESSTXT1` popup, export `menu[0]/menu[3]/menu[1]`. Output columns `delivery, pallet,
       child`. Detail flow and `pallet_pick_date` are v2.
-- [ ] 4.6 *(v2)* ZVT11 Closed (3.2), ZMDESNR user-activity / by-date / exclude extras, VT22 export (3.7), VT03N read
+- [ ] 4.6 *(ZVT11 Closed coded 2026-11-10 for k2xx: `zvt11::run_closed_export_outcome`, all ids unverified, see the k2xx
+      checklist; the rest is open)* *(v2)* ZVT11 Closed (3.2), ZMDESNR user-activity / by-date / exclude extras, VT22 export (3.7), VT03N read
       (3.8), ZMDETPC detail + `pallet_pick_date`.
 
 Per chunk: code, pure-function unit tests, `cargo fmt/clippy/test`, a live smoke run with the exported raw file kept as

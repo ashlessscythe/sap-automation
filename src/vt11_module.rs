@@ -210,6 +210,21 @@ fn create_vt11_params_from_config(config: &HashMap<String, String>) -> VT11Param
         }
     }
 
+    for (key, slot) in [
+        ("closed_date", &mut params.closed_range),
+        ("created_date", &mut params.created_range),
+    ] {
+        let s = config
+            .get(&format!("{key}_start"))
+            .and_then(|v| parse_date(v).ok());
+        let e = config
+            .get(&format!("{key}_end"))
+            .and_then(|v| parse_date(v).ok());
+        if let Some(s) = s {
+            *slot = Some((s, e.unwrap_or(s)));
+        }
+    }
+
     if let Some(v) = config.get("ignore_display_error") {
         params.ignore_display_error = v.eq_ignore_ascii_case("true");
     }

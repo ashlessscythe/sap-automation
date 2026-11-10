@@ -532,6 +532,19 @@ impl SapConfig {
                         .additional_params
                         .insert("ignore_display_error".to_string(), b.to_string());
                 }
+                for (key, range) in [
+                    ("closed_date", o.vt11_closed_date),
+                    ("created_date", o.vt11_created_date),
+                ] {
+                    if let Some((s, e)) = range {
+                        entry
+                            .additional_params
+                            .insert(format!("{key}_start"), s.format("%Y-%m-%d").to_string());
+                        entry
+                            .additional_params
+                            .insert(format!("{key}_end"), e.format("%Y-%m-%d").to_string());
+                    }
+                }
             }
 
             // ZMDESNR-only knobs.

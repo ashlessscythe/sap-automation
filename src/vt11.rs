@@ -44,6 +44,10 @@ pub struct VT11Params {
     /// Config-style date format used when typing dates into SAP (`mm/dd/yyyy`, `yyyy-mm-dd`, ...).
     /// `None` means `mm/dd/yyyy`. The caller resolves CLI > config > default.
     pub date_format: Option<String>,
+    /// Actual shipment end ("closed") date range, typed into `K_DATEN`. Independent of `by_date`.
+    pub closed_range: Option<(NaiveDate, NaiveDate)>,
+    /// Creation date range, typed into `K_ERDAT`. Independent of `by_date`.
+    pub created_range: Option<(NaiveDate, NaiveDate)>,
 }
 
 impl Default for VT11Params {
@@ -63,6 +67,8 @@ impl Default for VT11Params {
             monday_include_sunday: false,
             ignore_display_error: false,
             date_format: None,
+            closed_range: None,
+            created_range: None,
         }
     }
 }
@@ -313,7 +319,6 @@ pub fn run_export_outcome(session: &GuiSession, params: &VT11Params) -> Result<E
     let eff_start = effective_start_date(params.start_date, params.monday_include_sunday);
     let start_date_str = crate::utils::config_ops::format_date_with(date_fmt, eff_start);
     let end_date_str = crate::utils::config_ops::format_date_with(date_fmt, params.end_date);
-    let high_text = high_date_text(eff_start, params.end_date, date_fmt);
 
     // Apply variant if provided
     if let Some(variant_name) = &params.sap_variant_name {
@@ -349,24 +354,35 @@ pub fn run_export_outcome(session: &GuiSession, params: &VT11Params) -> Result<E
     } else {
         "K_DATEN"
     };
+    // Explicit per-field ranges (--vt11-closed-date / --vt11-created-date) win over the
+    // generic by_date range when they target the same field.
+    let mut date_fields: Vec<(&str, NaiveDate, NaiveDate)> = Vec::new();
     if params.by_date {
-        // Set start date
-        println!("Setting start date to {:?}", start_date_str.clone());
-        if let Ok(txt) = session.find_by_id(format!("wnd[0]/usr/ctxt{date_field}-LOW")) {
-            if let Some(text_field) = txt.downcast::<GuiCTextField>() {
-                println!("start date set to {:?}", start_date_str.clone());
-                text_field.set_text(start_date_str.clone())?;
-            } else {
-                println!("Error with txt.downcast");
-            }
-        } else {
-            println!("Error with find_by_id");
+        date_fields.push((date_field, params.start_date, params.end_date));
+    }
+    for (field, range) in [
+        ("K_DATEN", params.closed_range),
+        ("K_ERDAT", params.created_range),
+    ] {
+        if let Some((s, e)) = range {
+            date_fields.retain(|(f, _, _)| *f != field);
+            date_fields.push((field, s, e));
         }
-
-        // Set end date (leave blank if same as start date)
-        if let Ok(txt) = session.find_by_id(format!("wnd[0]/usr/ctxt{date_field}-HIGH")) {
-            if let Some(text_field) = txt.downcast::<GuiCTextField>() {
-                text_field.set_text(high_text.clone())?;
+    }
+    for (field, s, e) in date_fields {
+        let eff = effective_start_date(s, params.monday_include_sunday);
+        let low = crate::utils::config_ops::format_date_with(date_fmt, eff);
+        let high = high_date_text(eff, e, date_fmt);
+        println!("Setting {field} to {low} .. {high}");
+        for (suffix, text) in [("LOW", low), ("HIGH", high)] {
+            if let Ok(txt) = session.find_by_id(format!("wnd[0]/usr/ctxt{field}-{suffix}")) {
+                if let Some(text_field) = txt.downcast::<GuiCTextField>() {
+                    text_field.set_text(text)?;
+                } else {
+                    println!("Error with txt.downcast for {field}-{suffix}");
+                }
+            } else {
+                println!("Error with find_by_id for {field}-{suffix}");
             }
         }
     }

@@ -22,12 +22,12 @@ Done in code (all unit-tested, fmt/clippy/test green, **not yet smoke-tested on 
   + LT23/ZMDETPC placeholders).
 * 2.3 (partial): `src/abc/run.rs` has `week_start`/`week_range` (Excel WEEKNUM, Sunday start; week 45/2026 =
   2026-11-01..11-07) and `parse_run_date`. NOT yet done: JSON date objects, `diff`, per-day loop, folder/file naming.
-* CLI: `--date` (`WK45`, `WK45/2026`, `YYYY-MM-DD`, `A..B`; sets date range + by_date), `--ignore-display-error`
+* CLI: `--vt11-closed-date` (K_DATEN) / `--vt11-created-date` (K_ERDAT) (`WK45`, `WK45/2026`, `YYYY-MM-DD`, `A..B`; replaced the generic `--date`; per-tcode flags `--<tcode>-date` to follow), `--ignore-display-error`
   (VT11 only), `--rname-dir` (relative = under reports_dir, files at `{reports_dir}\<rname-dir>\{TCODE}`; absolute used
   as is; applied in `get_tcode_file_path`). Date typed into SAP follows `[global].date_format` / `--date-format`
   (VT11 only so far; ZVT11 still hardcodes `%m/%d/%Y`).
 
-Owner to verify live (VT11, variant `XD_ALL_EPDC_`, `--date=WK45`, ignore display error): that it runs, the raw
+Owner to verify live (VT11, variant `XD_ALL_EPDC_`, `--vt11-closed-date=WK45`, ignore display error): that it runs, the raw
 export header matches the `mustgo` sample (91 rows, 18 columns), `K_DATEN` gets the right dates, no false aborts from
 the new post-execute classifier (status bar `E:`). Control IDs `K_ERDAT`, `K_STTRG`, `K_TKNUM` come from the VBA, not
 a live SAP. Known caveats: Monday rule compares dates after the Sunday shift (Mon start==end becomes Sun..Mon);

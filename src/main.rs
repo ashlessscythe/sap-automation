@@ -92,6 +92,15 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
+    if overrides.vt11_closed_date.is_some() || overrides.vt11_created_date.is_some() {
+        let target = overrides.tcode.clone().unwrap_or_default().to_uppercase();
+        if !target.is_empty() && target != "VT11" {
+            return Err(anyhow::anyhow!(
+                "--vt11-closed-date/--vt11-created-date are only supported for VT11 (got --tcode={target})"
+            ));
+        }
+    }
+
     // --pre-export-back is wired into the ZMDESNR export flow only. Reject early
     // when paired with any other --tcode so the user doesn't think it's silently
     // applied to (say) VT11.

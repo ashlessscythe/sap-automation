@@ -78,6 +78,11 @@ pub struct CliOverrides {
     /// Maps to `[tcode.VT11].ignore_display_error` in `config.toml`.
     pub ignore_display_error: Option<bool>,
 
+    /// VT11-only: actual shipment end ("closed") date range (`K_DATEN`), inclusive.
+    pub vt11_closed_date: Option<(NaiveDate, NaiveDate)>,
+    /// VT11-only: creation date range (`K_ERDAT`), inclusive.
+    pub vt11_created_date: Option<(NaiveDate, NaiveDate)>,
+
     /// Export subdirectory (`--rname-dir`). Relative = under the reports dir; files land
     /// in `<reports_dir>\<rname_dir>\<tcode>`. Absolute paths are used as is.
     pub rname_dir: Option<String>,
@@ -164,6 +169,12 @@ impl CliOverrides {
         if self.ignore_display_error.is_some() {
             v.push("--ignore-display-error");
         }
+        if self.vt11_closed_date.is_some() {
+            v.push("--vt11-closed-date");
+        }
+        if self.vt11_created_date.is_some() {
+            v.push("--vt11-created-date");
+        }
         if self.pre_export_back.is_some() {
             v.push("--pre-export-back");
         }
@@ -248,6 +259,14 @@ impl CliOverrides {
         }
         if let Some(v) = self.ignore_display_error {
             parts.push(format!("--ignore-display-error={v}"));
+        }
+        for (flag, range) in [
+            ("--vt11-closed-date", self.vt11_closed_date),
+            ("--vt11-created-date", self.vt11_created_date),
+        ] {
+            if let Some((s, e)) = range {
+                parts.push(format!("{flag}={s}..{e}"));
+            }
         }
         if let Some(v) = &self.rname_dir {
             parts.push(format!("--rname-dir={v}"));

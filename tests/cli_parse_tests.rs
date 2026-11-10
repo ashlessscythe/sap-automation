@@ -314,33 +314,43 @@ fn summary_line_includes_set_flags() {
 }
 
 #[test]
-fn date_week_sets_range_and_by_date() {
-    let cli = parse(&["--date=WK45/2026"]).unwrap();
-    let o = cli.to_overrides().unwrap();
-    assert_eq!(o.date_start, NaiveDate::from_ymd_opt(2026, 11, 1));
-    assert_eq!(o.date_end, NaiveDate::from_ymd_opt(2026, 11, 7));
-    assert_eq!(o.by_date, Some(true));
+fn vt11_closed_week_sets_range() {
+    let o = parse(&["--vt11-closed-date=WK45/2026"])
+        .unwrap()
+        .to_overrides()
+        .unwrap();
+    assert_eq!(
+        o.vt11_closed_date,
+        Some((
+            NaiveDate::from_ymd_opt(2026, 11, 1).unwrap(),
+            NaiveDate::from_ymd_opt(2026, 11, 7).unwrap()
+        ))
+    );
+    assert!(o.vt11_created_date.is_none());
+    assert_eq!(o.by_date, None);
 }
 
 #[test]
-fn date_keeps_explicit_by_date_false() {
-    let cli = parse(&["--date=2026-11-05", "--by-date=false"]).unwrap();
-    let o = cli.to_overrides().unwrap();
-    assert_eq!(o.date_start, NaiveDate::from_ymd_opt(2026, 11, 5));
-    assert_eq!(o.date_end, NaiveDate::from_ymd_opt(2026, 11, 5));
-    assert_eq!(o.by_date, Some(false));
+fn vt11_created_single_and_range() {
+    let d = |m, day| NaiveDate::from_ymd_opt(2026, m, day).unwrap();
+    let o = parse(&["--vt11-created-date=2026-11-05"])
+        .unwrap()
+        .to_overrides()
+        .unwrap();
+    assert_eq!(o.vt11_created_date, Some((d(11, 5), d(11, 5))));
+    let o = parse(&["--vt11-created-date=2026-11-01..2026-11-03"])
+        .unwrap()
+        .to_overrides()
+        .unwrap();
+    assert_eq!(o.vt11_created_date, Some((d(11, 1), d(11, 3))));
 }
 
 #[test]
-fn date_conflicts_with_date_start() {
-    let cli = parse(&["--date=WK45", "--date-start=2026-11-01"]).unwrap();
-    assert!(cli.to_overrides().is_err());
-}
-
-#[test]
-fn date_garbage_rejected() {
-    let cli = parse(&["--date=WKx"]).unwrap();
-    assert!(cli.to_overrides().is_err());
+fn vt11_dates_garbage_rejected() {
+    assert!(parse(&["--vt11-closed-date=WKx"])
+        .unwrap()
+        .to_overrides()
+        .is_err());
 }
 
 #[test]

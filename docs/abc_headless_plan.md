@@ -49,6 +49,10 @@ Decisions made while building (all tested):
 * **Headless export plumbing:** `export_target: Some(..)` switches a tcode to a local text-with-tabs export
   (`<export_dir>\<TCODE>\<yyyymmddhhmmss>_<TCODE>.txt`), no config reads, no Excel fallback, file must exist and be
   non-empty; the "save list in file" dialog title is checked. `None` = legacy behaviour.
+* **Export encoding (2026-11-10):** `raw::decode_export` reads UTF-8 first and falls back to Windows-1252 when the bytes are
+  not valid UTF-8 (SAP's default on Windows; real week VT11 exports contain a non-breaking space, byte `0xA0`, in "Seal Number
+  2" text, fixture `tests/fixtures/xdock/real/raw_vt11_wk43_cp1252.txt`). A UTF-16 BOM and bytes undefined in Windows-1252 are
+  errors. Cells are trimmed (NBSP counts as whitespace); an NBSP inside a cell is kept.
 * **Alias table** (`raw::*_ALIASES`): real list headers (`TPPt`, `Parent no`, `Plnt`, `Cust. Part`, `TO Number`,
   `Source Bin`, ...) -> canonical names. The real VT11 free text is truncated to 14 characters (unused by mustgo).
 * ZMDESNR by deliveries uses `scroll_paste` (the legacy per-cell loop only fills the visible dialog rows); a missing layout
@@ -77,6 +81,30 @@ Suggested next steps: (1) owner runs the checklists below; fix control ids from 
 Offline = no SAP needed (unit/golden tests only). SAP = needs a live SAP GUI to verify.
 
 ---
+
+## Date range buffer (owner decision 2026-11-10)
+
+ZMDETPC `S_DATE-LOW` / `-HIGH` = the run date range widened by 3 days each side **only for a week run** (`WKnn`; detected as
+a Sunday..Saturday range, `RunDate::is_week`); a single date or any other range is not widened. Every other tcode defaults to
+0. `--date-range-buffer=<n>` (or `[abc.<report>] date_range_buffer`) overrides this for every tcode that sets a range from the
+run date (today VT11 closed range and ZMDETPC), including single dates; `0` switches the ZMDETPC week default off. Code:
+`adapters::{buffer_days, buffered_range, zmdetpc_range, vt11_range}`. The ZMDETPC range of the owner's recording
+(`2026-10-15`..`2026-10-26`) is typed through the same two fields.
+
+## Future work (not scheduled)
+
+* **Excel (xlsx) export for the headless runner.** Today `export_to_target` only does text with tabs (`export_type` 0-3)
+  through the local-file dialog; the loaders parse that text. This applies to **every tcode** the runner uses (VT11, VL06O,
+  ZMDESNR, LT23, ZMDETPC, and later tcodes), not just one. The legacy interactive flows can export xlsx (e.g. VL06O
+  `menu[0]/menu[5]/menu[1]`, ZMDETPC `menu[0]/menu[3]/menu[1]` = "Select Spreadsheet" dialog, then `save_sap_file(..., true)`
+  with an `.xlsx` name from `get_tcode_file_path`); each tcode has its own spreadsheet menu path. To add it to the runner:
+  (1) a shared step in `sap_export_utils` that takes the tcode's spreadsheet menu candidates, handles the "Select
+  Spreadsheet" dialog (its radio buttons are unknown: needs a recording of the owner's export per tcode: menu, follow-up
+  dialog, save) and writes `<export_dir>\<TCODE>\<yyyymmddhhmmss>_<TCODE>.xlsx`; (2) per-tcode menu candidates next to the
+  existing local-file ones in each tcode step (`vt11`, `vl06o`, `zmdesnr`, `lt23`, `zmdetpc`); (3) an xlsx loader
+  (calamine is already a dependency) that applies the same header sanitising, aliases and cell normalising as `raw.rs`;
+  (4) an `export_format` choice (global default plus per-report override) in `[abc.<report>]`.
+  Decided 2026-11-10: not now, the text export is enough.
 
 ## Live verification checklist (mustgo)
 
@@ -164,7 +192,7 @@ step uses them:
 * `radR_SUMM`, `ctxtS_DATE-HIGH` again, `radR_COMPL`, `radR_SUMM` (the macro's refresh sequence), execute `wnd[0]/tbar[1]/btn[8]`.
 * "No list after execute" detection: the selection screen must keep `/usr/radR_SUMM` when SAP finds nothing; the popup text in
   `wnd[1]/usr/txtMESSTXT1` is read by the shared classifier. Test with a date that has no pallets.
-* Export menu `wnd[0]/mbar/menu[0]/menu[3]/menu[1]` (`menu[2]` as a second candidate), accepted only if the dialog is titled
+* Export menu `wnd[0]/mbar/menu[0]/menu[3]/menu[2]` (confirmed by the owner's recording; `menu[1]` is the spreadsheet export "Select Spreadsheet" and is not tried), accepted only if the dialog is titled
   "save list in file"; then radio `radSPOPLI-SELFLAG[1,0]` and the shared save dialog.
 * VT11 layout `scorecard` via the existing layout path (a missing layout is only logged by VT11 and the export goes ahead with
   the current layout: check the VT11 export has the 13 columns). VL06O layout `xdock` via the existing `check_select_layout`

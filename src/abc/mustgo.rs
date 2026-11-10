@@ -140,6 +140,11 @@ pub fn week_of(created_on: &str) -> String {
 /// Rows 19(b)-21: copy of `sn_to`, dedup by `parent_serial_number` among non-blank parents
 /// (blank-parent rows stay in place), `week` at position 19, `export_date` last.
 pub fn snr_copy(sn_to: &Table, run_date: NaiveDate) -> Result<Table> {
+    snr_copy_labeled(sn_to, &run_date.format("%Y-%m-%d").to_string())
+}
+
+/// [`snr_copy`] with an arbitrary `export_date` text (e.g. `WK_45` for a range run).
+pub fn snr_copy_labeled(sn_to: &Table, export_date: &str) -> Result<Table> {
     let mut t = ops::copy_table(sn_to, "snr_copy");
     ops::filter(&mut t, "parent_serial_number", "<>", FilterOpts::default())?;
     ops::dedup(&mut t, &["parent_serial_number"], true)?;
@@ -151,7 +156,7 @@ pub fn snr_copy(sn_to: &Table, run_date: NaiveDate) -> Result<Table> {
     t.insert_column(
         "export_date",
         &ColPos::Last,
-        vec![run_date.format("%Y-%m-%d").to_string(); n],
+        vec![export_date.to_string(); n],
     )?;
     Ok(t)
 }
@@ -204,7 +209,12 @@ pub fn write_outputs(
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir).with_context(|| format!("create {}", dir.display()))?;
         }
-        std::fs::write(&path, t.to_tsv()).with_context(|| format!("write {}", path.display()))?;
+        if let Err(e) = std::fs::write(&path, t.to_tsv()) {
+            for done in &paths {
+                let _ = std::fs::remove_file(done);
+            }
+            return Err(anyhow!("write {}: {e}", path.display()));
+        }
         paths.push(path);
     }
     Ok(paths)

@@ -76,6 +76,16 @@ export reader (SAP text/xlsx -> headers + rows) is separate and not written yet:
   short list-screen headers are mapped to canonical names by `*_ALIASES`; real data reproduces spec 9.3
   (`tests/mustgo_pipeline_real.rs`). Real VT11 free text is truncated to 14 characters.
 
+* Runner: `src/abc/runner.rs` (`SapSteps` seam, `run_mustgo`, `outcome_to_output`). Canonical columns each step must deliver
+  (owner: check these against the live layouts; canonical names are accepted as they are, short list titles are mapped by
+  `raw::*_ALIASES`, extra columns are ignored, a missing one stops the run naming it):
+  vt11 `shipment_number`, `transportplanningpt`; vl06o `delivery`; zmdesnr by deliveries `delivery`, `transfer_order_number`,
+  `parent_serial_number`, `status`; lt23 `delivery`, `transfer_order_number`, `creation_date`, `creation_time`,
+  `source_storage_bin`; zmdesnr by deliveries+TOs `lm_serial_number`, `parent_serial_number`, `plant`, `created_on`
+  (`week` is inserted at position 19, so the layout should be the 19-column `mg_view`). Step 19 receives the deliveries/TOs of
+  `sn_del` after the row-18 deletion (10 / 15), not of the 1011-row table. `export_date` = `yyyy-mm-dd` (single date) or
+  `WK_<n>` (range); no history call exists in the seam; outputs are written only after the last step.
+
 ## Phase 0: owner answers (blocking input)
 
 - [x] 0.1 Questions answered: this crate; v1 = mustgo, xdock, toyota; defaults for items 7-18 accepted; relabel

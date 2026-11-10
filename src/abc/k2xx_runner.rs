@@ -6,19 +6,23 @@
 //! `monday_include_sunday`) -> VL06O for all shipments (layout `pallets`) -> one row per
 //! delivery + `date` column -> ZVT11 Closed for the deliveries (variant `k2xx_`, layout
 //! `add_del`, run date +- 100 days) -> ZMDETPC summarised for the deliveries (variant
-//! `EPDC_TONY`) -> merge (spec 4.12, plain rules) -> save. No pivot (spec 7.0 item 1).
+//! `EPDC_TONY`) -> merge (spec 4.12, plain rules) -> pivot plant / sum of `total` -> save.
+//! The pivot is an owner decision (2026-11-10) that overrides spec 7.0 item 1 ("k2xx produces
+//! no pivot").
 //!
 //! Error semantics are those of the other reports: the first no-data / error / empty list
 //! stops the run and nothing is written (outputs are written only after the last step).
 //!
 //! Outputs (TSV, `registry::output_path`, folder `K2XX`), in the macro's sheet order:
-//! `<reports_dir>\K2XX\<today>\k2xx\<date>_K2XX_{ZVT11,VT11,VL06O}.tsv`. `VL06O` is the merged
-//! table; `relabel` and `repack` will read its `delivery` column (spec 7.0 item 15).
+//! `<reports_dir>\K2XX\<today>\k2xx\<date>_K2XX_{ZVT11,VT11,VL06O,PIVOT}.tsv`. `VL06O` is the
+//! merged table; `relabel` and `repack` will read its `delivery` column (spec 7.0 item 15).
+//! `PIVOT` (not a sheet of the macro workbook, written last) is the long table `plant`, `total`
+//! (no grand-total row, `(blank)` last), like the INV pivots.
 //!
 //! Canonical columns each step must deliver (a missing one stops the run naming it):
 //! * vt11: `shipment_number`
-//! * vl06o: `delivery` (the `pallets` layout also has `shipto_party`,
-//!   `name_of_the_shipto_party`, `deliv_datefromto`, `total_gds_mvt_stat`, `plant`,
+//! * vl06o: `delivery`, `plant` (the pivot rows; the `pallets` layout also has `shipto_party`,
+//!   `name_of_the_shipto_party`, `deliv_datefromto`, `total_gds_mvt_stat`,
 //!   `external_delivery_id`, `number_of_packages`)
 //! * zvt11: none by name (the table is written as exported and the header titles of the real
 //!   text export are unknown); it must have at least two columns and one row
@@ -103,7 +107,7 @@ pub trait K2xxSteps {
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct K2xxSummary {
-    /// `zvt11`, `vt11`, `vl06o` files.
+    /// `zvt11`, `vt11`, `vl06o`, `pivot` files.
     pub outputs: Vec<PathBuf>,
     pub export_date: String,
     pub shipments: usize,
@@ -115,12 +119,14 @@ pub struct K2xxSummary {
     pub without_zmdetpc: usize,
     /// Rows of the merged `vl06o` table.
     pub vl06o_rows: usize,
-    /// Sum of `total` over the merged table.
+    /// Rows (plants) of the pivot.
+    pub pivot_rows: usize,
+    /// Sum of `total` over the merged table (= sum of the pivot).
     pub total: String,
 }
 
-/// Run `k2xx`: VT11 -> VL06O -> ZVT11 Closed -> ZMDETPC -> merge -> outputs (`zvt11`, `vt11`,
-/// `vl06o`).
+/// Run `k2xx`: VT11 -> VL06O -> ZVT11 Closed -> ZMDETPC -> merge -> pivot -> outputs (`zvt11`,
+/// `vt11`, `vl06o`, `pivot`).
 pub fn run_k2xx(
     steps: &mut impl K2xxSteps,
     date: &RunDate,
@@ -151,7 +157,7 @@ pub fn run_k2xx(
         rep,
         "vl06o",
         steps.vl06o_by_shipments(&shipments, &sel.vl06o_layout),
-        &["delivery"],
+        &["delivery", "plant"],
     )?;
     let export_date = export_date_label(date);
     stage(
@@ -197,9 +203,16 @@ pub fn run_k2xx(
     }
     let merged = stage(rep, "merge", k2xx::merge_zmdetpc(&vl06o, &zmdetpc))?;
     let total = stage(rep, "total", k2xx::total_sum(&merged))?;
+    // owner decision (overrides spec 7.0 item 1): pivot plant / sum of total
+    let pivot = stage(rep, "pivot", k2xx::pivot_plant_total(&merged))?;
 
-    // row 58: save (only now, so a failed run leaves no output); no pivot
-    let tables: Vec<(&str, &Table)> = vec![("zvt11", &zvt11), ("vt11", &vt11), ("vl06o", &merged)];
+    // row 58: save (only now, so a failed run leaves no output)
+    let tables: Vec<(&str, &Table)> = vec![
+        ("zvt11", &zvt11),
+        ("vt11", &vt11),
+        ("vl06o", &merged),
+        ("pivot", &pivot),
+    ];
     let outputs = stage(rep, "save", write_outputs(&K2XX, out, date, &tables))?;
     for p in &outputs {
         log(rep, &format!("wrote {}", p.display()));
@@ -213,6 +226,7 @@ pub fn run_k2xx(
         zmdetpc_rows: zmdetpc.nrows(),
         without_zmdetpc: without,
         vl06o_rows: merged.nrows(),
+        pivot_rows: pivot.nrows(),
         total: format!("{total}"),
     })
 }

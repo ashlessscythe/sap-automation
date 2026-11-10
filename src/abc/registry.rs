@@ -109,7 +109,8 @@ pub const MISC: ReportDef = ReportDef {
 };
 
 /// `k2xx` (spec 5.5): VT11 -> VL06O (layout `pallets`) -> ZVT11 Closed -> ZMDETPC -> merge
-/// (plain rules). No pivot (spec 7.0 item 1). `relabel` / `repack` will read its `vl06o`.
+/// (plain rules) -> pivot plant/total (owner decision of 2026-11-10, overrides spec 7.0 item 1
+/// "no pivot"). `relabel` / `repack` will read its `vl06o`.
 pub const K2XX: ReportDef = ReportDef {
     name: "k2xx",
     folder: "K2XX",
@@ -121,7 +122,7 @@ pub const K2XX: ReportDef = ReportDef {
         Step::MergeZmdetpcPlain,
         Step::Save,
     ],
-    output_tables: &["zvt11", "vt11", "vl06o"],
+    output_tables: &["zvt11", "vt11", "vl06o", "pivot"],
 };
 
 const REPORTS: &[ReportDef] = &[MUSTGO, XDOCK, TOYOTA, MISC, K2XX];
@@ -251,7 +252,12 @@ mod tests {
                 .join("k2xx")
                 .join("11-05-2026_K2XX_ZVT11.tsv")
         );
-        assert_eq!(find_report("K2xx").unwrap().output_tables.len(), 3);
+        assert_eq!(
+            find_report("K2xx").unwrap().output_tables,
+            ["zvt11", "vt11", "vl06o", "pivot"]
+        );
+        let p = output_path(Path::new("r"), &K2XX, d(2026, 11, 10), &rd, "pivot");
+        assert!(p.ends_with("11-05-2026_K2XX_PIVOT.tsv"));
     }
 
     #[test]

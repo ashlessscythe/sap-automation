@@ -11,7 +11,10 @@
 //!   delivery, columns `..., date, delivery_, pallet, child, total`, `total = pallet + child`;
 //!   a delivery without a ZMDETPC row keeps `delivery_`, `pallet`, `child` and `total` blank.
 //! * `vt11` and `zvt11` are written as exported (`zvt11` is the unformatted export).
-//! * No pivot (owner decision, spec 7.0 item 1).
+//! * `pivot`: plant rows, sum of `total` over the merged `vl06o` table, in the shape of the INV
+//!   pivots ([`inv::pivot_sum`]: long form, ascending, `(blank)` plant last, no grand-total
+//!   row). **Owner decision of 2026-11-10; it overrides spec 7.0 item 1** ("k2xx produces no
+//!   pivot"): the macro workbook has no such sheet, so there is nothing to compare it with.
 //!
 //! Assumptions that are NOT confirmed by data (no raw k2xx export was available when this was
 //! written; see "Design notes: `k2xx`" in `docs/abc_headless_plan.md`):
@@ -47,6 +50,14 @@ pub fn merge_zmdetpc(vl06o: &Table, zmdetpc: &Table) -> Result<Table> {
 pub fn zvt11_window(date: &RunDate, days: i64) -> (NaiveDate, NaiveDate) {
     let (start, end) = date.as_range();
     crate::zvt11::closed_window(start, end, days)
+}
+
+/// Pivot of the merged table (owner decision, departs from spec 7.0 item 1): long table
+/// `plant`, `total` with the sum of the numeric `total` cells per plant; a blank `total` (no
+/// ZMDETPC row) adds nothing, a plant with only such rows shows `0`. Conventions of
+/// [`inv::pivot_sum`]: ascending, `(blank)` plant last, no grand-total row.
+pub fn pivot_plant_total(merged: &Table) -> Result<Table> {
+    inv::pivot_sum(merged, "plant", "total")
 }
 
 /// Sum of the numeric `total` cells of the merged table (blank cells add nothing), for the
@@ -140,6 +151,13 @@ mod tests {
             ]
         );
         assert_eq!(total_sum(&m).unwrap(), 3.0);
+        // every plant of the merged table gets a row, also with a blank or zero total
+        let p = pivot_plant_total(&m).unwrap();
+        assert_eq!(p.headers, ["plant", "total"]);
+        assert_eq!(
+            p.rows,
+            vec![vec!["FV33", "0"], vec!["FV55", "3"], vec!["FW61", "0"]]
+        );
     }
 
     #[test]
@@ -151,6 +169,9 @@ mod tests {
             ["1", "1", "2", "3", "5"]
         );
         assert!(merge_zmdetpc(&v, &t("z", &["delivery", "pallet"], &[])).is_err());
+        // the pivot needs `plant` (matched by name)
+        let m = merge_zmdetpc(&v, &z).unwrap();
+        assert!(pivot_plant_total(&m).is_err());
     }
 
     #[test]

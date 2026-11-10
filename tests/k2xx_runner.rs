@@ -170,16 +170,19 @@ fn full_run_on_the_stand_in_fixtures() {
         (s.zvt11_rows, s.zmdetpc_rows, s.without_zmdetpc),
         (108, 104, 3)
     );
-    assert_eq!(s.vl06o_rows, 107);
+    assert_eq!((s.vl06o_rows, s.pivot_rows), (107, 12));
     assert_eq!(s.total, "1144");
 
-    // outputs: <reports_dir>\K2XX\<today>\k2xx\<date>_K2XX_<TABLE>.tsv, macro sheet order, no pivot
-    assert_eq!(s.outputs.len(), 3);
+    // outputs: <reports_dir>\K2XX\<today>\k2xx\<date>_K2XX_<TABLE>.tsv, macro sheet order, then
+    // the pivot (owner decision, not a sheet of the macro workbook)
+    assert_eq!(s.outputs.len(), 4);
     let base = out.reports_dir.join("K2XX").join("2026-11-10").join("k2xx");
     assert_eq!(s.outputs[0], base.join("11-05-2026_K2XX_ZVT11.tsv"));
     assert_eq!(s.outputs[1], base.join("11-05-2026_K2XX_VT11.tsv"));
     assert_eq!(s.outputs[2], base.join("11-05-2026_K2XX_VL06O.tsv"));
-    assert_eq!(files_under(&out.reports_dir), 3);
+    assert_eq!(s.outputs[3], base.join("11-05-2026_K2XX_PIVOT.tsv"));
+    assert!(s.outputs.iter().all(|p| p.is_file()));
+    assert_eq!(files_under(&out.reports_dir), 4);
     assert_tables_equal(
         &load_fixture("k2xx", "expected_zvt11.tsv"),
         &read(&s.outputs[0], "expected_zvt11.tsv"),
@@ -190,6 +193,81 @@ fn full_run_on_the_stand_in_fixtures() {
         &load_fixture("k2xx", "expected_vl06o.tsv"),
         &read(&s.outputs[2], "expected_vl06o.tsv"),
     );
+    // pivot: plant / sum of total of the vl06o output, long form, no grand-total row
+    let pivot = read(&s.outputs[3], "expected_pivot.tsv");
+    assert_eq!(pivot.headers, ["plant", "total"]);
+    assert_tables_equal(&load_fixture("k2xx", "expected_pivot.tsv"), &pivot);
+    assert_eq!(pivot.rows[0], ["FV33", "32"]);
+    let _ = std::fs::remove_dir_all(&out.reports_dir);
+}
+
+fn pivot_path(out: &OutputSpec) -> PathBuf {
+    out.reports_dir
+        .join("K2XX")
+        .join("2026-11-10")
+        .join("k2xx")
+        .join("11-05-2026_K2XX_PIVOT.tsv")
+}
+
+/// The pivot is written with the other outputs, only after the last SAP step (ZMDETPC) and the
+/// merge succeeded: a failure of the last step leaves no pivot (and no other file) behind.
+#[test]
+fn pivot_is_written_only_after_the_last_step_succeeds() {
+    // a ZMDETPC table without `child` passes the SAP call but fails the column check
+    let mut bad = load_synthetic_in("k2xx", "zmdetpc", "raw_zmdetpc.txt");
+    bad.headers[2] = "something_else".into();
+    for (tag, ov) in [
+        ("piv_nd", Ov::NoData),
+        ("piv_err", Ov::Err),
+        ("piv_cols", Ov::Table(bad)),
+    ] {
+        let out = temp_out(tag);
+        let mut f = Fake {
+            over: vec![("zmdetpc", ov)],
+            ..Fake::default()
+        };
+        assert!(run_k2xx(&mut f, &day(), &K2xxSelection::default(), &out).is_err());
+        assert_eq!(f.calls, vec!["vt11", "vl06o", "zvt11", "zmdetpc"]);
+        assert!(!pivot_path(&out).exists(), "{tag}: no pivot");
+        assert_eq!(files_under(&out.reports_dir), 0, "{tag}: no partial output");
+    }
+
+    // the same seam with a working last step writes it, as the last output
+    let out = temp_out("piv_ok");
+    let mut f = Fake::default();
+    let s = run_k2xx(&mut f, &day(), &K2xxSelection::default(), &out).unwrap();
+    assert_eq!(f.calls.last(), Some(&"zmdetpc"));
+    assert!(pivot_path(&out).is_file());
+    assert_eq!(s.outputs.last().unwrap(), &pivot_path(&out));
+    let _ = std::fs::remove_dir_all(&out.reports_dir);
+}
+
+/// A blank plant becomes the `(blank)` row, last; a delivery without a ZMDETPC row adds nothing.
+#[test]
+fn pivot_puts_a_blank_plant_last() {
+    let out = temp_out("piv_blank");
+    let mut vl = load_synthetic_in("k2xx", "vl06o", "raw_vl06o.txt");
+    let (dc, pc) = (vl.col("delivery").unwrap(), vl.col("plant").unwrap());
+    // 85626834 (FV50, total 2) and 8012734818 (FW63, no ZMDETPC row) lose their plant
+    for r in vl.rows.iter_mut() {
+        if r[dc] == "85626834" || r[dc] == "8012734818" {
+            r[pc].clear();
+        }
+    }
+    let mut f = Fake {
+        over: vec![("vl06o", Ov::Table(vl))],
+        ..Fake::default()
+    };
+    let s = run_k2xx(&mut f, &day(), &K2xxSelection::default(), &out).unwrap();
+    let pivot = read(&s.outputs[3], "pivot");
+    assert_eq!(s.pivot_rows, 13);
+    assert_eq!(pivot.rows.last().unwrap(), &["(blank)", "2"]);
+    let row = |plant: &str| pivot.rows.iter().find(|r| r[0] == plant).unwrap()[1].clone();
+    assert_eq!(
+        (row("FV50"), row("FW63")),
+        ("92".to_string(), "2".to_string())
+    );
+    assert_eq!(s.total, "1144");
     let _ = std::fs::remove_dir_all(&out.reports_dir);
 }
 
@@ -315,10 +393,19 @@ fn errors_and_missing_columns() {
     vl.headers[0] = "something_else".into();
     let (e, _) = run_fail("cols2", vec![("vl06o", Ov::Table(vl))]);
     assert!(format!("{e:#}").contains("delivery"), "{e:#}");
+
+    // the pivot needs `plant`: a VL06O list without it stops the run before ZVT11
+    let mut vl = load_synthetic_in("k2xx", "vl06o", "raw_vl06o.txt");
+    let pc = vl.col("plant").unwrap();
+    vl.headers[pc] = "something_else".into();
+    let (e, f) = run_fail("cols3", vec![("vl06o", Ov::Table(vl))]);
+    let m = format!("{e:#}");
+    assert!(m.contains("missing column") && m.contains("plant"), "{m}");
+    assert_eq!(f.calls, vec!["vt11", "vl06o"]);
 }
 
 /// The ZVT11 table is written as exported, whatever its header titles are (the titles of the
-/// real text export are unknown), and VL06O only needs `delivery`.
+/// real text export are unknown), and VL06O only needs `delivery` and `plant`.
 #[test]
 fn zvt11_headers_and_extra_vl06o_columns_are_not_checked() {
     let out = temp_out("anyhdr");

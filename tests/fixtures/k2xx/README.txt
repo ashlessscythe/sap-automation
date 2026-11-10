@@ -36,6 +36,17 @@ the Rust code:
                                 (total = pallet + child; blank delivery_/pallet/child/total without a ZMDETPC row);
                                 sum of total = 1144
   expected_zvt11.tsv  108 x 7   the ZVT11 stand-in as loaded (written as exported)
+  expected_pivot.tsv   12 x 2   pivot of the vl06o table: plant, total (sum of total per plant). Long form, plants
+                                ascending, no grand-total row; sum = 1144. Computed by a separate one-off Python
+                                script straight from synthetic/raw_vl06o.txt and raw_zmdetpc.txt (first row per
+                                delivery, pallet + child of its ZMDETPC row, nothing for a delivery without one),
+                                independently of the Rust code. The pivot is an owner decision of 2026-11-10 that
+                                overrides spec 7.0 item 1 ("k2xx produces no pivot"); the macro workbook has no pivot
+                                sheet, so there will never be a macro pivot to compare with.
+                                The stand-in VL06O export already had the Plnt column (canonical `plant`), so the
+                                synthetic exports were NOT changed for the pivot. No stand-in row has a blank plant:
+                                the `(blank)` row is covered by hand-made rows in the tests (k2xx_golden
+                                pivot_edge_cases, k2xx_runner pivot_puts_a_blank_plant_last).
 The VT11 output is checked against the real xdock export in tests/k2xx_golden.rs.
 
 Tests: tests/k2xx_golden.rs, tests/k2xx_runner.rs.

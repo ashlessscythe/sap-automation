@@ -25,6 +25,10 @@ pub enum Step {
     LookupLt23,
     /// ZMDESNR by deliveries + TOs, `Filter_Copy_MG`, week/export_date columns.
     ZmdesnrByDeliveriesAndTos,
+    /// ZMDETPC summarised by deliveries from `vl06o` (xdock/toyota).
+    Zmdetpc,
+    /// Merge ZMDETPC into `vl06o` (spec 4.12, xdock/toyota rules).
+    MergeZmdetpc,
     /// Write output tables.
     Save,
 }
@@ -56,7 +60,22 @@ pub const MUSTGO: ReportDef = ReportDef {
     output_tables: &["lt23", "snr_copy", "pivot"],
 };
 
-const REPORTS: &[ReportDef] = &[MUSTGO];
+/// `xdock` (spec 5.3): VT11 -> VL06O (layout `xdock`) -> ZMDETPC -> merge -> pivot plant/total.
+/// The ZVT11 Closed step of the macro (`A!38`) is dropped: nothing uses its output (item 10).
+pub const XDOCK: ReportDef = ReportDef {
+    name: "xdock",
+    folder: "INV",
+    steps: &[
+        Step::Vt11,
+        Step::Vl06o,
+        Step::Zmdetpc,
+        Step::MergeZmdetpc,
+        Step::Save,
+    ],
+    output_tables: &["vt11", "vl06o", "pivot"],
+};
+
+const REPORTS: &[ReportDef] = &[MUSTGO, XDOCK];
 
 /// Case-insensitive lookup by rName.
 pub fn find_report(name: &str) -> Option<&'static ReportDef> {
@@ -139,6 +158,24 @@ mod tests {
         assert_eq!(excel_weeknum(d(2026, 11, 1)), 45);
         assert_eq!(excel_weeknum(d(2026, 1, 1)), 1);
         assert_eq!(excel_weeknum(d(2025, 12, 28)), 53);
+    }
+
+    #[test]
+    fn xdock_output_path() {
+        let rd = RunDate {
+            date1: d(2026, 11, 5),
+            date2: None,
+        };
+        let p = output_path(Path::new("reports"), &XDOCK, d(2026, 11, 10), &rd, "vl06o");
+        assert_eq!(
+            p,
+            Path::new("reports")
+                .join("INV")
+                .join("2026-11-10")
+                .join("xdock")
+                .join("11-05-2026_XDOCK_VL06O.tsv")
+        );
+        assert_eq!(find_report("XDock").unwrap().folder, "INV");
     }
 
     #[test]

@@ -49,24 +49,34 @@ fn fields(line: &str) -> Vec<&str> {
     line.split('\t').collect()
 }
 
-/// Index of the header line: the first non-blank line with at least 2 fields that has at least
-/// as many fields as the next non-blank line (preamble lines are shorter than the header).
+/// Index of the header line. Candidates are the non-blank lines with at least 2 fields that
+/// have at least as many fields as the next non-blank line (preamble lines are normally shorter
+/// than the header). When several lines qualify (a preamble of equally wide lines, as in the
+/// ZMDETPC export), the first one starting with a tab (the list border, like every header and
+/// data row) wins; otherwise the first candidate.
 fn find_header(lines: &[&str]) -> Option<usize> {
     let ne: Vec<usize> = (0..lines.len())
         .filter(|&i| !lines[i].trim().is_empty())
         .collect();
+    let mut first: Option<usize> = None;
     for (k, &i) in ne.iter().enumerate() {
         let n = fields(lines[i]).len();
         if n < 2 {
             continue;
         }
-        match ne.get(k + 1) {
-            None => return Some(i),
-            Some(&j) if n >= fields(lines[j]).len() => return Some(i),
-            _ => {}
+        let qualifies = match ne.get(k + 1) {
+            None => true,
+            Some(&j) => n >= fields(lines[j]).len(),
+        };
+        if !qualifies {
+            continue;
         }
+        if lines[i].starts_with('\t') {
+            return Some(i);
+        }
+        first.get_or_insert(i);
     }
-    None
+    first
 }
 
 /// `-?d{1,3}(,ddd)+(.d+)?` -> commas removed.
@@ -220,8 +230,24 @@ pub const VT11_ALIASES: &[(&str, &str)] = &[
     ("description", "descripof_shipment"),
     ("servcagent", "service_agent"),
 ];
+/// VT11 list layout of the INV reports (`xdock`, `toyota`, `misc`): a single `S` column
+/// (overall transport status), unlike the `mustgo` layout that has two.
+pub const VT11_INV_ALIASES: &[(&str, &str)] = &[
+    ("shipment", "shipment_number"),
+    ("s", "ovtransport_status"),
+    ("shty", "shipment_type"),
+    ("tppt", "transportplanningpt"),
+    ("st", "shipping_type"),
+    ("servcagent", "service_agent"),
+    ("actshipend", "actualshipmentend"),
+    ("acshet", "actshipmnt_end_time"),
+    ("description", "descripof_shipment"),
+    ("fa_tracking_id", "forwarding_agent_tracking_id"),
+];
 pub const VL06O_ALIASES: &[(&str, &str)] = &[
     ("shipto", "shipto_party"),
+    ("gm", "total_gds_mvt_stat"),
+    ("plnt", "plant"),
     ("nopk", "number_of_packages"),
     ("delivdate", "deliv_datefromto"),
     ("su", "sales_unit"),
@@ -240,6 +266,9 @@ pub const ZMDESNR_ALIASES: &[(&str, &str)] = &[
     ("to_number", "transfer_order_number"),
     ("created", "created_by"),
 ];
+/// ZMDETPC summarised: the list titles already are the canonical names (`Delivery`, `Pallet`,
+/// `Child`; a blank column sits between `Pallet` and `Child` and is dropped by the loader).
+pub const ZMDETPC_ALIASES: &[(&str, &str)] = &[];
 pub const LT23_ALIASES: &[(&str, &str)] = &[
     ("to_number", "transfer_order_number"),
     ("created_on", "creation_date"),
@@ -250,7 +279,7 @@ pub const LT23_ALIASES: &[(&str, &str)] = &[
     ("cs", "confirmation_status"),
 ];
 
-/// Load + rename in one go. `tcode` is `vt11`, `vl06o`, `zmdesnr` or `lt23`.
+/// Load + rename in one go. `tcode` is `vt11`, `vt11_inv` (INV list layout), `vl06o`, `zmdesnr`, `lt23` or `zmdetpc`.
 pub fn load_export_canonical(
     tcode: &str,
     name: &str,
@@ -259,9 +288,11 @@ pub fn load_export_canonical(
 ) -> Result<Table> {
     let aliases = match tcode {
         "vt11" => VT11_ALIASES,
+        "vt11_inv" => VT11_INV_ALIASES,
         "vl06o" => VL06O_ALIASES,
         "zmdesnr" => ZMDESNR_ALIASES,
         "lt23" => LT23_ALIASES,
+        "zmdetpc" => ZMDETPC_ALIASES,
         other => return Err(anyhow!("no header aliases known for tcode '{other}'")),
     };
     let mut t = load_export(name, bytes, opts)?;
@@ -387,6 +418,39 @@ mod tests {
         let txt = "\tdelivery\ttransfer_order_number\r\n\r\n\t1\t2\r\n";
         let t = load_export_canonical("lt23", "t", txt.as_bytes(), &RawOptions::default()).unwrap();
         assert_eq!(t.headers, vec!["delivery", "transfer_order_number"]);
+    }
+
+    #[test]
+    fn equal_width_preamble_does_not_hide_the_header() {
+        // ZMDETPC: equally wide preamble lines, then the header (the blank column between
+        // Pallet and Child is dropped); zero padded deliveries are normalised.
+        let txt = "Track Pallet Count\r\nExample\r\n\r\nUser       :\t\t\tX\r\nRun Date   :\t\t\t2026-11-10\r\nRun Time   :\t\t\t13:57:15\r\n\r\n\tDelivery\tPallet\t\tChild\r\n\r\n\t0085614256\t    1\t\t   0\r\n\t8012734818\t    0\t\t   2\r\n";
+        let t =
+            load_export_canonical("zmdetpc", "t", txt.as_bytes(), &RawOptions::default()).unwrap();
+        assert_eq!(t.headers, vec!["delivery", "pallet", "child"]);
+        assert_eq!(
+            t.rows,
+            vec![vec!["85614256", "1", "0"], vec!["8012734818", "0", "2"]]
+        );
+    }
+
+    #[test]
+    fn vl06o_xdock_layout_headers() {
+        let txt = "\tDelivery\tShip-to\tName of the ship-to party\tExternal Delivery ID\tGM\tPlnt\tNo.Pk\r\n\r\n\tREDACTED\tREDACTED\tCROWN (1)\t\tC\tFV34\t    1\r\n";
+        let t =
+            load_export_canonical("vl06o", "t", txt.as_bytes(), &RawOptions::default()).unwrap();
+        assert_eq!(
+            t.headers,
+            vec![
+                "delivery",
+                "shipto_party",
+                "name_of_the_shipto_party",
+                "external_delivery_id",
+                "total_gds_mvt_stat",
+                "plant",
+                "number_of_packages"
+            ]
+        );
     }
 
     #[test]

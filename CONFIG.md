@@ -119,6 +119,22 @@ ignore_display_error = true     # treat "no display authorization" as harmless (
 (`K_DATEN`), and it is also the format used to read dates from the exports (ISO dates, as seen in the real exports, are
 accepted whichever name is set). The built-in default is `mm/dd/yyyy`.
 
+### ABC Headless Section (`[abc.xdock]`)
+
+Optional, same rules as `[abc.mustgo]` (CLI flag > `[abc.xdock]` > `[global]` > default; wrong or empty values fall back).
+Used only by `--rname=xdock` (and the ABC Headless > xdock menu entry). `reports_dir` and `date_format` come from the CLI /
+`[global]` as above.
+
+```toml
+[abc.xdock]
+vt11_variant = "VT11_XDOCK_VARIANT"   # VT11 variant
+vt11_layout = "scorecard"       # VT11 layout (13 columns incl. shipment_number)
+vl06o_layout = "xdock"          # VL06O layout (delivery, ship-to, name, external id, GM, plant, no. of packages)
+zmdetpc_variant = "ZMDETPC_VARIANT"   # ZMDETPC variant (taken from the toyota row of the spec; check it exists)
+delete_exports = true           # delete each temporary export after it was loaded
+ignore_display_error = true     # treat "no display authorization" as harmless (VT11)
+```
+
 ## Migration from Legacy Format
 
 If you're upgrading from a previous version, you can use the migration tool to convert your configuration file to the new format:

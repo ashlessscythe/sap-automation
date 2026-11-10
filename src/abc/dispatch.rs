@@ -14,6 +14,16 @@
 //! delete_exports = true
 //! ignore_display_error = true
 //!
+//! [abc.k2xx]
+//! vt11_variant = "TIER_VT11_K2XX"
+//! vt11_layout = "scorecard"
+//! monday_include_sunday = true    # a Monday run date makes VT11 start on the Sunday
+//! vl06o_layout = "pallets"
+//! zvt11_variant = "k2xx_"
+//! zvt11_layout = "add_del"
+//! zvt11_days = 100                # ZVT11 Closed dates = run date -/+ this many days
+//! zmdetpc_variant = "EPDC_TONY"
+//!
 //! [abc.misc]                         # vt11_variant = "MISC_EPDC_", vt11_layout, vl06o_layout = "inv"
 //!
 //! [abc.toyota]                       # same keys as [abc.xdock]; only the defaults differ
@@ -34,6 +44,7 @@
 
 use super::adapters::{MustgoSapConfig, RealSapSteps};
 use super::inv_runner::{run_misc, run_toyota, run_xdock, InvSelection, InvSummary};
+use super::k2xx_runner::{run_k2xx, K2xxSelection, K2xxSummary};
 use super::raw::RawOptions;
 use super::registry;
 use super::run::RunDate;
@@ -186,6 +197,62 @@ fn resolve_inv(input: &ResolveInput, d: InvSelection) -> ResolvedInv {
     }
 }
 
+/// Effective settings of a `k2xx` run.
+#[derive(Debug, Clone)]
+pub struct ResolvedK2xx {
+    /// Export/session settings shared with `mustgo` (its VT11/ZMDESNR/LT23 names are unused).
+    pub cfg: MustgoSapConfig,
+    pub sel: K2xxSelection,
+    /// Root of the outputs (`<reports_dir>\K2XX\<today>\k2xx\...`).
+    pub reports_dir: PathBuf,
+}
+
+/// CLI > `[abc.k2xx]` > `[global]` > defaults (spec 5.5). A negative `zvt11_days` is ignored.
+pub fn resolve_k2xx(input: &ResolveInput) -> ResolvedK2xx {
+    let base = resolve_mustgo(input);
+    let d = K2xxSelection::default();
+    let sel = K2xxSelection {
+        vt11_variant: s(&input.section, "vt11_variant").unwrap_or(d.vt11_variant),
+        vt11_layout: s(&input.section, "vt11_layout").unwrap_or(d.vt11_layout),
+        monday_include_sunday: b(&input.section, "monday_include_sunday")
+            .unwrap_or(d.monday_include_sunday),
+        vl06o_layout: s(&input.section, "vl06o_layout").unwrap_or(d.vl06o_layout),
+        zvt11_variant: s(&input.section, "zvt11_variant").unwrap_or(d.zvt11_variant),
+        zvt11_layout: s(&input.section, "zvt11_layout").unwrap_or(d.zvt11_layout),
+        zvt11_days: int(&input.section, "zvt11_days")
+            .filter(|n| *n >= 0)
+            .unwrap_or(d.zvt11_days),
+        zmdetpc_variant: s(&input.section, "zmdetpc_variant").unwrap_or(d.zmdetpc_variant),
+    };
+    ResolvedK2xx {
+        cfg: base.cfg,
+        sel,
+        reports_dir: base.reports_dir,
+    }
+}
+
+/// Resolve `k2xx` from the CLI overrides and `config.toml` (section `[abc.k2xx]`).
+pub fn resolve_k2xx_from_environment() -> ResolvedK2xx {
+    resolve_k2xx(&environment_input("k2xx"))
+}
+
+/// Printable summary lines of a finished `k2xx` run.
+pub fn k2xx_summary_lines(name: &str, s: &K2xxSummary) -> Vec<String> {
+    let mut v = vec![
+        format!("{name} finished (date {})", s.export_date),
+        format!(
+            "  shipments {}, deliveries {}, zmdetpc rows {} ({} deliveries without one)",
+            s.shipments, s.deliveries, s.zmdetpc_rows, s.without_zmdetpc
+        ),
+        format!(
+            "  rows: zvt11 {}, vl06o {} (total {})",
+            s.zvt11_rows, s.vl06o_rows, s.total
+        ),
+    ];
+    v.extend(s.outputs.iter().map(|p| format!("  wrote {}", p.display())));
+    v
+}
+
 /// Resolve from the CLI overrides and `config.toml` (caller layer: this reads the config).
 pub fn resolve_from_environment() -> ResolvedMustgo {
     resolve_mustgo(&environment_input("mustgo"))
@@ -235,7 +302,7 @@ pub fn environment_input(name: &str) -> ResolveInput {
 
 /// Names of the reports that have a runner.
 pub fn runnable_reports() -> &'static [&'static str] {
-    &["mustgo", "xdock", "toyota", "misc"]
+    &["mustgo", "xdock", "toyota", "misc", "k2xx"]
 }
 
 /// Check that `name` is a registered report with a runner; returns the canonical name.
@@ -368,6 +435,17 @@ pub fn run_report(session: &GuiSession, name: &str, date: &RunDate) -> Result<Ve
             let mut steps = RealSapSteps::new(session, resolved.cfg);
             run_misc(&mut steps, date, &resolved.sel, &out)
                 .map(|s| (misc_summary_lines(name, &s), s.outputs))
+        }
+        "k2xx" => {
+            let resolved = resolve_k2xx_from_environment();
+            let out = OutputSpec {
+                reports_dir: resolved.reports_dir.clone(),
+                today,
+            };
+            announce(name, date, &resolved.cfg.export_dir, &out);
+            let mut steps = RealSapSteps::new(session, resolved.cfg);
+            run_k2xx(&mut steps, date, &resolved.sel, &out)
+                .map(|s| (k2xx_summary_lines(name, &s), s.outputs))
         }
         other => Err(anyhow!("no runner for '{other}'")),
     };
@@ -573,6 +651,65 @@ mod tests {
         assert!(l[1].contains("replaced 1") && l[2].contains("pivot 2"));
         assert!(!l.iter().any(|x| x.contains("zmdetpc")));
         assert!(l.last().unwrap().contains("m.tsv"));
+    }
+
+    #[test]
+    fn k2xx_defaults_precedence_and_summary() {
+        let r = resolve_k2xx(&ResolveInput::default());
+        assert_eq!(r.sel, K2xxSelection::default());
+        assert_eq!(r.sel.vt11_variant, "TIER_VT11_K2XX");
+        assert_eq!(r.sel.vt11_layout, "scorecard");
+        assert!(r.sel.monday_include_sunday);
+        assert_eq!(r.sel.vl06o_layout, "pallets");
+        assert_eq!(r.sel.zvt11_variant, "k2xx_");
+        assert_eq!(r.sel.zvt11_layout, "add_del");
+        assert_eq!(r.sel.zvt11_days, 100);
+        assert_eq!(r.sel.zmdetpc_variant, "EPDC_TONY");
+        assert_eq!(r.reports_dir, PathBuf::from("reports"));
+
+        let r = resolve_k2xx(&ResolveInput {
+            cli_reports_dir: Some("C:/cli".into()),
+            cli_ignore_display_error: Some(false),
+            section: section(
+                "vt11_variant = \"V\"\nmonday_include_sunday = false\nzvt11_variant = \"Z\"\nzvt11_layout = \"\"\nzvt11_days = 30\nvl06o_layout = \"p2\"\ndelete_exports = false\ndate_range_buffer = 2\n",
+            ),
+            ..ResolveInput::default()
+        });
+        assert_eq!(r.reports_dir, PathBuf::from("C:/cli"));
+        assert!(!r.cfg.ignore_display_error && !r.cfg.delete_exports);
+        assert_eq!(r.cfg.date_range_buffer, Some(2));
+        assert_eq!(r.sel.vt11_variant, "V");
+        assert!(!r.sel.monday_include_sunday);
+        assert_eq!(r.sel.zvt11_variant, "Z");
+        assert_eq!(r.sel.zvt11_layout, "add_del", "blank value falls through");
+        assert_eq!(r.sel.zvt11_days, 30);
+        assert_eq!(r.sel.vl06o_layout, "p2");
+        // a negative or wrongly typed day count is ignored
+        for bad in ["zvt11_days = -1\n", "zvt11_days = \"x\"\n"] {
+            let r = resolve_k2xx(&ResolveInput {
+                section: section(bad),
+                ..ResolveInput::default()
+            });
+            assert_eq!(r.sel.zvt11_days, 100);
+        }
+
+        assert_eq!(check_report(" K2XX ").unwrap(), "k2xx");
+        let s = K2xxSummary {
+            outputs: vec![PathBuf::from("k.tsv")],
+            export_date: "2026-11-05".into(),
+            shipments: 54,
+            deliveries: 107,
+            zvt11_rows: 409,
+            zmdetpc_rows: 106,
+            without_zmdetpc: 1,
+            vl06o_rows: 107,
+            total: "900".into(),
+        };
+        let l = k2xx_summary_lines("k2xx", &s);
+        assert!(l[0].contains("k2xx") && l[0].contains("2026-11-05"));
+        assert!(l[1].contains("54") && l[1].contains("107") && l[1].contains("106"));
+        assert!(l[2].contains("409") && l[2].contains("900"));
+        assert!(l.last().unwrap().contains("k.tsv"));
     }
 
     #[test]

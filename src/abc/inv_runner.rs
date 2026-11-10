@@ -116,11 +116,16 @@ pub struct InvSummary {
     pub trailers: Vec<(String, String)>,
 }
 
-fn log(rep: &str, msg: &str) {
+pub(super) fn log(rep: &str, msg: &str) {
     println!("[{rep}] {msg}");
 }
 
-fn take(rep: &str, step: &str, out: Result<StepOutput>, required: &[&str]) -> Result<Table> {
+pub(super) fn take(
+    rep: &str,
+    step: &str,
+    out: Result<StepOutput>,
+    required: &[&str],
+) -> Result<Table> {
     let out = out.with_context(|| format!("{rep} step '{step}' failed"))?;
     let t = match out {
         StepOutput::Table(t) => t,
@@ -148,11 +153,11 @@ fn take(rep: &str, step: &str, out: Result<StepOutput>, required: &[&str]) -> Re
     Ok(t)
 }
 
-fn stage<T>(rep: &str, step: &str, r: Result<T>) -> Result<T> {
+pub(super) fn stage<T>(rep: &str, step: &str, r: Result<T>) -> Result<T> {
     r.with_context(|| format!("{rep} step '{step}'"))
 }
 
-fn no_data(step: &str, message: &str) -> anyhow::Error {
+pub(super) fn no_data(step: &str, message: &str) -> anyhow::Error {
     NoDataError {
         step: step.to_string(),
         message: message.to_string(),

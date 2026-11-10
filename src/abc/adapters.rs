@@ -1,6 +1,7 @@
 //! Real SAP adapter for the headless runners: [`RealSapSteps`] implements
-//! [`super::runner::SapSteps`] (`mustgo`) and [`super::inv_runner::InvSteps`] (`xdock`) on top
-//! of the tcode steps (`vt11`, `vl06o`, `zmdesnr`, `lt23`, `zmdetpc`).
+//! [`super::runner::SapSteps`] (`mustgo`), [`super::inv_runner::InvSteps`] (`xdock`, `toyota`),
+//! [`super::inv_runner::MiscSteps`] and [`super::k2xx_runner::K2xxSteps`] on top of the tcode
+//! steps (`vt11`, `vl06o`, `zmdesnr`, `lt23`, `zmdetpc`, `zvt11` Closed).
 //!
 //! Nothing here reads config or CLI overrides: the caller builds a [`MustgoSapConfig`]
 //! (defaults below) and passes the session. Every step forces "text with tabs"
@@ -8,11 +9,13 @@
 //! `<export_dir>/<TCODE>/<yyyymmddhhmmss>_<TCODE>.txt`, loads it, and deletes it afterwards when
 //! `delete_exports` is set (a file that failed to load is kept for diagnosis).
 //!
-//! NOT run against SAP by the author. See "Live verification checklist (mustgo)" and "(xdock)"
-//! in `docs/abc_headless_plan.md` for every control id / behaviour that is unverified.
+//! NOT run against SAP by the author. See "Live verification checklist (mustgo)", "(xdock)"
+//! and "(k2xx)" in `docs/abc_headless_plan.md` for every control id / behaviour that is
+//! unverified.
 #![allow(dead_code)]
 
 use super::inv_runner::{InvSteps, MiscSteps};
+use super::k2xx_runner::K2xxSteps;
 use super::raw::RawOptions;
 use super::run::RunDate;
 use super::runner::{outcome_to_output, SapSteps, StepOutput};
@@ -23,6 +26,7 @@ use crate::vl06o::VL06OParams;
 use crate::vt11::VT11Params;
 use crate::zmdesnr::ZMDESNRParams;
 use crate::zmdetpc::ZMDETPCParams;
+use crate::zvt11::ZVT11ClosedParams;
 use anyhow::{anyhow, Context, Result};
 use chrono::{Local, NaiveDate, NaiveDateTime};
 use sap_scripting::GuiSession;
@@ -273,6 +277,47 @@ pub fn zmdetpc_params(
     }
 }
 
+/// `k2xx` VT11: like [`inv_vt11_params`] plus the `monday_include_sunday` rule (spec 5.5 row
+/// 52; the tcode step moves a Monday start to the previous Sunday).
+pub fn k2xx_vt11_params(
+    cfg: &MustgoSapConfig,
+    date: &RunDate,
+    variant: &str,
+    layout: &str,
+    monday_include_sunday: bool,
+    target: ExportTarget,
+) -> VT11Params {
+    VT11Params {
+        monday_include_sunday,
+        ..inv_vt11_params(cfg, date, variant, layout, target)
+    }
+}
+
+/// ZVT11 Closed for the deliveries; `from`..`to` is the already widened window (the
+/// `date_range_buffer` is not applied on top of it).
+pub fn zvt11_closed_params(
+    cfg: &MustgoSapConfig,
+    deliveries: &[String],
+    from: NaiveDate,
+    to: NaiveDate,
+    variant: &str,
+    layout: &str,
+    target: ExportTarget,
+) -> ZVT11ClosedParams {
+    ZVT11ClosedParams {
+        variant: Some(variant.to_string()).filter(|v| !v.trim().is_empty()),
+        layout_row: Some(layout.to_string()).filter(|l| !l.trim().is_empty()),
+        date_start: from,
+        date_end: to,
+        date_format: cfg.date_format.clone(),
+        deliveries: deliveries.to_vec(),
+        ship_point: None,
+        export_target: Some(target),
+        ignore_display_error: cfg.ignore_display_error,
+        t_code: "ZVT11".to_string(),
+    }
+}
+
 /// Map an export outcome to a step output (via [`outcome_to_output`]) and, when configured,
 /// delete the export file after it loaded successfully. A file that failed to load stays.
 pub fn finish_step(
@@ -403,6 +448,58 @@ impl InvSteps for RealSapSteps<'_> {
         let outcome = crate::zmdetpc::run_export_outcome(self.session, &params)
             .map_err(|e| anyhow!("zmdetpc: SAP step failed: {e}"))?;
         finish_step(&self.cfg, "zmdetpc", outcome)
+    }
+}
+
+impl K2xxSteps for RealSapSteps<'_> {
+    fn vt11(
+        &mut self,
+        date: &RunDate,
+        variant: &str,
+        layout: &str,
+        monday_include_sunday: bool,
+    ) -> Result<StepOutput> {
+        let (target, _) = self.target("VT11");
+        let params = k2xx_vt11_params(
+            &self.cfg,
+            date,
+            variant,
+            layout,
+            monday_include_sunday,
+            target,
+        );
+        let outcome = crate::vt11::run_export_outcome(self.session, &params)
+            .map_err(|e| anyhow!("vt11: SAP step failed: {e}"))?;
+        // same list layout (`scorecard`) as the INV reports
+        finish_step(&self.cfg, "vt11_inv", outcome)
+    }
+
+    fn vl06o_by_shipments(&mut self, shipments: &[String], layout: &str) -> Result<StepOutput> {
+        InvSteps::vl06o_by_shipments(self, shipments, layout)
+    }
+
+    fn zvt11_closed(
+        &mut self,
+        deliveries: &[String],
+        from: NaiveDate,
+        to: NaiveDate,
+        variant: &str,
+        layout: &str,
+    ) -> Result<StepOutput> {
+        let (target, _) = self.target("ZVT11");
+        let params = zvt11_closed_params(&self.cfg, deliveries, from, to, variant, layout, target);
+        let outcome = crate::zvt11::run_closed_export_outcome(self.session, &params)
+            .map_err(|e| anyhow!("zvt11 (closed): SAP step failed: {e}"))?;
+        finish_step(&self.cfg, "zvt11", outcome)
+    }
+
+    fn zmdetpc_summarised(
+        &mut self,
+        deliveries: &[String],
+        date: &RunDate,
+        variant: &str,
+    ) -> Result<StepOutput> {
+        InvSteps::zmdetpc_summarised(self, deliveries, date, variant)
     }
 }
 
@@ -553,6 +650,58 @@ mod tests {
         assert!(z1.variant.is_none());
         // a single date gets no default buffer
         assert_eq!((z1.date_start, z1.date_end), (d(11, 5), d(11, 5)));
+    }
+
+    #[test]
+    fn k2xx_params() {
+        let cfg = MustgoSapConfig {
+            date_format: Some("yyyy-mm-dd".into()),
+            date_range_buffer: Some(5),
+            ..MustgoSapConfig::default()
+        };
+        let monday = RunDate {
+            date1: d(11, 2),
+            date2: None,
+        };
+        let t = export_target(&cfg, "VT11", now());
+        let p = k2xx_vt11_params(
+            &cfg,
+            &monday,
+            "TIER_VT11_K2XX",
+            "scorecard",
+            true,
+            t.clone(),
+        );
+        assert!(p.monday_include_sunday);
+        assert_eq!(p.sap_variant_name.as_deref(), Some("TIER_VT11_K2XX"));
+        assert_eq!(p.layout_row.as_deref(), Some("scorecard"));
+        // the Monday becomes Sunday..Monday inside the VT11 step
+        assert_eq!(
+            crate::vt11::effective_start_date(d(11, 2), p.monday_include_sunday),
+            d(11, 1)
+        );
+        assert!(!k2xx_vt11_params(&cfg, &monday, "V", "L", false, t.clone()).monday_include_sunday);
+
+        // the window is passed through as given: no date_range_buffer on top
+        let z = zvt11_closed_params(
+            &cfg,
+            &s(&["8", "9"]),
+            d(7, 28),
+            NaiveDate::from_ymd_opt(2027, 2, 13).unwrap(),
+            "k2xx_",
+            "add_del",
+            t.clone(),
+        );
+        assert_eq!(z.variant.as_deref(), Some("k2xx_"));
+        assert_eq!(z.layout_row.as_deref(), Some("add_del"));
+        assert_eq!(z.date_start, d(7, 28));
+        assert_eq!(z.date_end, NaiveDate::from_ymd_opt(2027, 2, 13).unwrap());
+        assert_eq!(z.date_format.as_deref(), Some("yyyy-mm-dd"));
+        assert_eq!(z.deliveries, s(&["8", "9"]));
+        assert!(z.ship_point.is_none());
+        assert_eq!(z.export_target, Some(t.clone()));
+        let blank = zvt11_closed_params(&cfg, &s(&["8"]), d(1, 1), d(1, 2), " ", "", t);
+        assert!(blank.variant.is_none() && blank.layout_row.is_none());
     }
 
     #[test]

@@ -95,7 +95,7 @@ fn fail(msg: &str) -> Result<ExportOutcome> {
     Ok(ExportOutcome::Error(format!("ZMDETPC: {msg}")))
 }
 
-fn press(session: &GuiSession, id: &str) -> Result<bool> {
+pub(crate) fn press(session: &GuiSession, id: &str) -> Result<bool> {
     match session
         .find_by_id(id.to_string())
         .ok()
@@ -109,7 +109,7 @@ fn press(session: &GuiSession, id: &str) -> Result<bool> {
     }
 }
 
-fn set_ctext(session: &GuiSession, id: &str, text: &str) -> Result<bool> {
+pub(crate) fn set_ctext(session: &GuiSession, id: &str, text: &str) -> Result<bool> {
     match session
         .find_by_id(id.to_string())
         .ok()
@@ -123,7 +123,7 @@ fn set_ctext(session: &GuiSession, id: &str, text: &str) -> Result<bool> {
     }
 }
 
-fn select_radio(session: &GuiSession, id: &str) -> Result<bool> {
+pub(crate) fn select_radio(session: &GuiSession, id: &str) -> Result<bool> {
     match session
         .find_by_id(id.to_string())
         .ok()
@@ -137,7 +137,7 @@ fn select_radio(session: &GuiSession, id: &str) -> Result<bool> {
     }
 }
 
-fn close_wnd1(session: &GuiSession) {
+pub(crate) fn close_wnd1(session: &GuiSession) {
     if let Ok(w) = session.find_by_id("wnd[1]".to_string()) {
         if let Some(f) = w.downcast::<GuiFrameWindow>() {
             let _ = f.close();
@@ -145,7 +145,7 @@ fn close_wnd1(session: &GuiSession) {
     }
 }
 
-fn row0_filled(session: &GuiSession) -> bool {
+pub(crate) fn row0_filled(session: &GuiSession) -> bool {
     ["ctxt", "txt"].iter().any(|prefix| {
         session
             .find_by_id(format!(
@@ -164,8 +164,24 @@ fn row0_filled(session: &GuiSession) -> bool {
 
 /// Paste the deliveries into `S_VBELN`; Ok(false) when it could not be done.
 fn paste_deliveries(session: &GuiSession, deliveries: &[String]) -> Result<bool> {
-    if !press(session, "wnd[0]/usr/btn%_S_VBELN_%_APP_%-VALU_PUSH")? {
-        println!("ZMDETPC: delivery multi-selection button (S_VBELN) not found");
+    paste_multi(
+        session,
+        "ZMDETPC",
+        "wnd[0]/usr/btn%_S_VBELN_%_APP_%-VALU_PUSH",
+        deliveries,
+    )
+}
+
+/// Open the multi-selection window behind `button_id`, clear it, paste `values` with scrolling,
+/// answer the warnings and close it (shared with the ZVT11 Closed step). Ok(false) = failed.
+pub(crate) fn paste_multi(
+    session: &GuiSession,
+    tcode: &str,
+    button_id: &str,
+    deliveries: &[String],
+) -> Result<bool> {
+    if !press(session, button_id)? {
+        println!("{tcode}: multi-selection button not found ({button_id})");
         return Ok(false);
     }
     if let Ok(w) = session.find_by_id("wnd[1]".to_string()) {
@@ -181,12 +197,12 @@ fn paste_deliveries(session: &GuiSession, deliveries: &[String]) -> Result<bool>
         }
     }
     if !pasted {
-        println!("ZMDETPC: could not paste deliveries");
+        println!("{tcode}: could not paste the values");
         return Ok(false);
     }
     let _ = answer_popup_yes(session, 2, 5)?;
     if !row0_filled(session) {
-        println!("ZMDETPC: delivery paste not visible in the multi-selection window");
+        println!("{tcode}: paste not visible in the multi-selection window");
         close_wnd1(session);
         return Ok(false);
     }

@@ -1,7 +1,7 @@
 //! "ABC Headless" submenu: entry point for the reports used by the headless ABC runner
 //! (see `docs/abc_headless_plan.md`). Entries for steps without a standalone run (ZMDETPC,
-//! LT23) are shown but only print a notice. `mustgo` and `xdock` run the whole headless report
-//! after asking for the run date.
+//! LT23) are shown but only print a notice. The report entries (`mustgo`, `xdock`, `toyota`,
+//! `misc`, `k2xx`) run the whole headless report after asking for the run date.
 use sap_scripting::*;
 use std::thread;
 use std::time::Duration;
@@ -20,6 +20,7 @@ pub enum AbcChoice {
     Xdock,
     Toyota,
     Misc,
+    K2xx,
     Vt11,
     Vl06o,
     Zmdesnr,
@@ -30,7 +31,7 @@ pub enum AbcChoice {
 }
 
 /// Menu entries in display order.
-pub const ABC_ENTRIES: [(AbcChoice, &str); 11] = [
+pub const ABC_ENTRIES: [(AbcChoice, &str); 12] = [
     (
         AbcChoice::Mustgo,
         "mustgo - Headless report (asks for the run date)",
@@ -47,6 +48,10 @@ pub const ABC_ENTRIES: [(AbcChoice, &str); 11] = [
         AbcChoice::Misc,
         "misc - Headless report (asks for the run date)",
     ),
+    (
+        AbcChoice::K2xx,
+        "k2xx - Headless report (asks for the run date)",
+    ),
     (AbcChoice::Vt11, "VT11 - Auto Run (from config)"),
     (AbcChoice::Vl06o, "VL06O - Auto Run (from config)"),
     (AbcChoice::Zmdesnr, "ZMDESNR - Auto Run (from config)"),
@@ -57,7 +62,7 @@ pub const ABC_ENTRIES: [(AbcChoice, &str); 11] = [
     ),
     (
         AbcChoice::Zmdetpc,
-        "ZMDETPC - Pallet Count (runs inside xdock/toyota, no standalone run)",
+        "ZMDETPC - Pallet Count (runs inside xdock/toyota/k2xx, no standalone run)",
     ),
     (AbcChoice::Back, "Back to Main Menu"),
 ];
@@ -136,7 +141,9 @@ pub fn run_abc_menu(session: Option<&GuiSession>) {
             return;
         }
         if matches!(choice, AbcChoice::Lt23 | AbcChoice::Zmdetpc) {
-            println!("No standalone run: LT23 runs inside mustgo, ZMDETPC inside xdock/toyota.");
+            println!(
+                "No standalone run: LT23 runs inside mustgo, ZMDETPC inside xdock/toyota/k2xx."
+            );
             pause();
             continue;
         }
@@ -147,12 +154,17 @@ pub fn run_abc_menu(session: Option<&GuiSession>) {
         };
         if matches!(
             choice,
-            AbcChoice::Mustgo | AbcChoice::Xdock | AbcChoice::Toyota | AbcChoice::Misc
+            AbcChoice::Mustgo
+                | AbcChoice::Xdock
+                | AbcChoice::Toyota
+                | AbcChoice::Misc
+                | AbcChoice::K2xx
         ) {
             let name = match choice {
                 AbcChoice::Mustgo => "mustgo",
                 AbcChoice::Xdock => "xdock",
                 AbcChoice::Misc => "misc",
+                AbcChoice::K2xx => "k2xx",
                 _ => "toyota",
             };
             run_report_interactive(session, name);
@@ -196,7 +208,8 @@ mod tests {
         assert_eq!(choice_from_index(1), Some(AbcChoice::Xdock));
         assert_eq!(choice_from_index(2), Some(AbcChoice::Toyota));
         assert_eq!(choice_from_index(3), Some(AbcChoice::Misc));
-        assert_eq!(choice_from_index(4), Some(AbcChoice::Vt11));
+        assert_eq!(choice_from_index(4), Some(AbcChoice::K2xx));
+        assert_eq!(choice_from_index(5), Some(AbcChoice::Vt11));
         assert_eq!(
             choice_from_index(ABC_ENTRIES.len() - 1),
             Some(AbcChoice::Back)

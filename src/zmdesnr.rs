@@ -42,6 +42,9 @@ pub struct ZMDESNRParams {
     pub export_target: Option<ExportTarget>,
     /// With `export_target`: treat "no display authorization" as harmless.
     pub ignore_display_error: bool,
+    /// Serials for ZMDESNR by serial / History (tab 1, radio "History"; spec 3.4 "by serial").
+    /// Used with `tab_number = Some(1)`; empty keeps the legacy tab-1 behaviour.
+    pub history_serials: Vec<String>,
 }
 
 impl Default for ZMDESNRParams {
@@ -61,6 +64,7 @@ impl Default for ZMDESNRParams {
             scroll_paste: false,
             export_target: None,
             ignore_display_error: false,
+            history_serials: Vec::new(),
         }
     }
 }
@@ -157,6 +161,8 @@ pub fn run_export_outcome(session: &GuiSession, params: &ZMDESNRParams) -> Resul
     let tab_operation_success = if tab_number == 2 {
         // Tab 2 specific operations
         handle_tab2_operations(session, params)?
+    } else if tab_number == 1 && !params.history_serials.is_empty() {
+        handle_tab1_history(session, params)?
     } else {
         // Default operations for unspecified tabs
         println!("Tab number {tab_number} not specifically handled");
@@ -384,6 +390,30 @@ fn paste_transfer_orders(session: &GuiSession, params: &ZMDESNRParams) -> Result
     }
     let _ = answer_popup_yes(session, 2, 5)?;
     Ok(true)
+}
+
+/// Sub-screen prefix of tab 1 (by serial number), spec 3.4.
+const TAB1_PREFIX: &str =
+    "wnd[0]/usr/tabsTABSTRIP_TABB1/tabpUCOMM1/ssub%_SUBSCREEN_TABB1:ZMDE_SERIALNUMBER_HISTORY:9001/";
+
+/// ZMDESNR by serial / History (spec 3.4 "by serial", used by `relabel`): radio "History" and
+/// the serials in the `S_SERIAL` multi-selection. The execute is pressed by the caller.
+///
+/// UNVERIFIED live: the ids `radP_HISTRY` and `btn%_S_SERIAL_%_APP_%-VALU_PUSH` (both from the
+/// spec / VBA), that the multi-selection dialog is the same generic one as for deliveries, and
+/// that choosing the variant before the tab keeps tab 1 selected. The "pallet children"
+/// checkbox `chkP_PALLET` is left as the variant sets it.
+fn handle_tab1_history(session: &GuiSession, params: &ZMDESNRParams) -> Result<bool> {
+    if !crate::zmdetpc::select_radio(session, &format!("{TAB1_PREFIX}radP_HISTRY"))? {
+        println!("ZMDESNR: radio button radP_HISTRY not found");
+        return Ok(false);
+    }
+    crate::zmdetpc::paste_multi(
+        session,
+        "ZMDESNR",
+        &format!("{TAB1_PREFIX}btn%_S_SERIAL_%_APP_%-VALU_PUSH"),
+        &params.history_serials,
+    )
 }
 
 /// Handle operations specific to tab 2

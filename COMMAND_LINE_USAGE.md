@@ -154,12 +154,12 @@ The file extension drives the parser:
 
 | Flag | Meaning |
 | --- | --- |
-| `--rname=<name>` | Report to run. `mustgo`, `xdock` and `toyota` have a runner today (case-insensitive). Unknown names fail with the list of known reports. |
+| `--rname=<name>` | Report to run. `mustgo`, `xdock`, `toyota` and `misc` have a runner today (case-insensitive). Unknown names fail with the list of known reports. |
 | `--run-date=<DATE\|A..B\|WKnn>` | `YYYY-MM-DD`, `YYYY-MM-DD..YYYY-MM-DD`, or a week `WK45` / `WK45/2026` (Sunday..Saturday, Excel WEEKNUM; the year defaults to the current year). A range or week is **one run**: VT11 gets the whole range and `export_date` becomes `WK_<n>` (a single date gives `yyyy-mm-dd`). |
 
 `--rname` and `--run-date` require each other. Allowed with them: `--skip-sap-check`, `--keep-awake`, `--reports-dir`,
 `--date-format`, `--timezone`, `--ignore-display-error`. Defaults for variants, layouts, warehouse and clean-up come from the
-optional `[abc.mustgo]` / `[abc.xdock]` / `[abc.toyota]` section (see [CONFIG.md](CONFIG.md)); there are no per-tcode flags for a report.
+optional `[abc.mustgo]` / `[abc.xdock]` / `[abc.toyota]` / `[abc.misc]` section (see [CONFIG.md](CONFIG.md)); there are no per-tcode flags for a report.
 
 ```bash
 ./sap_automation.exe --rname=mustgo --run-date=2026-11-05
@@ -167,6 +167,7 @@ optional `[abc.mustgo]` / `[abc.xdock]` / `[abc.toyota]` section (see [CONFIG.md
 ./sap_automation.exe --rname=mustgo --run-date=2026-11-01..2026-11-07 --reports-dir=D:\reports
 ./sap_automation.exe --rname=xdock --run-date=2026-11-05
 ./sap_automation.exe --rname=toyota --run-date=2026-11-05
+./sap_automation.exe --rname=misc --run-date=2026-11-05
 ```
 
 The run needs a logged-in SAP GUI session (checked unless `--skip-sap-check`), asks nothing, and prints the step row counts
@@ -174,7 +175,9 @@ and the output paths. The flow of `mustgo` is VT11 -> VL06O -> ZMDESNR (by deliv
 TOs); the flow of `xdock` is VT11 (variant `XD_ALL_EPDC_`, layout `scorecard`) -> VL06O for all shipments (layout `xdock`, one
 row per delivery) -> ZMDETPC summarised for the deliveries -> merge (`total` = pallet + child, or the number of packages for a
 delivery without a ZMDETPC row) -> pivot of `total` by plant. `toyota` is the same flow with VT11 variant `FG_TOYO_XD`
-plus a trailers table (`ROUND(total / 14.5)` per pivot row). The first empty result or error stops the run and **nothing is
+plus a trailers table (`ROUND(total / 14.5)` per pivot row). `misc` is VT11 (variant `MISC_EPDC_`) -> VL06O (layout `inv`,
+one row per delivery) -> a shipping point `EPDC` is replaced by the first parenthesised part of the ship-to name -> pivot of
+`number_of_packages` by shipping point; it has no ZMDETPC step. The first empty result or error stops the run and **nothing is
 written**.
 
 **Exit codes:** `0` success; non-zero for every failure. The message tells them apart:
@@ -190,6 +193,8 @@ non-zero before SAP is touched (clap errors exit with 2).
   grand-total row).
 * Outputs `toyota`: `<reports_dir>\INV\<today yyyy-mm-dd>\toyota\<date>_TOYOTA_VT11.tsv`, `..._VL06O.tsv`, `..._PIVOT.tsv`
   and `..._TRAILERS.tsv` (`plant`, `trailers`; one row per pivot row, so a `(blank)` plant has one too).
+* Outputs `misc`: `<reports_dir>\INV\<today yyyy-mm-dd>\misc\<date>_MISC_VT11.tsv`, `..._VL06O.tsv`, `..._PIVOT.tsv`
+  (`shipping_pointreceiving_pt`, `number_of_packages`; same shape rules as the xdock pivot).
 * Temporary SAP exports (text with tabs, forced): `<reports_dir>\<TCODE>\<yyyymmddhhmmss>_<TCODE>.txt`; deleted after a
   successful load unless `[abc.<report>] delete_exports = false`. A file that failed to load is kept.
 
@@ -198,7 +203,7 @@ non-zero before SAP is touched (clap errors exit with 2).
 | Condition | Error |
 | --- | --- |
 | `--rname` without `--run-date` (or the reverse) | clap: required arguments not provided |
-| `--rname` unknown or without a runner | `Invalid --rname value: unknown report '...'. Known reports: mustgo, xdock, toyota` |
+| `--rname` unknown or without a runner | `Invalid --rname value: unknown report '...'. Known reports: mustgo, xdock, toyota, misc` |
 | `--run-date` not a date / range / week, or end before start, week outside 1-53 | `Invalid --run-date value '...': ...` |
 | `--rname` with `--run-loop`, `--run-sequence` or the run-loop / run-sequence subcommands | clap conflict / `--rname can't be combined ...` |
 | `--rname` with any per-tcode flag (`--tcode --layout --variant --export-type ... --bin-filter`) | `<flags> can't be used with --rname; ...` |

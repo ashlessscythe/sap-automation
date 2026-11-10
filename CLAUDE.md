@@ -39,7 +39,7 @@ Dependency pins matter: `aes = "=0.9.2"` is pinned because newer needs rustc 1.8
 
 ## ABC headless work
 
-`mustgo`, `xdock` and `toyota` are runnable: `sap_automation --rname=<mustgo|xdock|toyota> --run-date=<DATE|A..B|WKnn>` (also TUI > ABC Headless).
+`mustgo`, `xdock`, `toyota` and `misc` are runnable: `sap_automation --rname=<mustgo|xdock|toyota|misc> --run-date=<DATE|A..B|WKnn>` (also TUI > ABC Headless).
 Code is unit/golden tested offline (`mustgo` reproduces spec 9.3, `xdock` spec 9.6 with two documented differences to the xlsx);
 **the SAP steps have never run live** (see the "Live verification checklist" sections in `docs/abc_headless_plan.md`, the first
 thing to do when SAP is available).
@@ -49,7 +49,7 @@ selection mask, filter/dedup/lookup/sort), `mustgo` (pure stages), `raw` (loader
 `*_ALIASES` map the short list titles to canonical names), `runner` (the `SapSteps` seam, `run_mustgo`, `NoDataError`),
 `adapters` (`RealSapSteps` + `MustgoSapConfig` over the tcode steps), `dispatch` (CLI > `[abc.<report>]` > `[global]` resolver,
 `run_report`), `inv` (pure stages of the INV reports: VL06O prepare, ZMDETPC merge, pivot, trailers, misc regex), `inv_runner`
-(`InvSteps` seam of its own, `run_xdock` / `run_toyota` over one shared flow). Also `src/lt23.rs` and `src/zmdetpc.rs` (new tcodes), `src/utils/export_outcome.rs` (`ExportOutcome`, outcome classifiers, paste-list
+(`InvSteps` seam of its own, `run_xdock` / `run_toyota` over one shared flow; `MiscSteps` + `run_misc` without ZMDETPC). Also `src/lt23.rs` and `src/zmdetpc.rs` (new tcodes), `src/utils/export_outcome.rs` (`ExportOutcome`, outcome classifiers, paste-list
 helpers) and `src/abc_menu.rs` (TUI submenu).
 
 Rules: tcode steps expose `run_export_outcome` (the bool `run_export` wraps it) and are config-agnostic: everything comes in via
@@ -61,7 +61,8 @@ Fixtures: `tests/fixtures/mustgo/` holds xlsx-derived TSVs (approximate stand-in
 **byte-exact** (`-text` in `.gitattributes`: do not re-encode or normalise line endings). Tests: `mustgo_golden`,
 `mustgo_pipeline`, `mustgo_pipeline_real`, `mustgo_runner` (a fake `SapSteps` serving the real fixtures). `xdock`:
 `tests/fixtures/xdock/` (expected TSVs from the macro xlsx, `real/` byte-exact), `xdock_golden`, `xdock_runner`; `toyota`: `tests/fixtures/toyota/` (tiny: 3 deliveries, one plant), `toyota_golden`
-(also synthetic edge cases), `toyota_runner`.
+(also synthetic edge cases), `toyota_runner`; `misc`: `tests/fixtures/misc/` (tiny), `misc_golden` (real data + edge cases through
+`run_misc`).
 
 **Resume from `docs/abc_headless_plan.md` ("RESUME HERE")**; the spec is `docs/abc_headless_migration_spec.md`.
 

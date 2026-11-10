@@ -20,3 +20,4 @@ tests/fixtures/** text eol=lf
 tests/fixtures/mustgo/real/** -text
 tests/fixtures/xdock/real/** -text
 tests/fixtures/toyota/real/** -text
+tests/fixtures/misc/real/** -text

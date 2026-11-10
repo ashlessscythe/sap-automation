@@ -1,0 +1,9 @@
+
+	Delivery	Ship-to	Name of the ship-to party	External Delivery ID	GM	ShPt	No.Pk
+
+	85623472	SHIPPER	AMERICAN FURUKAWA INC		C	FV55
+	85628835	SHIPPER	GM FLINT		C	FV59	    1
+	85638448	SHIPPER	Billy Dimovski		C	FV55	    1
+	85638448	SHIPPER	Billy Dimovski		C	FV55	    1
+	85638448	SHIPPER	Billy Dimovski		C	FV55	    1
+	85638448	SHIPPER	Billy Dimovski		C	FV55	    1

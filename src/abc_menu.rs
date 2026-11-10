@@ -19,6 +19,7 @@ pub enum AbcChoice {
     Mustgo,
     Xdock,
     Toyota,
+    Misc,
     Vt11,
     Vl06o,
     Zmdesnr,
@@ -29,7 +30,7 @@ pub enum AbcChoice {
 }
 
 /// Menu entries in display order.
-pub const ABC_ENTRIES: [(AbcChoice, &str); 10] = [
+pub const ABC_ENTRIES: [(AbcChoice, &str); 11] = [
     (
         AbcChoice::Mustgo,
         "mustgo - Headless report (asks for the run date)",
@@ -41,6 +42,10 @@ pub const ABC_ENTRIES: [(AbcChoice, &str); 10] = [
     (
         AbcChoice::Toyota,
         "toyota - Headless report (asks for the run date)",
+    ),
+    (
+        AbcChoice::Misc,
+        "misc - Headless report (asks for the run date)",
     ),
     (AbcChoice::Vt11, "VT11 - Auto Run (from config)"),
     (AbcChoice::Vl06o, "VL06O - Auto Run (from config)"),
@@ -142,11 +147,12 @@ pub fn run_abc_menu(session: Option<&GuiSession>) {
         };
         if matches!(
             choice,
-            AbcChoice::Mustgo | AbcChoice::Xdock | AbcChoice::Toyota
+            AbcChoice::Mustgo | AbcChoice::Xdock | AbcChoice::Toyota | AbcChoice::Misc
         ) {
             let name = match choice {
                 AbcChoice::Mustgo => "mustgo",
                 AbcChoice::Xdock => "xdock",
+                AbcChoice::Misc => "misc",
                 _ => "toyota",
             };
             run_report_interactive(session, name);
@@ -189,7 +195,8 @@ mod tests {
         assert_eq!(choice_from_index(0), Some(AbcChoice::Mustgo));
         assert_eq!(choice_from_index(1), Some(AbcChoice::Xdock));
         assert_eq!(choice_from_index(2), Some(AbcChoice::Toyota));
-        assert_eq!(choice_from_index(3), Some(AbcChoice::Vt11));
+        assert_eq!(choice_from_index(3), Some(AbcChoice::Misc));
+        assert_eq!(choice_from_index(4), Some(AbcChoice::Vt11));
         assert_eq!(
             choice_from_index(ABC_ENTRIES.len() - 1),
             Some(AbcChoice::Back)

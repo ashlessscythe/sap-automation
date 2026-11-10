@@ -9,12 +9,11 @@ Do not re-read the whole spec. One chunk per session; end by updating this file.
 ## RESUME HERE (state as of 2026-11-10)
 
 Working mode: **step by step; Claude codes, the owner runs it against live SAP and brings back the real exports.**
-`mustgo`, `xdock` and `toyota` are runnable end to end in code: `sap_automation --rname=mustgo --run-date=2026-11-05`,
-`sap_automation --rname=xdock --run-date=2026-11-05`, `sap_automation --rname=toyota --run-date=2026-11-05`. Everything that does not need SAP is unit/golden tested on the real
+`mustgo`, `xdock`, `toyota` and `misc` are runnable end to end in code: `sap_automation --rname=mustgo --run-date=2026-11-05`,
+`sap_automation --rname=xdock --run-date=2026-11-05`, `sap_automation --rname=toyota --run-date=2026-11-05`, `sap_automation --rname=misc --run-date=2026-11-05`. Everything that does not need SAP is unit/golden tested on the real
 exports (`mustgo` reproduces spec 9.3; `xdock` spec 9.6, with the two documented differences to the macro xlsx, see
 "Design notes: `xdock`"). **Nothing SAP-facing has been run live.** Next for the owner: the live verification checklists
-below (mustgo, then xdock). Next for Claude: `misc` (INV stages in `abc/inv.rs`; VT11 variant `MISC_EPDC_`, VL06O layout `inv`, dedup, regex step,
-pivot `shipping_pointreceiving_pt` / `number_of_packages`; no ZMDETPC).
+below (mustgo, then xdock). Next for Claude: `k2xx` (3.3), then `relabel`, `repack`.
 
 Done in code (fmt/clippy/test green; SAP parts not smoke-tested):
 * Foundation (4.0): `src/utils/export_outcome.rs` (`ExportOutcome`, P6 classifier, `classify_after_execute`,
@@ -67,9 +66,13 @@ Decisions made while building (all tested):
   ABC menu entry. Outputs `vt11`, `vl06o`, `pivot`, `trailers` as TSV under `...\INV\<today>\toyota\`. Tests: `toyota_golden`
   (real tiny export + xlsx, synthetic edge cases), `toyota_runner`.
 
+* **misc (3.2):** `inv_runner::run_misc` + its own `MiscSteps` seam (VT11, VL06O only; xdock/toyota `InvSteps` untouched,
+  `RealSapSteps` implements both), registry `MISC` (folder `INV`), `[abc.misc]` (`vt11_variant` `MISC_EPDC_`, `vt11_layout`,
+  `vl06o_layout` `inv`), ABC menu entry, `raw::VL06O_ALIASES` `shpt` -> `shipping_pointreceiving_pt`. Tests: `misc_golden`.
+
 Suggested next steps: (1) owner runs the checklists below; fix control ids from the findings, keep the exports as fixtures;
-(2) `misc` (3.2); (3) `k2xx`, `relabel`,
-`repack`, then the v2 list (ZVT11 Closed, VT22, VT03N); (4) per-day loop and `rname_overrides` if wanted (2.3 remainder).
+(2) `k2xx`, `relabel`, `repack` (3.3-3.5); (3) the v2 list (ZVT11 Closed, VT22, VT03N);
+(4) per-day loop and `rname_overrides` if wanted (2.3 remainder).
 
 Offline = no SAP needed (unit/golden tests only). SAP = needs a live SAP GUI to verify.
 
@@ -183,6 +186,28 @@ same ZMDETPC step and variant). Differences: VT11 variant `FG_TOYO_XD` (layout `
 Expected on the verification data (tiny): 3 shipments, 3 deliveries, 3 ZMDETPC rows, pivot `FV55` 4, trailers `FV55` 0.
 Compare with `tests/fixtures/toyota/`. No new control ids.
 
+## Live verification checklist (misc)
+
+As the xdock checklist, minus ZMDETPC (misc has no ZMDETPC step). New unverified items, only these: VT11 variant `MISC_EPDC_`
+with layout `scorecard`, and VL06O layout `inv` (header `ShPt` = shipping point; a missing layout is only logged by the
+existing layout code, so check the export has the 7 columns incl. `ShPt` and `No.Pk`: a missing `shipping_pointreceiving_pt`
+column stops the run naming it). Run `sap_automation --rname=misc --run-date=2026-11-05`; outputs under
+`<reports_dir>\INV\<today>\misc\<date>_MISC_{VT11,VL06O,PIVOT}.tsv`. Expected on the verification data: 3 shipments, 3
+deliveries, pivot `FV55` 1, `FV59` 1. **The `EPDC` replacement has never been seen on real data** (the export has no `EPDC`
+shipping point): when a run has such rows, compare the pivot labels with the macro's.
+
+## Design notes: `misc`
+
+Flow (`run_misc`, spec 5.4): VT11 -> distinct shipments -> VL06O (layout `inv`) -> `prepare_vl06o` (first row per delivery,
+`date`) -> `inv::misc_ship_to_regex` -> `pivot_sum(shipping_pointreceiving_pt, number_of_packages)`. Pivot shape equals xdock's:
+long table, columns named after the source columns, label order case-insensitive ascending (`(` sorts before letters), `(blank)`
+last, labels differing only in case are one group (as in an Excel pivot), no grand total. **Differences to
+`11-05-2026_MISC.xlsx` (asserted in `tests/misc_golden.rs`):** (1) `number_of_packages` of delivery 85623472 is blank in the text
+export and 0 in the xlsx (counts as 0 either way); (2) pivot header `Row Labels` / `Sum of number_of_packages` and a `Grand
+Total` row in the xlsx; (3) the 14-character list truncation and Excel dates in the VT11 sheet. Everything else is identical.
+Edge cases tested: `EPDC` with and without parentheses (the first `(...)` group, parentheses kept; the match is case sensitive),
+rows without `EPDC`, blank shipping point, dedup by delivery (first row), empty VT11 / VL06O, missing column.
+
 ## Design notes: `toyota`
 
 Same flow and stages as xdock (see below) plus `inv::trailers(pivot)`: `plant`, `trailers` = `ROUND(total / 14.5)` (halves away
@@ -277,7 +302,7 @@ Dependencies: 0.1 for naming/format decisions. Order is flexible except 2.4 need
 Each chunk is independent, depends on 2.1-2.4, and is verified against the section 9 golden data. Order by value:
 
 - [x] 3.1 *(done, matches 9.3 on xlsx-derived and real data)* `mustgo` post-process + `snr_copy` + `week` + pivot (5.1, 9.3).
-- [ ] 3.2 *(xdock and toyota done; misc pending. xdock: matches 9.6 on the real exports, see "Design notes: `xdock`"; stages for toyota trailers and misc regex
+- [x] 3.2 *(xdock, toyota and misc done. xdock: matches 9.6 on the real exports, see "Design notes: `xdock`"; stages for toyota trailers and misc regex
       exist in `abc/inv.rs` but have no runner)* `xdock` / `toyota` / `misc` (5.2-5.4, 9.6): VL06O dedup, ZMDETPC merge rules,
       pivot, toyota trailers table.
 - [ ] 3.3 `k2xx` (5.5, 9.5).

@@ -12,7 +12,7 @@
 //! in `docs/abc_headless_plan.md` for every control id / behaviour that is unverified.
 #![allow(dead_code)]
 
-use super::inv_runner::InvSteps;
+use super::inv_runner::{InvSteps, MiscSteps};
 use super::raw::RawOptions;
 use super::run::RunDate;
 use super::runner::{outcome_to_output, SapSteps, StepOutput};
@@ -324,6 +324,16 @@ impl SapSteps for RealSapSteps<'_> {
         let outcome = crate::zmdesnr::run_export_outcome(self.session, &params)
             .map_err(|e| anyhow!("zmdesnr (by deliveries + TOs): SAP step failed: {e}"))?;
         finish_step(&self.cfg, "zmdesnr", outcome).context("zmdesnr (by deliveries + TOs)")
+    }
+}
+
+impl MiscSteps for RealSapSteps<'_> {
+    fn vt11(&mut self, date: &RunDate, variant: &str, layout: &str) -> Result<StepOutput> {
+        InvSteps::vt11(self, date, variant, layout)
+    }
+
+    fn vl06o_by_shipments(&mut self, shipments: &[String], layout: &str) -> Result<StepOutput> {
+        InvSteps::vl06o_by_shipments(self, shipments, layout)
     }
 }
 

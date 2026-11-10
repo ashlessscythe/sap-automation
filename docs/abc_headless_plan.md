@@ -8,12 +8,42 @@ Do not re-read the whole spec. One chunk per session; end by updating this file.
 
 ## RESUME HERE (state as of 2026-11-10)
 
-Working mode: **step by step; Claude codes, the owner runs it against live SAP and brings back the real exports.**
-`mustgo`, `xdock`, `toyota` and `misc` are runnable end to end in code: `sap_automation --rname=mustgo --run-date=2026-11-05`,
-`sap_automation --rname=xdock --run-date=2026-11-05`, `sap_automation --rname=toyota --run-date=2026-11-05`, `sap_automation --rname=misc --run-date=2026-11-05`. Everything that does not need SAP is unit/golden tested on the real
-exports (`mustgo` reproduces spec 9.3; `xdock` spec 9.6, with the two documented differences to the macro xlsx, see
-"Design notes: `xdock`"). **Nothing SAP-facing has been run live.** Next for the owner: the live verification checklists
-below (mustgo, then xdock). Next for Claude: `k2xx` (3.3), then `relabel`, `repack`.
+**Handoff summary (released as v0.7.0, branch `dev` = `public`, tag `v0.7.0`).**
+
+Working mode: **step by step; Claude codes, the owner runs it against live SAP and brings back the real exports/recordings.**
+The owner works through a lead/worker split: the main session acts as the owner's stand-in (decides, verifies, commits) and
+a single worker subagent codes one report at a time; the lead re-runs the four CI commands itself before every commit.
+
+Status: `mustgo`, `xdock`, `toyota` and `misc` are runnable end to end (`sap_automation --rname=<name> --run-date=<DATE|A..B|WKnn>`)
+and **the owner has run all four live successfully** (2026-11-10, after the live fixes listed under "Live findings"). Offline
+they are unit/golden tested on the owner's real exports (`mustgo` reproduces spec 9.3; `xdock` spec 9.6 with the documented
+differences to the macro xlsx, see "Design notes: `xdock`"). Chunk 3.2 is complete. **Next for Claude: `k2xx` (3.3), then
+`relabel` (3.4), `repack` (3.5).** Ask the owner for the raw exports (VT11, VL06O, ZMDETPC, ZMDESNR ...) and the macro xlsx of
+the next report first; golden tests need them. Work like the existing reports: pure stages in `src/abc/`, a seam trait in
+`inv_runner.rs`/`runner.rs`, `registry` entry, `dispatch` resolver + `[abc.<report>]`, ABC menu entry, fixtures byte-exact, docs.
+
+**Owner decisions (2026-11-10, all implemented and tested):**
+* INV `total` = ZMDETPC `pallet + child` when non-zero, else the delivery's `number_of_packages` (blank or zero total, or no
+  ZMDETPC row); a `total` still exactly `0` becomes `1`. (Differs from the macro xlsx, which has 0 for deliveries without a
+  ZMDETPC row; real xdock/toyota numbers are unchanged: xdock grand total 1493.)
+* VL06O dedup keeps the first row of a delivery (spec Q36); `0 -> 1` is an exact match, not the macro's substring replace.
+* Pivot = long form, sorted ascending, `(blank)` last, no grand-total row; toyota `trailers` is a separate table
+  (`round(total / 14.5)`, blank plant included).
+* ZMDETPC date range = run date widened by 3 days each side **only for week runs**; every other tcode 0. `--date-range-buffer=<n>`
+  (or `[abc.<report>] date_range_buffer`) overrides for every tcode that sets a range from the run date (VT11, ZMDETPC); see
+  "Date range buffer".
+* Headless runner exports text with tabs only; Excel export for all tcodes is future work (see "Future work").
+* Commit workflow: separate commits per change, never `sync_public.*` without being asked (it force-pushes; when `public` is an
+  ancestor of `dev` a plain `git push origin dev:public` gives the same result). Tags are annotated `v<version>`.
+
+**Live findings (fixed, so do not re-introduce):**
+* VL06O layout popup on the owner's SAP is a classic list (`lbl[1,row]`, Find `btn[71]`), not the ALV grid: handled by
+  `select_layout_utils::select_layout_from_list` (visible label + F2, else Find + hit list + F2).
+* ZMDETPC local-file export is `menu[0]/menu[3]/menu[2]`; `menu[1]` is the spreadsheet export ("Select Spreadsheet"). The shared
+  `open_local_file_dialog` now waits for the dialog, logs why a candidate failed and verifies a rejected dialog is really closed.
+* Real VT11 week exports are Windows-1252 (a non-breaking space `0xA0`): `raw::decode_export` falls back to Windows-1252.
+* Recordings may contain accidental clicks (e.g. btn[39] + F12 in the layout recording): confirm with the owner which steps are
+  real before coding them, and mention contradictions instead of picking one silently.
 
 Done in code (fmt/clippy/test green; SAP parts not smoke-tested):
 * Foundation (4.0): `src/utils/export_outcome.rs` (`ExportOutcome`, P6 classifier, `classify_after_execute`,
@@ -74,9 +104,14 @@ Decisions made while building (all tested):
   `RealSapSteps` implements both), registry `MISC` (folder `INV`), `[abc.misc]` (`vt11_variant` `MISC_EPDC_`, `vt11_layout`,
   `vl06o_layout` `inv`), ABC menu entry, `raw::VL06O_ALIASES` `shpt` -> `shipping_pointreceiving_pt`. Tests: `misc_golden`.
 
-Suggested next steps: (1) owner runs the checklists below; fix control ids from the findings, keep the exports as fixtures;
-(2) `k2xx`, `relabel`, `repack` (3.3-3.5); (3) the v2 list (ZVT11 Closed, VT22, VT03N);
-(4) per-day loop and `rname_overrides` if wanted (2.3 remainder).
+Suggested next steps: (1) `k2xx`, `relabel`, `repack` (3.3-3.5); (2) the v2 list (ZVT11 Closed, VT22, VT03N); (3) per-day loop
+and `rname_overrides` if wanted (2.3 remainder); (4) Excel export for the headless runner (Future work). The live verification
+checklists below stay useful for any control id the owner has not exercised yet (the runs above succeeded, so ids they use are
+confirmed; ZMDETPC `S_ADATE`, detail flow and layout button are still unimplemented).
+
+**Known loose ends:** `resources/*.zip` are committed source drops of the owner's exports (private repo); a missing layout in
+VT11/ZMDESNR/VL06O is only logged by the older layout code (the runner's column checks catch it); the rust-analyzer
+"unlinked file"/stale E05xx diagnostics seen in the editor are noise, trust `cargo clippy`/`cargo test`.
 
 Offline = no SAP needed (unit/golden tests only). SAP = needs a live SAP GUI to verify.
 

@@ -1,6 +1,6 @@
 use crate::utils::close_popups;
 use crate::utils::sap_constants::STR_FORM;
-use crate::utils::sap_ctrl_utils::hit_ctrl;
+use crate::utils::sap_ctrl_utils::{exist_ctrl, hit_ctrl};
 use sap_scripting::*;
 use std::thread;
 use std::time::Duration;
@@ -66,6 +66,55 @@ pub fn check_tcode(
     }
 }
 
+/// Case-insensitive "contains" match used to find a variant row in the ALV popup.
+pub fn variant_matches(cell_value: &str, variant_name: &str) -> bool {
+    let name = variant_name.trim();
+    !name.is_empty() && cell_value.to_lowercase().contains(&name.to_lowercase())
+}
+
+/// ALV variant popup path of P2: `wnd[1]/usr/cntlALV_CONTAINER_1/shellcont/shell`,
+/// find the row whose `VARIANT` cell contains the name and double-click it.
+fn select_variant_from_alv_popup(
+    session: &GuiSession,
+    tcode: &str,
+    variant_name: &str,
+) -> Result<bool> {
+    let grid_id = "wnd[1]/usr/cntlALV_CONTAINER_1/shellcont/shell".to_string();
+    let grid = match session
+        .find_by_id(grid_id)
+        .ok()
+        .and_then(|c| c.downcast::<GuiGridView>())
+    {
+        Some(g) => g,
+        None => {
+            println!("ALV variant popup grid not found for tCode '{tcode}'");
+            return Ok(false);
+        }
+    };
+
+    let rows = grid.row_count()?;
+    for i in 0..rows {
+        let cell = grid
+            .get_cell_value(i, "VARIANT".to_string())
+            .unwrap_or_default();
+        if variant_matches(&cell, variant_name) {
+            grid.set_selected_rows(i.to_string())?;
+            grid.set_current_cell_row(i)?;
+            grid.double_click_current_cell()?;
+            // Popup still open means the variant failed to load.
+            let still = exist_ctrl(session, 1, "", true)?;
+            if still.cband {
+                println!("Variant popup still open after selecting '{variant_name}'");
+                return Ok(false);
+            }
+            println!("Variant '{variant_name}' selected via ALV popup for tCode '{tcode}'");
+            return Ok(true);
+        }
+    }
+    println!("Variant '{variant_name}' not found in ALV popup for tCode '{tcode}'");
+    Ok(false)
+}
+
 pub fn variant_select(session: &GuiSession, tcode: &str, variant_name: &str) -> Result<bool> {
     println!("Selecting variant '{variant_name}' for tCode '{tcode}'");
 
@@ -87,6 +136,13 @@ pub fn variant_select(session: &GuiSession, tcode: &str, variant_name: &str) -> 
     if err_msg.contains("error") || err_msg.contains("not found") {
         println!("Error opening variant selection: {err_msg}");
         return Ok(false);
+    }
+
+    // P2: some systems show an ALV list popup (title contains "abap") instead of the
+    // classic variant-name dialog. Pick the matching row and double-click it.
+    let popup = exist_ctrl(session, 1, "", true)?;
+    if popup.cband && popup.ctext.to_lowercase().contains("abap") {
+        return select_variant_from_alv_popup(session, tcode, variant_name);
     }
 
     // Enter variant name
@@ -134,4 +190,16 @@ pub fn variant_select(session: &GuiSession, tcode: &str, variant_name: &str) -> 
 
     println!("Variant '{variant_name}' selected successfully for tCode '{tcode}'");
     Ok(true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::variant_matches;
+
+    #[test]
+    fn variant_match_is_case_insensitive_contains() {
+        assert!(variant_matches("VT11_XDOCK_VARIANT", "xd_all"));
+        assert!(!variant_matches("OTHER", "XD_ALL"));
+        assert!(!variant_matches("ANY", "  "));
+    }
 }

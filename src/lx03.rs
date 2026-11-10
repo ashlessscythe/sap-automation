@@ -1,3 +1,4 @@
+use crate::utils::export_outcome::ExportOutcome;
 use sap_scripting::*;
 use windows::core::Result;
 
@@ -41,12 +42,12 @@ fn resolve_export_type(params: &LX03Params) -> Option<u8> {
 }
 
 /// Run LX03 export with the given parameters
-pub fn run_export(session: &GuiSession, params: &LX03Params) -> Result<bool> {
+pub fn run_export_outcome(session: &GuiSession, params: &LX03Params) -> Result<ExportOutcome> {
     println!("Running LX03 export...");
 
     if !assert_tcode(session, "LX03", Some(0))? {
         println!("Failed to activate LX03 transaction");
-        return Ok(false);
+        return Ok(ExportOutcome::Error("LX03: export step failed".to_string()));
     }
 
     if let Some(variant_name) = &params.sap_variant_name {
@@ -55,7 +56,7 @@ pub fn run_export(session: &GuiSession, params: &LX03Params) -> Result<bool> {
                 "Failed to select variant '{}' for tCode '{}'",
                 variant_name, params.t_code
             );
-            return Ok(false);
+            return Ok(ExportOutcome::Error("LX03: export step failed".to_string()));
         }
     }
 
@@ -74,7 +75,7 @@ pub fn run_export(session: &GuiSession, params: &LX03Params) -> Result<bool> {
                 }
                 Err(e) => {
                     println!("Error choosing layout {layout_row}: {e}");
-                    return Ok(false);
+                    return Ok(ExportOutcome::Error("LX03: export step failed".to_string()));
                 }
             }
 
@@ -86,7 +87,7 @@ pub fn run_export(session: &GuiSession, params: &LX03Params) -> Result<bool> {
                     }
                 }
                 println!("Layout ({layout_row}) not found.");
-                return Ok(false);
+                return Ok(ExportOutcome::Error("LX03: export step failed".to_string()));
             }
         }
     }
@@ -97,10 +98,10 @@ pub fn run_export(session: &GuiSession, params: &LX03Params) -> Result<bool> {
             if let Some(menu_item) = menu.downcast::<GuiMenu>() {
                 if menu_item.select().is_ok() {
                     return match export_local_file(session, "LX03", export_type, None) {
-                        Ok(_) => Ok(true),
+                        Ok(p) => Ok(ExportOutcome::from_exported_path(&p)),
                         Err(e) => {
                             println!("Error exporting LX03 data: {e}");
-                            Ok(false)
+                            Ok(ExportOutcome::Error(format!("LX03 export failed: {e}")))
                         }
                     };
                 }
@@ -118,20 +119,25 @@ pub fn run_export(session: &GuiSession, params: &LX03Params) -> Result<bool> {
             menu_item.select()?;
         } else {
             println!("Failed to open LX03 Excel export menu");
-            return Ok(false);
+            return Ok(ExportOutcome::Error("LX03: export step failed".to_string()));
         }
     } else {
         println!("LX03 Excel export menu not found");
-        return Ok(false);
+        return Ok(ExportOutcome::Error("LX03: export step failed".to_string()));
     }
 
     let run_check = check_export_window(session, "LX03", "BIN STATUS REPORT: OVERVIEW")?;
     if !run_check {
         println!("Error checking LX03 export window");
-        return Ok(false);
+        return Ok(ExportOutcome::Error("LX03: export step failed".to_string()));
     }
 
     let (file_path, file_name) = get_tcode_file_path("LX03", "xlsx");
     let run_check = save_sap_file(session, &file_path, &file_name, Some(true))?;
-    Ok(run_check)
+    Ok(ExportOutcome::from_saved(run_check, &file_path, &file_name))
+}
+
+/// Boolean wrapper kept for menus/sequence; see [`run_export_outcome`].
+pub fn run_export(session: &GuiSession, params: &LX03Params) -> Result<bool> {
+    Ok(run_export_outcome(session, params)?.into_bool())
 }

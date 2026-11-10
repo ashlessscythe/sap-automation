@@ -78,6 +78,9 @@ All booleans are explicit — pass `=true` or `=false`. CLI value wins, so you c
 | Flag | TCode scope | Notes |
 | --- | --- | --- |
 | `--by-date=<bool>` | VT11, ZEXVT11, VL06O | Filter the report by date range. |
+| `--date=<DATE>` | VT11 (date range) | Run date: `YYYY-MM-DD`, `YYYY-MM-DD..YYYY-MM-DD`, or a week `WK45` / `WK45/2026` (Sunday..Saturday, Excel WEEKNUM; `WK45` in 2026 = 2026-11-01..2026-11-07). Sets the date range and turns on `--by-date` unless `--by-date` is passed. Cannot be combined with `--date-start`/`--date-end`. |
+| `--ignore-display-error[=<bool>]` | VT11 **only** | Treat a "no display authorization" status-bar message as harmless. Overrides `[tcode.VT11].ignore_display_error`. Rejected with `--tcode!=VT11`. |
+| `--rname-dir=<dir>` | all exports | Export subfolder. Relative (`./mustgo`, `mustgo`) goes under the reports dir: `{reports_dir}\mustgo\{tcode}`. Absolute paths are used as is: `<dir>\{tcode}`. Only changes where files are written. |
 | `--by-delivery=<bool>` | VT11, ZEXVT11, VL06O | Filter the report by delivery numbers. |
 | `--by-shipment=<bool>` | VL06O **only** | Filter the report by shipment numbers. |
 | `--limiter=<TYPE>` | VT11, ZEXVT11 | Currently only `date_range` is wired in code; other values are accepted but no-op. |

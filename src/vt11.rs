@@ -1,10 +1,10 @@
+use crate::utils::export_outcome::ExportOutcome;
 use chrono::NaiveDate;
 use sap_scripting::*;
 use windows::core::Result;
 
 use crate::utils::{choose_layout, sap_file_utils::*};
 // Import specific functions to avoid ambiguity
-use crate::utils::cli_overrides::cli_overrides;
 use crate::utils::config_ops::get_reports_dir;
 use crate::utils::excel_file_ops::read_excel_column;
 use crate::utils::excel_path_utils::get_newest_file;
@@ -31,6 +31,19 @@ pub struct VT11Params {
     pub by_delivery: bool,
     pub limiter: Option<String>,
     pub t_code: String,
+    /// Shipment status range (`K_STTRG` low/high), applied only when no variant is used.
+    pub shipment_status: Option<(String, String)>,
+    /// Use the creation date field (`K_ERDAT`) instead of actual shipment end (`K_DATEN`).
+    pub by_created_date: bool,
+    /// Optional shipment numbers pasted into `K_TKNUM`.
+    pub shipment_numbers: Vec<String>,
+    /// If the start date is a Monday, start from the previous day (Sunday).
+    pub monday_include_sunday: bool,
+    /// Treat "no display authorization" in the status bar as harmless.
+    pub ignore_display_error: bool,
+    /// Config-style date format used when typing dates into SAP (`mm/dd/yyyy`, `yyyy-mm-dd`, ...).
+    /// `None` means `mm/dd/yyyy`. The caller resolves CLI > config > default.
+    pub date_format: Option<String>,
 }
 
 impl Default for VT11Params {
@@ -44,6 +57,12 @@ impl Default for VT11Params {
             by_delivery: false,
             limiter: None,
             t_code: "VT11".to_string(),
+            shipment_status: None,
+            by_created_date: false,
+            shipment_numbers: Vec::new(),
+            monday_include_sunday: false,
+            ignore_display_error: false,
+            date_format: None,
         }
     }
 }
@@ -227,24 +246,74 @@ fn try_open_local_file_export(session: &GuiSession) -> bool {
     false
 }
 
+/// Start date after applying `monday_include_sunday` (a Monday becomes the previous Sunday).
+pub fn effective_start_date(start: NaiveDate, monday_include_sunday: bool) -> NaiveDate {
+    use chrono::{Datelike, Weekday};
+    if monday_include_sunday && start.weekday() == Weekday::Mon {
+        start - chrono::Duration::days(1)
+    } else {
+        start
+    }
+}
+
+/// Text for the `-HIGH` date field: blank when both dates are equal (single-date rule).
+pub fn high_date_text(start: NaiveDate, end: NaiveDate, fmt: &str) -> String {
+    if start == end {
+        String::new()
+    } else {
+        crate::utils::config_ops::format_date_with(fmt, end)
+    }
+}
+
+/// Open the multi-select popup behind `button_id`, paste `values` (distinct, normalised,
+/// blank-free) and confirm. Returns `Ok(false)` if the popup or paste failed.
+fn paste_multi_values(session: &GuiSession, button_id: &str, values: &[String]) -> Result<bool> {
+    let values = crate::utils::export_outcome::paste_value_list(values, false);
+    if values.is_empty() {
+        return Ok(true);
+    }
+    if let Ok(btn) = session.find_by_id(button_id.to_string()) {
+        if let Some(button) = btn.downcast::<GuiButton>() {
+            button.press()?;
+        }
+    }
+    std::thread::sleep(std::time::Duration::from_millis(1000));
+    if !exist_ctrl(session, 1, "", true)?.cband {
+        println!("Multi-select popup did not open for {button_id}");
+        return Ok(false);
+    }
+    let table_id = "tabsTAB_STRIP/tabpSIVA/ssubSCREEN_HEADER:SAPLALDB:3010/tblSAPLALDBSINGLE";
+    let ok = crate::utils::sap_ctrl_utils::paste_values_with_scroll(
+        session, 1, table_id, &values, 7, "ctxt",
+    )?;
+    if let Ok(window) = session.find_by_id("wnd[1]".to_string()) {
+        if let Some(modal_window) = window.downcast::<GuiModalWindow>() {
+            modal_window.send_v_key(8)?;
+        }
+    }
+    Ok(ok)
+}
+
 /// Run VT11 export with the given parameters
 ///
 /// This function is a port of the VBA function VT11_Run_Export
-pub fn run_export(session: &GuiSession, params: &VT11Params) -> Result<bool> {
+pub fn run_export_outcome(session: &GuiSession, params: &VT11Params) -> Result<ExportOutcome> {
     println!("Running VT11 export...");
 
     // Check if tCode is active
     if !assert_tcode(session, "VT11", Some(0))? {
         println!("Failed to activate VT11 transaction");
-        return Ok(false);
+        return Ok(ExportOutcome::Error("VT11: export step failed".to_string()));
     }
 
-    // get override format if exists
-    let date_fmt = cli_overrides().date_format.as_deref().unwrap_or("%m/%d/%Y");
+    // SAP date format comes from the params (resolved by the caller from CLI/config)
+    let date_fmt = params.date_format.as_deref().unwrap_or("mm/dd/yyyy");
 
     // Format dates for SAP
-    let start_date_str = params.start_date.format(date_fmt).to_string();
-    let end_date_str = params.end_date.format(date_fmt).to_string();
+    let eff_start = effective_start_date(params.start_date, params.monday_include_sunday);
+    let start_date_str = crate::utils::config_ops::format_date_with(date_fmt, eff_start);
+    let end_date_str = crate::utils::config_ops::format_date_with(date_fmt, params.end_date);
+    let high_text = high_date_text(eff_start, params.end_date, date_fmt);
 
     // Apply variant if provided
     if let Some(variant_name) = &params.sap_variant_name {
@@ -257,11 +326,33 @@ pub fn run_export(session: &GuiSession, params: &VT11Params) -> Result<bool> {
         }
     }
 
+    // Shipment status range, only when no variant carries it
+    let has_variant = params
+        .sap_variant_name
+        .as_deref()
+        .is_some_and(|v| !v.is_empty());
+    if !has_variant {
+        if let Some((lo, hi)) = &params.shipment_status {
+            for (id, val) in [("K_STTRG-LOW", lo), ("K_STTRG-HIGH", hi)] {
+                if let Ok(c) = session.find_by_id(format!("wnd[0]/usr/ctxt{id}")) {
+                    if let Some(f) = c.downcast::<GuiCTextField>() {
+                        f.set_text(val.clone())?;
+                    }
+                }
+            }
+        }
+    }
+
     // Set date fields based on by_date parameter
+    let date_field = if params.by_created_date {
+        "K_ERDAT"
+    } else {
+        "K_DATEN"
+    };
     if params.by_date {
         // Set start date
         println!("Setting start date to {:?}", start_date_str.clone());
-        if let Ok(txt) = session.find_by_id("wnd[0]/usr/ctxtK_DATEN-LOW".to_string()) {
+        if let Ok(txt) = session.find_by_id(format!("wnd[0]/usr/ctxt{date_field}-LOW")) {
             if let Some(text_field) = txt.downcast::<GuiCTextField>() {
                 println!("start date set to {:?}", start_date_str.clone());
                 text_field.set_text(start_date_str.clone())?;
@@ -273,13 +364,9 @@ pub fn run_export(session: &GuiSession, params: &VT11Params) -> Result<bool> {
         }
 
         // Set end date (leave blank if same as start date)
-        if let Ok(txt) = session.find_by_id("wnd[0]/usr/ctxtK_DATEN-HIGH".to_string()) {
+        if let Ok(txt) = session.find_by_id(format!("wnd[0]/usr/ctxt{date_field}-HIGH")) {
             if let Some(text_field) = txt.downcast::<GuiCTextField>() {
-                if params.start_date == params.end_date {
-                    text_field.set_text("".to_string())?;
-                } else {
-                    text_field.set_text(end_date_str.clone())?;
-                }
+                text_field.set_text(high_text.clone())?;
             }
         }
     }
@@ -362,7 +449,7 @@ pub fn run_export(session: &GuiSession, params: &VT11Params) -> Result<bool> {
 
                 if !paste_result {
                     println!("Failed to paste delivery numbers");
-                    return Ok(false);
+                    return Ok(ExportOutcome::Error("VT11: export step failed".to_string()));
                 }
 
                 println!(
@@ -381,8 +468,21 @@ pub fn run_export(session: &GuiSession, params: &VT11Params) -> Result<bool> {
         } else {
             println!("No delivery numbers found, but delivery limitation is required.");
             println!("VT11 export cannot proceed without delivery numbers.");
-            return Ok(false);
+            return Ok(ExportOutcome::Error("VT11: export step failed".to_string()));
         }
+    }
+
+    // Optional shipment numbers (K_TKNUM)
+    if !params.shipment_numbers.is_empty()
+        && !paste_multi_values(
+            session,
+            "wnd[0]/usr/btn%_K_TKNUM_%_APP_%-VALU_PUSH",
+            &params.shipment_numbers,
+        )?
+    {
+        return Ok(ExportOutcome::Error(
+            "VT11: failed to paste shipment numbers (K_TKNUM)".to_string(),
+        ));
     }
 
     // Handle other limiters if provided
@@ -428,10 +528,21 @@ pub fn run_export(session: &GuiSession, params: &VT11Params) -> Result<bool> {
                         }
                     }
 
-                    return Ok(false);
+                    return Ok(ExportOutcome::NoData(error_text));
                 }
             }
         }
+    }
+
+    // P6: classify status bar / popups after execute
+    if let Some(outcome) = crate::utils::export_outcome::classify_screen(
+        session,
+        crate::utils::export_outcome::ClassifyOptions {
+            ignore_display_error: params.ignore_display_error,
+        },
+    )? {
+        println!("VT11 outcome after execute: {outcome:?}");
+        return Ok(outcome);
     }
 
     // Check if layout exists and select it
@@ -492,10 +603,10 @@ pub fn run_export(session: &GuiSession, params: &VT11Params) -> Result<bool> {
     // Export preference: try local file export if configured; otherwise Excel
     if let Ok(config) = crate::utils::config_types::SapConfig::load() {
         if let Some(exp_type) = config.get_effective_export_type("VT11") {
-            if try_open_local_file_export(session)
-                && export_local_file(session, "VT11", exp_type, None).is_ok()
-            {
-                return Ok(true);
+            if try_open_local_file_export(session) {
+                if let Ok(p) = export_local_file(session, "VT11", exp_type, None) {
+                    return Ok(ExportOutcome::from_exported_path(&p));
+                }
             }
             println!("Local file export path not available; falling back to Excel export...");
         }
@@ -527,7 +638,12 @@ pub fn run_export(session: &GuiSession, params: &VT11Params) -> Result<bool> {
     // save sap file with prevent_excel_open set to true
     let run_check = save_sap_file(session, &file_path, &file_name, Some(true))?;
 
-    Ok(run_check)
+    Ok(ExportOutcome::from_saved(run_check, &file_path, &file_name))
+}
+
+/// Boolean wrapper kept for menus/sequence; see [`run_export_outcome`].
+pub fn run_export(session: &GuiSession, params: &VT11Params) -> Result<bool> {
+    Ok(run_export_outcome(session, params)?.into_bool())
 }
 
 /// Run VT11 and scan the shipment list to find deliveries/shipments that cannot be entered
@@ -968,4 +1084,37 @@ pub fn run_listcheck(session: &GuiSession, params: &VT11Params) -> Result<Vec<St
     println!("Found {blocked_count} blocked shipments out of {total_attempted} total attempted");
     println!("Found {} blocked deliveries", deliveries.len());
     Ok(deliveries)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn d(y: i32, m: u32, day: u32) -> NaiveDate {
+        NaiveDate::from_ymd_opt(y, m, day).unwrap()
+    }
+
+    #[test]
+    fn monday_rule() {
+        // 2026-11-09 is a Monday
+        assert_eq!(effective_start_date(d(2026, 11, 9), true), d(2026, 11, 8));
+        assert_eq!(effective_start_date(d(2026, 11, 9), false), d(2026, 11, 9));
+        assert_eq!(effective_start_date(d(2026, 11, 10), true), d(2026, 11, 10));
+    }
+
+    #[test]
+    fn single_date_rule() {
+        assert_eq!(
+            high_date_text(d(2026, 11, 10), d(2026, 11, 10), "mm/dd/yyyy"),
+            ""
+        );
+        assert_eq!(
+            high_date_text(d(2026, 11, 8), d(2026, 11, 9), "mm/dd/yyyy"),
+            "11/09/2026"
+        );
+        assert_eq!(
+            high_date_text(d(2026, 11, 8), d(2026, 11, 9), "yyyy-mm-dd"),
+            "2026-11-09"
+        );
+    }
 }

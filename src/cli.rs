@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use chrono::NaiveDate;
+use chrono::{Datelike, NaiveDate};
 use clap::{Parser, Subcommand};
 
 use crate::utils::cli_overrides::CliOverrides;
@@ -97,6 +97,12 @@ pub struct Cli {
     #[arg(long)]
     pub limiter: Option<String>,
 
+    /// Run date: `YYYY-MM-DD`, `YYYY-MM-DD..YYYY-MM-DD`, or a week `WK45` / `WK45/2026`
+    /// (Sunday..Saturday, Excel WEEKNUM). Sets the date range and enables --by-date
+    /// unless --by-date is given. Cannot be combined with --date-start/--date-end.
+    #[arg(long, value_name = "DATE|WKnn")]
+    pub date: Option<String>,
+
     /// Inclusive date-range start in ISO format (YYYY-MM-DD).
     #[arg(long, value_name = "YYYY-MM-DD")]
     pub date_start: Option<String>,
@@ -124,6 +130,17 @@ pub struct Cli {
     /// Header column to read for shipment numbers. Default `Shipment Number`.
     #[arg(long)]
     pub shipment_col: Option<String>,
+
+    /// VT11 ONLY: treat a "no display authorization" status-bar message as harmless
+    /// (true|false). Overrides `[tcode.VT11].ignore_display_error`.
+    #[arg(long, value_name = "BOOL", num_args = 0..=1, default_missing_value = "true")]
+    pub ignore_display_error: Option<bool>,
+
+    /// Subdirectory for exports. Relative paths (`./mustgo`, `mustgo`) are placed under
+    /// the reports dir and files go to `{reports_dir}\<rname-dir>\{tcode}`. An absolute
+    /// path is used as is: `<rname-dir>\{tcode}`.
+    #[arg(long, value_name = "DIR")]
+    pub rname_dir: Option<String>,
 
     /// ZMDESNR ONLY: send vkey 3 (back) after export, before layout selection
     /// (true|false). Overrides `[tcode.ZMDESNR].pre_export_back`.
@@ -179,8 +196,23 @@ impl Cli {
     /// process-wide override slot. Surfaces parse errors for ISO dates so the
     /// user gets a clear message instead of silent fallback.
     pub fn to_overrides(&self) -> Result<CliOverrides> {
-        let date_start = parse_iso_date_opt("--date-start", self.date_start.as_deref())?;
-        let date_end = parse_iso_date_opt("--date-end", self.date_end.as_deref())?;
+        let mut date_start = parse_iso_date_opt("--date-start", self.date_start.as_deref())?;
+        let mut date_end = parse_iso_date_opt("--date-end", self.date_end.as_deref())?;
+        let mut by_date = self.by_date;
+        if let Some(raw) = self.date.as_deref() {
+            if date_start.is_some() || date_end.is_some() {
+                return Err(anyhow!(
+                    "--date cannot be combined with --date-start/--date-end"
+                ));
+            }
+            let year = chrono::Local::now().year();
+            let rd = crate::abc::run::parse_run_date(raw, year)
+                .map_err(|e| anyhow!("Invalid --date value: {e}"))?;
+            let (d1, d2) = rd.as_range();
+            date_start = Some(d1);
+            date_end = Some(d2);
+            by_date.get_or_insert(true);
+        }
 
         Ok(CliOverrides {
             tcode: self.tcode.as_ref().map(|s| s.to_uppercase()),
@@ -195,7 +227,7 @@ impl Cli {
             date_format: self.date_format.clone(),
             timezone: self.timezone.clone(),
             reports_dir: self.reports_dir.clone(),
-            by_date: self.by_date,
+            by_date,
             by_delivery: self.by_delivery,
             by_shipment: self.by_shipment,
             limiter: self.limiter.clone(),
@@ -205,6 +237,8 @@ impl Cli {
             delivery_col: self.delivery_col.clone(),
             shipment_file: self.shipment_file.clone(),
             shipment_col: self.shipment_col.clone(),
+            ignore_display_error: self.ignore_display_error,
+            rname_dir: self.rname_dir.clone(),
             pre_export_back: self.pre_export_back,
             tab_number: self.tab_number,
             bin_filter: self.bin_filter.clone(),

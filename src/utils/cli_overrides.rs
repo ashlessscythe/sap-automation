@@ -74,6 +74,14 @@ pub struct CliOverrides {
     /// Header column to read for shipment numbers. Default `"Shipment Number"`.
     pub shipment_col: Option<String>,
 
+    /// VT11-only: ignore "no display authorization" status-bar errors.
+    /// Maps to `[tcode.VT11].ignore_display_error` in `config.toml`.
+    pub ignore_display_error: Option<bool>,
+
+    /// Export subdirectory (`--rname-dir`). Relative = under the reports dir; files land
+    /// in `<reports_dir>\<rname_dir>\<tcode>`. Absolute paths are used as is.
+    pub rname_dir: Option<String>,
+
     /// ZMDESNR-only: send vkey 3 (back) after export but before layout selection.
     /// Maps to `[tcode.ZMDESNR].pre_export_back` in `config.toml`.
     pub pre_export_back: Option<bool>,
@@ -152,6 +160,9 @@ impl CliOverrides {
         }
         if self.shipment_col.is_some() {
             v.push("--shipment-col");
+        }
+        if self.ignore_display_error.is_some() {
+            v.push("--ignore-display-error");
         }
         if self.pre_export_back.is_some() {
             v.push("--pre-export-back");
@@ -234,6 +245,12 @@ impl CliOverrides {
         }
         if let Some(v) = &self.shipment_col {
             parts.push(format!("--shipment-col={v}"));
+        }
+        if let Some(v) = self.ignore_display_error {
+            parts.push(format!("--ignore-display-error={v}"));
+        }
+        if let Some(v) = &self.rname_dir {
+            parts.push(format!("--rname-dir={v}"));
         }
         if let Some(v) = self.pre_export_back {
             parts.push(format!("--pre-export-back={v}"));

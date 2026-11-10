@@ -9,6 +9,8 @@ use sap_scripting::*;
 use std::thread;
 use std::time::Duration;
 
+mod abc;
+mod abc_menu;
 mod app;
 mod inbond_shipment;
 mod inbond_shipment_module;
@@ -76,6 +78,16 @@ fn main() -> anyhow::Result<()> {
         if !target.is_empty() && target != "VL06O" {
             return Err(anyhow::anyhow!(
                 "--by-shipment is only supported for VL06O (got --tcode={target})"
+            ));
+        }
+    }
+
+    // --ignore-display-error is wired into the VT11 export flow only.
+    if overrides.ignore_display_error.is_some() {
+        let target = overrides.tcode.clone().unwrap_or_default().to_uppercase();
+        if !target.is_empty() && target != "VT11" {
+            return Err(anyhow::anyhow!(
+                "--ignore-display-error is only supported for VT11 (got --tcode={target})"
             ));
         }
     }
@@ -390,6 +402,7 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                     "Configure Sequence",
                     "Read Excel File",
                     "Log out of SAP",
+                    "ABC Headless >",
                     "Exit",
                 ]
             } else {
@@ -424,6 +437,7 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                     "Configure Sequence",
                     "Read Excel File",
                     "Log out of SAP (Not available - Login required)",
+                    "ABC Headless > (Not available - Login required)",
                     "Exit",
                 ]
             }
@@ -459,6 +473,7 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                 "Configure Sequence",
                 "Read Excel File",
                 "Log out of SAP (Not available - SAP connection required)",
+                "ABC Headless > (Not available - SAP connection required)",
                 "Exit",
             ]
         };
@@ -897,6 +912,18 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                 }
             }
             30 => {
+                // ABC Headless submenu (only if logged in and SAP connected)
+                if sap_connected && is_logged_in {
+                    abc_menu::run_abc_menu(session.as_ref());
+                } else if sap_connected {
+                    println!("You need to log in first.");
+                    thread::sleep(Duration::from_secs(2));
+                } else {
+                    println!("SAP connection not available. Cannot open ABC Headless menu.");
+                    thread::sleep(Duration::from_secs(2));
+                }
+            }
+            31 => {
                 // Exit application
                 clear_screen();
                 println!("Exiting application...");

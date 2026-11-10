@@ -1,3 +1,4 @@
+use crate::utils::export_outcome::ExportOutcome;
 use chrono::NaiveDate;
 use sap_scripting::*;
 use windows::core::Result;
@@ -222,13 +223,15 @@ fn try_open_local_file_export(session: &GuiSession) -> bool {
 /// Run ZVT11 export with the given parameters
 ///
 /// This function is a port of the VBA function ZVT11_From_Deliv
-pub fn run_export(session: &GuiSession, params: &ZVT11Params) -> Result<bool> {
+pub fn run_export_outcome(session: &GuiSession, params: &ZVT11Params) -> Result<ExportOutcome> {
     println!("Running ZVT11 export...");
 
     // Check if tCode is active
     if !assert_tcode(session, "ZVT11", Some(0))? {
         println!("Failed to activate ZVT11 transaction");
-        return Ok(false);
+        return Ok(ExportOutcome::Error(
+            "ZVT11: export step failed".to_string(),
+        ));
     }
 
     // select tab 1
@@ -358,7 +361,9 @@ pub fn run_export(session: &GuiSession, params: &ZVT11Params) -> Result<bool> {
 
                 if !paste_result {
                     println!("Failed to paste delivery numbers");
-                    return Ok(false);
+                    return Ok(ExportOutcome::Error(
+                        "ZVT11: export step failed".to_string(),
+                    ));
                 }
 
                 println!(
@@ -377,7 +382,9 @@ pub fn run_export(session: &GuiSession, params: &ZVT11Params) -> Result<bool> {
         } else {
             println!("No delivery numbers found, but delivery limitation is required.");
             println!("ZVT11 export cannot proceed without delivery numbers.");
-            return Ok(false);
+            return Ok(ExportOutcome::Error(
+                "ZVT11: export step failed".to_string(),
+            ));
         }
     }
 
@@ -424,7 +431,7 @@ pub fn run_export(session: &GuiSession, params: &ZVT11Params) -> Result<bool> {
                         }
                     }
 
-                    return Ok(false);
+                    return Ok(ExportOutcome::NoData(error_text));
                 }
             }
         }
@@ -457,10 +464,10 @@ pub fn run_export(session: &GuiSession, params: &ZVT11Params) -> Result<bool> {
     // Export preference: try local file export if configured; otherwise Excel
     if let Ok(config) = crate::utils::config_types::SapConfig::load() {
         if let Some(exp_type) = config.get_effective_export_type("ZVT11") {
-            if try_open_local_file_export(session)
-                && export_local_file(session, "ZVT11", exp_type, None).is_ok()
-            {
-                return Ok(true);
+            if try_open_local_file_export(session) {
+                if let Ok(p) = export_local_file(session, "ZVT11", exp_type, None) {
+                    return Ok(ExportOutcome::from_exported_path(&p));
+                }
             }
             println!("Local file export path not available; falling back to Excel export...");
         }
@@ -492,5 +499,10 @@ pub fn run_export(session: &GuiSession, params: &ZVT11Params) -> Result<bool> {
     // save sap file with prevent_excel_open set to true
     let run_check = save_sap_file(session, &file_path, &file_name, Some(true))?;
 
-    Ok(run_check)
+    Ok(ExportOutcome::from_saved(run_check, &file_path, &file_name))
+}
+
+/// Boolean wrapper kept for menus/sequence; see [`run_export_outcome`].
+pub fn run_export(session: &GuiSession, params: &ZVT11Params) -> Result<bool> {
+    Ok(run_export_outcome(session, params)?.into_bool())
 }

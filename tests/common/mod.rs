@@ -77,3 +77,10 @@ pub fn assert_tables_equal(expected: &Table, actual: &Table) {
         );
     }
 }
+
+/// Load a raw-ish fixture the way an importer would: header sanitising, blank header ->
+/// `customer`, cell normalisation (leading zeros, `.0`). Test helper only, not a SAP loader.
+pub fn load_raw_fixture(dir: &str, file: &str) -> Table {
+    let t = load_fixture(dir, file);
+    Table::from_raw(file, &t.headers, t.rows)
+}

@@ -111,6 +111,45 @@ pub fn classify_screen(
     Ok(classify_messages(&status, &popup, &label, opts))
 }
 
+/// Pure part of [`classify_after_execute`]: after pressing execute, still being on the
+/// selection screen means no list was produced. A status bar text then is the reason (reported
+/// as `NoData`); without any text it is an error (nothing explains why we did not move on).
+pub fn classify_post_execute(
+    tcode: &str,
+    still_on_selection_screen: bool,
+    status: &str,
+) -> Option<ExportOutcome> {
+    if !still_on_selection_screen {
+        return None;
+    }
+    let s = status.trim();
+    if s.is_empty() {
+        Some(ExportOutcome::Error(format!(
+            "{tcode}: still on the selection screen after execute and no status message"
+        )))
+    } else {
+        Some(ExportOutcome::NoData(s.to_string()))
+    }
+}
+
+/// Headless check right after execute (P6 plus "did the screen change"): the generic
+/// [`classify_screen`] first, then [`classify_post_execute`] using `selection_marker`, the id
+/// of a control that only exists on the selection screen (relative to `wnd[0]`, e.g.
+/// `/usr/ctxtT1_LGNUM`). UNVERIFIED live for every tcode that uses it.
+pub fn classify_after_execute(
+    session: &GuiSession,
+    tcode: &str,
+    selection_marker: &str,
+    opts: ClassifyOptions,
+) -> Result<Option<ExportOutcome>> {
+    if let Some(o) = classify_screen(session, opts)? {
+        return Ok(Some(o));
+    }
+    let on_sel = exist_ctrl(session, 0, selection_marker, true)?.cband;
+    let status = exist_ctrl(session, 0, "/sbar", true)?.ctext;
+    Ok(classify_post_execute(tcode, on_sel, &status))
+}
+
 /// Strip leading zeros from a purely numeric value (decision 25). `"0000"` becomes `"0"`.
 /// Non-numeric values are returned trimmed but otherwise untouched.
 pub fn normalize_value(value: &str) -> String {
@@ -148,6 +187,19 @@ pub fn paste_value_list<S: AsRef<str>>(raw: &[S], skip_header: bool) -> Vec<Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn post_execute_classification() {
+        assert_eq!(classify_post_execute("X", false, "anything"), None);
+        assert_eq!(
+            classify_post_execute("X", true, " No data found "),
+            Some(ExportOutcome::NoData("No data found".into()))
+        );
+        assert!(matches!(
+            classify_post_execute("X", true, ""),
+            Some(ExportOutcome::Error(m)) if m.starts_with("X:")
+        ));
+    }
 
     const DEF: ClassifyOptions = ClassifyOptions {
         ignore_display_error: false,

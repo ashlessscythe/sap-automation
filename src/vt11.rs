@@ -9,7 +9,7 @@ use crate::utils::config_ops::get_reports_dir;
 use crate::utils::excel_file_ops::read_excel_column;
 use crate::utils::excel_path_utils::get_newest_file;
 use crate::utils::sap_ctrl_utils::exist_ctrl;
-use crate::utils::sap_export_utils::export_local_file;
+use crate::utils::sap_export_utils::{export_local_file, export_to_target, ExportTarget};
 use crate::utils::sap_tcode_utils::*;
 use crate::utils::sap_wnd_utils::*;
 use crate::utils::source_overrides::*;
@@ -48,6 +48,9 @@ pub struct VT11Params {
     pub closed_range: Option<(NaiveDate, NaiveDate)>,
     /// Creation date range, typed into `K_ERDAT`. Independent of `by_date`.
     pub created_range: Option<(NaiveDate, NaiveDate)>,
+    /// Headless runner: write a local text/HTML file straight to this target and read no config.
+    /// `None` keeps the legacy behaviour (export type from config, else Excel).
+    pub export_target: Option<ExportTarget>,
 }
 
 impl Default for VT11Params {
@@ -69,6 +72,7 @@ impl Default for VT11Params {
             date_format: None,
             closed_range: None,
             created_range: None,
+            export_target: None,
         }
     }
 }
@@ -223,6 +227,15 @@ fn get_delivery_numbers_from_listcheck() -> Result<Vec<String>> {
 
     Ok(results)
 }
+
+/// Menu paths tried (in order) by the headless export; same list as `try_open_local_file_export`.
+/// A candidate is only accepted when it opens a dialog titled "save list in file".
+const VT11_LOCAL_FILE_MENUS: &[&str] = &[
+    "wnd[0]/mbar/menu[0]/menu[9]/menu[2]",
+    "wnd[0]/mbar/menu[0]/menu[9]/menu[0]",
+    "wnd[0]/mbar/menu[0]/menu[3]/menu[2]",
+    "wnd[0]/mbar/menu[0]/menu[3]/menu[0]",
+];
 
 /// Try to open the local file export dialog for VT11
 fn try_open_local_file_export(session: &GuiSession) -> bool {
@@ -614,6 +627,12 @@ pub fn run_export_outcome(session: &GuiSession, params: &VT11Params) -> Result<E
 
             println!("Layout is empty or zero-length. Exporting as-is.");
         }
+    }
+
+    // Headless runner: explicit target, no config, no Excel fallback.
+    // UNVERIFIED live: the local-file menu path (same candidates as `try_open_local_file_export`).
+    if let Some(target) = &params.export_target {
+        return export_to_target(session, "VT11", VT11_LOCAL_FILE_MENUS, target);
     }
 
     // Export preference: try local file export if configured; otherwise Excel

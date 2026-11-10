@@ -422,3 +422,27 @@ pub fn check_wnd(session: &GuiSession, n_wnd: i32, params_in: &ParamsStruct) -> 
 
     Ok(err_chk)
 }
+
+/// Answer "Yes"-style warning popups (`wnd[<wnd_idx>]/usr/btnBUTTON_1`) while one is open,
+/// at most `max_rounds` times. Returns how many were answered. Used for the non-numeric
+/// warning when pasting values into a multi-selection (spec P3). UNVERIFIED live: the popup
+/// is assumed to be `wnd[2]` with `BUTTON_1` as the confirming button.
+pub fn answer_popup_yes(session: &GuiSession, wnd_idx: i32, max_rounds: u32) -> Result<u32> {
+    let mut answered = 0;
+    while answered < max_rounds {
+        if !exist_ctrl(session, wnd_idx, "", true)?.cband {
+            break;
+        }
+        let id = format!("wnd[{wnd_idx}]/usr/btnBUTTON_1");
+        let Ok(c) = session.find_by_id(id) else {
+            break;
+        };
+        let Some(btn) = c.downcast::<GuiButton>() else {
+            break;
+        };
+        btn.press()?;
+        answered += 1;
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }
+    Ok(answered)
+}

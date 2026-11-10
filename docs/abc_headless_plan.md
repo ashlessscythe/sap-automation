@@ -86,6 +86,64 @@ export reader (SAP text/xlsx -> headers + rows) is separate and not written yet:
   `sn_del` after the row-18 deletion (10 / 15), not of the 1011-row table. `export_date` = `yyyy-mm-dd` (single date) or
   `WK_<n>` (range); no history call exists in the seam; outputs are written only after the last step.
 
+## Live verification checklist (mustgo)
+
+Real adapter: `src/abc/adapters.rs` (`RealSapSteps`, `MustgoSapConfig`, pure builders `*_params`, `finish_step`). It was
+written without access to SAP; nothing below has been run live. Every export is "text with tabs" (export type 1), written to
+`<export_dir>\<TCODE>\<yyyymmddhhmmss>_<TCODE>.txt` (e.g. `reports\VT11\20261110101550_VT11.txt`; `export_dir` is a field of
+`MustgoSapConfig`, default `reports`) and deleted after a successful load unless `delete_exports` is false (a file that failed
+to load is kept). New optional params (`export_target`, ...) default to the old behaviour; only `Some(target)` switches a
+tcode to the headless path (no config reads, no Excel fallback).
+
+Owner: check these live, in order. "From spec" = id taken from the VBA spec, not seen in this repo's code.
+
+Common (all four tcodes)
+* Local file export menu path (`export_to_target`): VT11 `menu[0]/menu[9]/menu[2]` (also tries `menu[9]/menu[0]`,
+  `menu[3]/menu[2]`, `menu[3]/menu[0]`), VL06O `menu[0]/menu[5]/menu[2]` (then `[5]/[0]`, `[3]/[2]`, `[3]/[0]`), ZMDESNR
+  `menu[0]/menu[3]/menu[2]`, LT23 `menu[0]/menu[1]/menu[2]` (from spec: sibling of Excel `menu[1]/menu[1]`; unverified).
+  A candidate is accepted only if the dialog it opens is titled "save list in file" (case-insensitive); otherwise it is closed
+  and the next candidate is tried. If the real title differs the step fails with a clear message.
+* Radio `radSPOPLI-SELFLAG[1,0]` = text with tabs, save dialog `ctxtDY_PATH` / `ctxtDY_FILENAME` (existing `export_local_file`).
+  The file must exist and be non-empty within 15 s, otherwise the step fails ("export file ... was not written").
+* "Did it produce a list": `classify_after_execute` - generic P6 classifier first; then "still on the selection screen after
+  execute" is read as no data (status bar text = the reason; no text = error). Marker controls: VL06O
+  `wnd[0]/usr/btn%_IT_TKNUM_%_APP_%-VALU_PUSH`, ZMDESNR `wnd[0]/usr/tabsTABSTRIP_TABB1`, LT23 `wnd[0]/usr/ctxtT1_LGNUM`.
+  UNVERIFIED that these stay on screen when SAP finds nothing, and the wording of the messages. VT11 uses the existing
+  classifier (`E:`, `no shipments`, `no data`, `no display authorization`).
+* Popup "Yes" for warnings: `wnd[2]/usr/btnBUTTON_1` (`answer_popup_yes`, up to 5 rounds) is from the spec only.
+
+VT11 (step 9)
+* Existing flow, now with `closed_range` = run date range in `K_DATEN` (`-LOW`, `-HIGH` cleared for a single date), variant
+  `XD_ALL_EPDC_`, no layout, `ignore_display_error`. The date text follows `date_format` (default `mm/dd/yyyy`; set
+  `MustgoSapConfig.date_format` to the SAP user format). Real export observed: 91 rows.
+
+VL06O (step 11)
+* Existing flow: `btnBUTTON6`, `IT_WADAT` cleared, `btn%_IT_TKNUM_%_APP_%-VALU_PUSH` multi paste with scrolling (cells `ctxt`),
+  execute `wnd[0]` F8, item view `tbar[1]/btn[18]`, no variant, no layout. Verify the item view is the default for the export.
+
+ZMDESNR (steps 12 and 19)
+* Tab `tabpUCOMM2`, variant `mg_k2xx` via `btn[17]`, layout `mg_view` via menu `menu[4]/menu[0]/menu[1]` + grid (existing
+  `check_select_layout`; it can prompt on the console when the layout is missing, a failed layout is now a step error when
+  headless). S_PALLTD-LOW and S_VBELN-LOW/-HIGH are cleared by the existing code.
+* NEW `scroll_paste`: deliveries are pasted with `paste_values_with_scroll` (cells `txtRSCSEL_255-SLOW_I`), because the legacy
+  per-cell loop only fills the rows visible in the dialog. Verify that 107 deliveries all arrive (compare row counts).
+* NEW TO paste: `btn%_S_TANUM_%_APP_%-VALU_PUSH` under `.../tabpUCOMM2/ssub%_SUBSCREEN_TABB1:ZMDE_SERIALNUMBER_HISTORY:9002/`
+  (from spec), value cells `txt` or `ctxt` (both tried), then `wnd[2]` Yes, row-0 check, close with F8.
+* The existing flow presses execute twice (inside `handle_tab2_operations` and again afterwards); unchanged.
+* `pre_export_back` unchanged (not set by the adapter).
+
+LT23 (step 16, new `src/lt23.rs`; ids from spec 3.5, none verified)
+* `wnd[0]/usr/ctxtT1_LGNUM` (warehouse E01), `wnd[0]/usr/btn%_T1_TANUM_%_APP_%-VALU_PUSH` (TO multi paste, `ctxt` or `txt`
+  cells), `wnd[0]/usr/radT1_QUITA` (confirmed), execute `tbar[1]/btn[8]`. The `/usr/` prefix is assumed.
+* No other selection fields are touched: check that the screen has no default date or status limit that would hide TOs.
+* Layout `to_mg`: `tbar[1]/btn[33]`, grid `wnd[1]/usr/cntlGRID/shellcont/shell` with column `VARIANT`. If the layout is missing
+  the step fails, unless `MustgoSapConfig.lt23_create_layout_columns` is set (then `btn[32]` + `setup_layout_li` on
+  `/usr/tabsTS_LINES/tabpLI01/ssubSUB810:SAPLSKBH:0810`, not saved; this path has never been run). The header titles of the real
+  export were the short list titles (`TO Number`, `Plnt`, `Source Bin`, ...), the spec's long titles will not match them.
+
+After a first live run compare the five files in `<export_dir>\<TCODE>` (set `delete_exports` false) with
+`tests/fixtures/mustgo/real/`.
+
 ## Phase 0: owner answers (blocking input)
 
 - [x] 0.1 Questions answered: this crate; v1 = mustgo, xdock, toyota; defaults for items 7-18 accepted; relabel

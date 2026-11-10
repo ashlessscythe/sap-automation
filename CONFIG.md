@@ -103,6 +103,14 @@ delete_exports = true           # delete each temporary export after it was load
 ignore_display_error = true     # treat "no display authorization" as harmless (VT11)
 ```
 
+`[abc.toyota]` (used by `--rname=toyota`) takes the same keys with the same defaults except `vt11_variant`, which defaults to
+`VT11_TOYOTA_VARIANT`:
+
+```toml
+[abc.toyota]
+vt11_variant = "VT11_TOYOTA_VARIANT"
+```
+
 | Key | Default |
 | --- | --- |
 | `vt11_variant` | `VT11_XDOCK_VARIANT` |
@@ -119,7 +127,7 @@ ignore_display_error = true     # treat "no display authorization" as harmless (
 (`K_DATEN`), and it is also the format used to read dates from the exports (ISO dates, as seen in the real exports, are
 accepted whichever name is set). The built-in default is `mm/dd/yyyy`.
 
-### ABC Headless Section (`[abc.xdock]`)
+### ABC Headless Section (`[abc.xdock]`, `[abc.toyota]`)
 
 Optional, same rules as `[abc.mustgo]` (CLI flag > `[abc.xdock]` > `[global]` > default; wrong or empty values fall back).
 Used only by `--rname=xdock` (and the ABC Headless > xdock menu entry). `reports_dir` and `date_format` come from the CLI /

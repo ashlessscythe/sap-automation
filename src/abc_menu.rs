@@ -18,6 +18,7 @@ use crate::zmdesnr_module::run_zmdesnr_auto;
 pub enum AbcChoice {
     Mustgo,
     Xdock,
+    Toyota,
     Vt11,
     Vl06o,
     Zmdesnr,
@@ -28,7 +29,7 @@ pub enum AbcChoice {
 }
 
 /// Menu entries in display order.
-pub const ABC_ENTRIES: [(AbcChoice, &str); 9] = [
+pub const ABC_ENTRIES: [(AbcChoice, &str); 10] = [
     (
         AbcChoice::Mustgo,
         "mustgo - Headless report (asks for the run date)",
@@ -36,6 +37,10 @@ pub const ABC_ENTRIES: [(AbcChoice, &str); 9] = [
     (
         AbcChoice::Xdock,
         "xdock - Headless report (asks for the run date)",
+    ),
+    (
+        AbcChoice::Toyota,
+        "toyota - Headless report (asks for the run date)",
     ),
     (AbcChoice::Vt11, "VT11 - Auto Run (from config)"),
     (AbcChoice::Vl06o, "VL06O - Auto Run (from config)"),
@@ -47,7 +52,7 @@ pub const ABC_ENTRIES: [(AbcChoice, &str); 9] = [
     ),
     (
         AbcChoice::Zmdetpc,
-        "ZMDETPC - Pallet Count (runs inside xdock, no standalone run)",
+        "ZMDETPC - Pallet Count (runs inside xdock/toyota, no standalone run)",
     ),
     (AbcChoice::Back, "Back to Main Menu"),
 ];
@@ -126,7 +131,7 @@ pub fn run_abc_menu(session: Option<&GuiSession>) {
             return;
         }
         if matches!(choice, AbcChoice::Lt23 | AbcChoice::Zmdetpc) {
-            println!("No standalone run: LT23 runs inside mustgo, ZMDETPC inside xdock.");
+            println!("No standalone run: LT23 runs inside mustgo, ZMDETPC inside xdock/toyota.");
             pause();
             continue;
         }
@@ -135,11 +140,14 @@ pub fn run_abc_menu(session: Option<&GuiSession>) {
             pause();
             continue;
         };
-        if matches!(choice, AbcChoice::Mustgo | AbcChoice::Xdock) {
-            let name = if choice == AbcChoice::Mustgo {
-                "mustgo"
-            } else {
-                "xdock"
+        if matches!(
+            choice,
+            AbcChoice::Mustgo | AbcChoice::Xdock | AbcChoice::Toyota
+        ) {
+            let name = match choice {
+                AbcChoice::Mustgo => "mustgo",
+                AbcChoice::Xdock => "xdock",
+                _ => "toyota",
             };
             run_report_interactive(session, name);
             continue;
@@ -180,7 +188,8 @@ mod tests {
     fn back_is_last_and_indices_map() {
         assert_eq!(choice_from_index(0), Some(AbcChoice::Mustgo));
         assert_eq!(choice_from_index(1), Some(AbcChoice::Xdock));
-        assert_eq!(choice_from_index(2), Some(AbcChoice::Vt11));
+        assert_eq!(choice_from_index(2), Some(AbcChoice::Toyota));
+        assert_eq!(choice_from_index(3), Some(AbcChoice::Vt11));
         assert_eq!(
             choice_from_index(ABC_ENTRIES.len() - 1),
             Some(AbcChoice::Back)

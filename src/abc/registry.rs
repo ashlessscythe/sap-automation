@@ -29,6 +29,8 @@ pub enum Step {
     Zmdetpc,
     /// Merge ZMDETPC into `vl06o` (spec 4.12, xdock/toyota rules).
     MergeZmdetpc,
+    /// Trailer estimate per plant (toyota, spec 5.2 rows 31-32).
+    Trailers,
     /// Write output tables.
     Save,
 }
@@ -75,7 +77,23 @@ pub const XDOCK: ReportDef = ReportDef {
     output_tables: &["vt11", "vl06o", "pivot"],
 };
 
-const REPORTS: &[ReportDef] = &[MUSTGO, XDOCK];
+/// `toyota` (spec 5.2): the `xdock` flow with VT11 variant `VT11_TOYOTA_VARIANT`, plus a trailers table
+/// (`ROUND(total / 14.5)` per plant) written next to the pivot instead of cells on its sheet.
+pub const TOYOTA: ReportDef = ReportDef {
+    name: "toyota",
+    folder: "INV",
+    steps: &[
+        Step::Vt11,
+        Step::Vl06o,
+        Step::Zmdetpc,
+        Step::MergeZmdetpc,
+        Step::Trailers,
+        Step::Save,
+    ],
+    output_tables: &["vt11", "vl06o", "pivot", "trailers"],
+};
+
+const REPORTS: &[ReportDef] = &[MUSTGO, XDOCK, TOYOTA];
 
 /// Case-insensitive lookup by rName.
 pub fn find_report(name: &str) -> Option<&'static ReportDef> {
@@ -176,6 +194,15 @@ mod tests {
                 .join("11-05-2026_XDOCK_VL06O.tsv")
         );
         assert_eq!(find_report("XDock").unwrap().folder, "INV");
+        let p = output_path(Path::new("r"), &TOYOTA, d(2026, 11, 10), &rd, "trailers");
+        assert_eq!(
+            p,
+            Path::new("r")
+                .join("INV")
+                .join("2026-11-10")
+                .join("toyota")
+                .join("11-05-2026_TOYOTA_TRAILERS.tsv")
+        );
     }
 
     #[test]

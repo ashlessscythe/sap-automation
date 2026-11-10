@@ -14,6 +14,9 @@
 //! delete_exports = true
 //! ignore_display_error = true
 //!
+//! [abc.toyota]                       # same keys as [abc.xdock]; only the defaults differ
+//! vt11_variant = "VT11_TOYOTA_VARIANT"        # (vt11_layout, vl06o_layout, zmdetpc_variant: as xdock)
+//!
 //! [abc.xdock]
 //! vt11_variant = "VT11_XDOCK_VARIANT"
 //! vt11_layout = "scorecard"
@@ -26,7 +29,7 @@
 #![allow(dead_code)]
 
 use super::adapters::{MustgoSapConfig, RealSapSteps};
-use super::inv_runner::{run_xdock, InvSelection, InvSummary};
+use super::inv_runner::{run_toyota, run_xdock, InvSelection, InvSummary};
 use super::raw::RawOptions;
 use super::registry;
 use super::run::RunDate;
@@ -127,9 +130,9 @@ pub fn resolve_mustgo(input: &ResolveInput) -> ResolvedMustgo {
     }
 }
 
-/// Effective settings of an `xdock` run.
+/// Effective settings of an INV run (`xdock`, `toyota`).
 #[derive(Debug, Clone)]
-pub struct ResolvedXdock {
+pub struct ResolvedInv {
     /// Export/session settings shared with `mustgo` (its VT11/ZMDESNR/LT23 names are unused).
     pub cfg: MustgoSapConfig,
     pub sel: InvSelection,
@@ -138,16 +141,24 @@ pub struct ResolvedXdock {
 }
 
 /// CLI > `[abc.xdock]` > `[global]` > defaults.
-pub fn resolve_xdock(input: &ResolveInput) -> ResolvedXdock {
+pub fn resolve_xdock(input: &ResolveInput) -> ResolvedInv {
+    resolve_inv(input, InvSelection::xdock())
+}
+
+/// CLI > `[abc.toyota]` > `[global]` > defaults.
+pub fn resolve_toyota(input: &ResolveInput) -> ResolvedInv {
+    resolve_inv(input, InvSelection::toyota())
+}
+
+fn resolve_inv(input: &ResolveInput, d: InvSelection) -> ResolvedInv {
     let base = resolve_mustgo(input);
-    let d = InvSelection::xdock();
     let sel = InvSelection {
         vt11_variant: s(&input.section, "vt11_variant").unwrap_or(d.vt11_variant),
         vt11_layout: s(&input.section, "vt11_layout").unwrap_or(d.vt11_layout),
         vl06o_layout: s(&input.section, "vl06o_layout").unwrap_or(d.vl06o_layout),
         zmdetpc_variant: s(&input.section, "zmdetpc_variant").unwrap_or(d.zmdetpc_variant),
     };
-    ResolvedXdock {
+    ResolvedInv {
         cfg: base.cfg,
         sel,
         reports_dir: base.reports_dir,
@@ -160,8 +171,13 @@ pub fn resolve_from_environment() -> ResolvedMustgo {
 }
 
 /// Same for `xdock` (section `[abc.xdock]`).
-pub fn resolve_xdock_from_environment() -> ResolvedXdock {
+pub fn resolve_xdock_from_environment() -> ResolvedInv {
     resolve_xdock(&environment_input("xdock"))
+}
+
+/// Same for `toyota` (section `[abc.toyota]`).
+pub fn resolve_toyota_from_environment() -> ResolvedInv {
+    resolve_toyota(&environment_input("toyota"))
 }
 
 /// The resolver input for report `name`: CLI overrides, `[global]` and `[abc.<name>]`.
@@ -192,7 +208,7 @@ pub fn environment_input(name: &str) -> ResolveInput {
 
 /// Names of the reports that have a runner.
 pub fn runnable_reports() -> &'static [&'static str] {
-    &["mustgo", "xdock"]
+    &["mustgo", "xdock", "toyota"]
 }
 
 /// Check that `name` is a registered report with a runner; returns the canonical name.
@@ -251,6 +267,10 @@ pub fn inv_summary_lines(name: &str, s: &InvSummary) -> Vec<String> {
             s.vl06o_rows, s.pivot_rows, s.total
         ),
     ];
+    if !s.trailers.is_empty() {
+        let t: Vec<String> = s.trailers.iter().map(|(p, n)| format!("{p} {n}")).collect();
+        v.push(format!("  trailers (total / 14.5): {}", t.join(", ")));
+    }
     v.extend(s.outputs.iter().map(|p| format!("  wrote {}", p.display())));
     v
 }
@@ -281,6 +301,17 @@ pub fn run_report(session: &GuiSession, name: &str, date: &RunDate) -> Result<Ve
             announce(name, date, &resolved.cfg.export_dir, &out);
             let mut steps = RealSapSteps::new(session, resolved.cfg);
             run_xdock(&mut steps, date, &resolved.sel, &out)
+                .map(|s| (inv_summary_lines(name, &s), s.outputs))
+        }
+        "toyota" => {
+            let resolved = resolve_toyota_from_environment();
+            let out = OutputSpec {
+                reports_dir: resolved.reports_dir.clone(),
+                today,
+            };
+            announce(name, date, &resolved.cfg.export_dir, &out);
+            let mut steps = RealSapSteps::new(session, resolved.cfg);
+            run_toyota(&mut steps, date, &resolved.sel, &out)
                 .map(|s| (inv_summary_lines(name, &s), s.outputs))
         }
         other => Err(anyhow!("no runner for '{other}'")),
@@ -405,6 +436,26 @@ mod tests {
     }
 
     #[test]
+    fn toyota_defaults_and_precedence() {
+        let r = resolve_toyota(&ResolveInput::default());
+        assert_eq!(r.sel, InvSelection::toyota());
+        assert_eq!(r.sel.vt11_variant, "VT11_TOYOTA_VARIANT");
+        assert_eq!(r.sel.vt11_layout, "scorecard");
+        assert_eq!(r.sel.vl06o_layout, "xdock");
+        assert_eq!(r.sel.zmdetpc_variant, "ZMDETPC_VARIANT");
+        let r = resolve_toyota(&ResolveInput {
+            section: section("vt11_variant = \"MYTOYO\"\n"),
+            ..ResolveInput::default()
+        });
+        assert_eq!(r.sel.vt11_variant, "MYTOYO");
+        // xdock keeps its own default
+        assert_eq!(
+            resolve_xdock(&ResolveInput::default()).sel.vt11_variant,
+            "VT11_XDOCK_VARIANT"
+        );
+    }
+
+    #[test]
     fn inv_summary_text() {
         let s = InvSummary {
             outputs: vec![PathBuf::from("b.tsv")],
@@ -416,17 +467,22 @@ mod tests {
             vl06o_rows: 148,
             pivot_rows: 13,
             total: "1493".into(),
+            trailers: vec![("PL55".into(), "0".into())],
         };
         let l = inv_summary_lines("xdock", &s);
         assert!(l[0].contains("xdock") && l[0].contains("2026-11-05"));
         assert!(l[1].contains("91") && l[1].contains("148") && l[1].contains('8'));
         assert!(l[2].contains("1493"));
+        assert!(l
+            .iter()
+            .any(|x| x.contains("trailers") && x.contains("PL55 0")));
         assert!(l.last().unwrap().contains("b.tsv"));
     }
 
     #[test]
     fn report_checks() {
         assert_eq!(check_report(" XDock ").unwrap(), "xdock");
+        assert_eq!(check_report("TOYOTA").unwrap(), "toyota");
         assert_eq!(check_report(" MustGo ").unwrap(), "mustgo");
         let e = check_report("nope").unwrap_err().to_string();
         assert!(e.contains("unknown report") && e.contains("mustgo"), "{e}");

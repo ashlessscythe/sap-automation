@@ -101,6 +101,7 @@ The application also supports command-line operation for automation scenarios. T
 ./sap_automation.exe --rname=mustgo --run-date=2026-11-05
 ./sap_automation.exe --rname=mustgo --run-date=WK45
 ./sap_automation.exe --rname=xdock --run-date=2026-11-05
+./sap_automation.exe --rname=toyota --run-date=2026-11-05
 
 # Sequence (uses [sequence] from config.toml)
 ./sap_automation.exe run-sequence
@@ -141,12 +142,12 @@ For the full flag reference, validation rules, source-file resolution, and end-t
 
 ### ABC Headless reports
 
-`--rname=<name> --run-date=<DATE|A..B|WKnn>` runs a whole report unattended (today: `mustgo` and `xdock`): the SAP exports are forced to
+`--rname=<name> --run-date=<DATE|A..B|WKnn>` runs a whole report unattended (today: `mustgo`, `xdock` and `toyota`): the SAP exports are forced to
 text with tabs, loaded, post-processed offline and written as TSV under `<reports_dir>\K2XX\<today>\mustgo\` (`mustgo`) or
-`<reports_dir>\INV\<today>\xdock\` (`xdock`: VT11, VL06O, ZMDETPC, merged `vl06o` table and plant pivot). In the TUI they are
+`<reports_dir>\INV\<today>\xdock\` (`xdock`: VT11, VL06O, ZMDETPC, merged `vl06o` table and plant pivot; `toyota` the same under `...\toyota\` plus a trailers table). In the TUI they are
 the first entries of the **ABC Headless** submenu (main menu option 30); it asks for the run date and runs the same code. There is
 deliberately **no sequence menu id** for them: the sequence runner is config-driven and has no run date. Options live in the
-optional `[abc.mustgo]` / `[abc.xdock]` sections ([CONFIG.md](CONFIG.md)); flags, exit codes and file locations are in
+optional `[abc.mustgo]` / `[abc.xdock]` / `[abc.toyota]` sections ([CONFIG.md](CONFIG.md)); flags, exit codes and file locations are in
 [COMMAND_LINE_USAGE.md](COMMAND_LINE_USAGE.md). The SAP steps have not been verified on a live system yet; see the live
 verification checklist in `docs/abc_headless_plan.md`.
 

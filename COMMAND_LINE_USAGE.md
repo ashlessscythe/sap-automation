@@ -154,25 +154,27 @@ The file extension drives the parser:
 
 | Flag | Meaning |
 | --- | --- |
-| `--rname=<name>` | Report to run. `mustgo` and `xdock` have a runner today (case-insensitive). Unknown names fail with the list of known reports. |
+| `--rname=<name>` | Report to run. `mustgo`, `xdock` and `toyota` have a runner today (case-insensitive). Unknown names fail with the list of known reports. |
 | `--run-date=<DATE\|A..B\|WKnn>` | `YYYY-MM-DD`, `YYYY-MM-DD..YYYY-MM-DD`, or a week `WK45` / `WK45/2026` (Sunday..Saturday, Excel WEEKNUM; the year defaults to the current year). A range or week is **one run**: VT11 gets the whole range and `export_date` becomes `WK_<n>` (a single date gives `yyyy-mm-dd`). |
 
 `--rname` and `--run-date` require each other. Allowed with them: `--skip-sap-check`, `--keep-awake`, `--reports-dir`,
 `--date-format`, `--timezone`, `--ignore-display-error`. Defaults for variants, layouts, warehouse and clean-up come from the
-optional `[abc.mustgo]` / `[abc.xdock]` section (see [CONFIG.md](CONFIG.md)); there are no per-tcode flags for a report.
+optional `[abc.mustgo]` / `[abc.xdock]` / `[abc.toyota]` section (see [CONFIG.md](CONFIG.md)); there are no per-tcode flags for a report.
 
 ```bash
 ./sap_automation.exe --rname=mustgo --run-date=2026-11-05
 ./sap_automation.exe --rname=mustgo --run-date=WK45 --keep-awake
 ./sap_automation.exe --rname=mustgo --run-date=2026-11-01..2026-11-07 --reports-dir=D:\reports
 ./sap_automation.exe --rname=xdock --run-date=2026-11-05
+./sap_automation.exe --rname=toyota --run-date=2026-11-05
 ```
 
 The run needs a logged-in SAP GUI session (checked unless `--skip-sap-check`), asks nothing, and prints the step row counts
 and the output paths. The flow of `mustgo` is VT11 -> VL06O -> ZMDESNR (by deliveries) -> LT23 -> ZMDESNR (by deliveries +
 TOs); the flow of `xdock` is VT11 (variant `VT11_XDOCK_VARIANT`, layout `scorecard`) -> VL06O for all shipments (layout `xdock`, one
 row per delivery) -> ZMDETPC summarised for the deliveries -> merge (`total` = pallet + child, or the number of packages for a
-delivery without a ZMDETPC row) -> pivot of `total` by plant. The first empty result or error stops the run and **nothing is
+delivery without a ZMDETPC row) -> pivot of `total` by plant. `toyota` is the same flow with VT11 variant `VT11_TOYOTA_VARIANT`
+plus a trailers table (`ROUND(total / 14.5)` per pivot row). The first empty result or error stops the run and **nothing is
 written**.
 
 **Exit codes:** `0` success; non-zero for every failure. The message tells them apart:
@@ -186,6 +188,8 @@ non-zero before SAP is touched (clap errors exit with 2).
 * Outputs `xdock`: `<reports_dir>\INV\<today yyyy-mm-dd>\xdock\<date>_XDOCK_VT11.tsv`, `..._VL06O.tsv` (merged table, last
   columns `delivery_`, `pallet`, `child`, `total`), `..._PIVOT.tsv` (`plant`, `total`, a blank plant is `(blank)` and last, no
   grand-total row).
+* Outputs `toyota`: `<reports_dir>\INV\<today yyyy-mm-dd>\toyota\<date>_TOYOTA_VT11.tsv`, `..._VL06O.tsv`, `..._PIVOT.tsv`
+  and `..._TRAILERS.tsv` (`plant`, `trailers`; one row per pivot row, so a `(blank)` plant has one too).
 * Temporary SAP exports (text with tabs, forced): `<reports_dir>\<TCODE>\<yyyymmddhhmmss>_<TCODE>.txt`; deleted after a
   successful load unless `[abc.<report>] delete_exports = false`. A file that failed to load is kept.
 
@@ -194,7 +198,7 @@ non-zero before SAP is touched (clap errors exit with 2).
 | Condition | Error |
 | --- | --- |
 | `--rname` without `--run-date` (or the reverse) | clap: required arguments not provided |
-| `--rname` unknown or without a runner | `Invalid --rname value: unknown report '...'. Known reports: mustgo, xdock` |
+| `--rname` unknown or without a runner | `Invalid --rname value: unknown report '...'. Known reports: mustgo, xdock, toyota` |
 | `--run-date` not a date / range / week, or end before start, week outside 1-53 | `Invalid --run-date value '...': ...` |
 | `--rname` with `--run-loop`, `--run-sequence` or the run-loop / run-sequence subcommands | clap conflict / `--rname can't be combined ...` |
 | `--rname` with any per-tcode flag (`--tcode --layout --variant --export-type ... --bin-filter`) | `<flags> can't be used with --rname; ...` |

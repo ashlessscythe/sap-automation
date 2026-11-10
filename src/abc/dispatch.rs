@@ -245,8 +245,8 @@ pub fn k2xx_summary_lines(name: &str, s: &K2xxSummary) -> Vec<String> {
             s.shipments, s.deliveries, s.zmdetpc_rows, s.without_zmdetpc
         ),
         format!(
-            "  rows: zvt11 {}, vl06o {} (total {})",
-            s.zvt11_rows, s.vl06o_rows, s.total
+            "  rows: zvt11 {}, vl06o {}, pivot {} (total {})",
+            s.zvt11_rows, s.vl06o_rows, s.pivot_rows, s.total
         ),
     ];
     v.extend(s.outputs.iter().map(|p| format!("  wrote {}", p.display())));
@@ -703,12 +703,13 @@ mod tests {
             zmdetpc_rows: 106,
             without_zmdetpc: 1,
             vl06o_rows: 107,
+            pivot_rows: 12,
             total: "900".into(),
         };
         let l = k2xx_summary_lines("k2xx", &s);
         assert!(l[0].contains("k2xx") && l[0].contains("2026-11-05"));
         assert!(l[1].contains("54") && l[1].contains("107") && l[1].contains("106"));
-        assert!(l[2].contains("409") && l[2].contains("900"));
+        assert!(l[2].contains("409") && l[2].contains("pivot 12") && l[2].contains("900"));
         assert!(l.last().unwrap().contains("k.tsv"));
     }
 

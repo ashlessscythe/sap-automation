@@ -39,10 +39,11 @@ Dependency pins matter: `aes = "=0.9.2"` is pinned because newer needs rustc 1.8
 
 ## ABC headless work
 
-`mustgo`, `xdock`, `toyota` and `misc` are runnable: `sap_automation --rname=<mustgo|xdock|toyota|misc> --run-date=<DATE|A..B|WKnn>` (also TUI > ABC Headless).
-Code is unit/golden tested offline (`mustgo` reproduces spec 9.3, `xdock` spec 9.6 with two documented differences to the xlsx);
-**the SAP steps have never run live** (see the "Live verification checklist" sections in `docs/abc_headless_plan.md`, the first
-thing to do when SAP is available).
+`mustgo`, `xdock`, `toyota` and `misc` are runnable and **have been run live by the owner**: `sap_automation --rname=<mustgo|xdock|toyota|misc> --run-date=<DATE|A..B|WKnn>`
+(also TUI > ABC Headless; optional `--date-range-buffer=<n>`). Code is unit/golden tested offline (`mustgo` reproduces spec 9.3,
+`xdock` spec 9.6 with documented differences to the xlsx). New reports (`k2xx`, `relabel`, `repack`) have not run live yet: the
+"Live verification checklist" sections in `docs/abc_headless_plan.md` list the SAP control ids that come from the spec only.
+Exports are read as UTF-8, else Windows-1252 (`raw::decode_export`). Owner decisions and live findings: "RESUME HERE" in the plan.
 
 Modules in `src/abc/`: `run` (date/week parsing), `registry` (rName registry, output paths), `table` + `ops` (in-memory table,
 selection mask, filter/dedup/lookup/sort), `mustgo` (pure stages), `raw` (loader for SAP text-with-tabs exports; header

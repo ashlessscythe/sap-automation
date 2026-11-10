@@ -1,4 +1,4 @@
-//! Runner for the `INV` reports, so far `xdock` (spec 5.3, verified in 9.6), parameterised by a
+//! Runner for the `INV` reports, so far `xdock` (spec 5.3, verified in 9.6) and `toyota` (5.2), parameterised by a
 //! SAP-step seam of its own ([`InvSteps`]); the `mustgo` seam ([`super::runner::SapSteps`]) is
 //! untouched. The pure stages are in [`super::inv`].
 //!
@@ -23,7 +23,7 @@
 #![allow(dead_code)]
 
 use super::inv;
-use super::registry::{self, XDOCK};
+use super::registry::{self, ReportDef, TOYOTA, XDOCK};
 use super::run::RunDate;
 use super::runner::{export_date_label, NoDataError, OutputSpec, StepOutput};
 use super::table::Table;
@@ -41,6 +41,14 @@ pub struct InvSelection {
 }
 
 impl InvSelection {
+    /// Defaults of `toyota` (spec 5.2): VT11 variant `FG_TOYO_XD`, the rest as `xdock`.
+    pub fn toyota() -> Self {
+        Self {
+            vt11_variant: "FG_TOYO_XD".to_string(),
+            ..Self::xdock()
+        }
+    }
+
     /// Defaults of `xdock` (spec 5.3 and 5.2 row 28).
     pub fn xdock() -> Self {
         Self {
@@ -82,14 +90,16 @@ pub struct InvSummary {
     pub pivot_rows: usize,
     /// Sum of `total` over all plants.
     pub total: String,
+    /// `toyota` only: `(plant, trailers)` rows of the trailers table (empty for `xdock`).
+    pub trailers: Vec<(String, String)>,
 }
 
-fn log(msg: &str) {
-    println!("[xdock] {msg}");
+fn log(rep: &str, msg: &str) {
+    println!("[{rep}] {msg}");
 }
 
-fn take(step: &str, out: Result<StepOutput>, required: &[&str]) -> Result<Table> {
-    let out = out.with_context(|| format!("xdock step '{step}' failed"))?;
+fn take(rep: &str, step: &str, out: Result<StepOutput>, required: &[&str]) -> Result<Table> {
+    let out = out.with_context(|| format!("{rep} step '{step}' failed"))?;
     let t = match out {
         StepOutput::Table(t) => t,
         StepOutput::NoData(message) => {
@@ -107,17 +117,17 @@ fn take(step: &str, out: Result<StepOutput>, required: &[&str]) -> Result<Table>
         .collect();
     if !missing.is_empty() {
         return Err(anyhow!(
-            "xdock step '{step}': missing column(s) {} (found: {})",
+            "{rep} step '{step}': missing column(s) {} (found: {})",
             missing.join(", "),
             t.headers.join(", ")
         ));
     }
-    log(&format!("{step}: {} rows", t.nrows()));
+    log(rep, &format!("{step}: {} rows", t.nrows()));
     Ok(t)
 }
 
-fn stage<T>(step: &str, r: Result<T>) -> Result<T> {
-    r.with_context(|| format!("xdock step '{step}'"))
+fn stage<T>(rep: &str, step: &str, r: Result<T>) -> Result<T> {
+    r.with_context(|| format!("{rep} step '{step}'"))
 }
 
 fn no_data(step: &str, message: &str) -> anyhow::Error {
@@ -151,18 +161,17 @@ pub fn count_without_zmdetpc(vl06o: &Table, zmdetpc: &Table) -> Result<usize> {
         .count())
 }
 
-/// Write `vt11`, `vl06o` and `pivot` as TSV; on a write error the files already written are
-/// removed again. Returns the paths in that order.
+/// Write the named tables as TSV under the report's output paths; on a write error the files
+/// already written are removed again. Returns the paths in the order given.
 pub fn write_outputs(
+    def: &ReportDef,
     out: &OutputSpec,
     run_date: &RunDate,
-    vt11: &Table,
-    vl06o: &Table,
-    pivot: &Table,
+    tables: &[(&str, &Table)],
 ) -> Result<Vec<PathBuf>> {
     let mut paths: Vec<PathBuf> = Vec::new();
-    for (name, t) in [("vt11", vt11), ("vl06o", vl06o), ("pivot", pivot)] {
-        let path = registry::output_path(&out.reports_dir, &XDOCK, out.today, run_date, name);
+    for (name, t) in tables {
+        let path = registry::output_path(&out.reports_dir, def, out.today, run_date, name);
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir).with_context(|| format!("create {}", dir.display()))?;
         }
@@ -177,33 +186,60 @@ pub fn write_outputs(
     Ok(paths)
 }
 
-/// Run `xdock`: VT11 -> VL06O -> ZMDETPC -> merge -> pivot -> outputs.
+/// Run `xdock`: VT11 -> VL06O -> ZMDETPC -> merge -> pivot -> outputs (`vt11`, `vl06o`, `pivot`).
 pub fn run_xdock(
     steps: &mut impl InvSteps,
     date: &RunDate,
     sel: &InvSelection,
     out: &OutputSpec,
 ) -> Result<InvSummary> {
+    run_inv(steps, &XDOCK, false, date, sel, out)
+}
+
+/// Run `toyota` (spec 5.2): the `xdock` flow with the toyota VT11 variant, plus the `trailers`
+/// table (`ROUND(total / 14.5)` per pivot row). Outputs `vt11`, `vl06o`, `pivot`, `trailers`.
+pub fn run_toyota(
+    steps: &mut impl InvSteps,
+    date: &RunDate,
+    sel: &InvSelection,
+    out: &OutputSpec,
+) -> Result<InvSummary> {
+    run_inv(steps, &TOYOTA, true, date, sel, out)
+}
+
+/// Shared flow of the INV reports. `with_trailers` adds the trailers table to the outputs.
+fn run_inv(
+    steps: &mut impl InvSteps,
+    def: &ReportDef,
+    with_trailers: bool,
+    date: &RunDate,
+    sel: &InvSelection,
+    out: &OutputSpec,
+) -> Result<InvSummary> {
+    let rep = def.name;
     // VT11
     let vt11 = take(
+        rep,
         "vt11",
         steps.vt11(date, &sel.vt11_variant, &sel.vt11_layout),
         &["shipment_number"],
     )?;
-    let shipments = stage("vt11 shipments", shipment_list(&vt11))?;
+    let shipments = stage(rep, "vt11 shipments", shipment_list(&vt11))?;
     if shipments.is_empty() {
         return Err(no_data("vt11", "no shipments"));
     }
-    log(&format!("{} shipments", shipments.len()));
+    log(rep, &format!("{} shipments", shipments.len()));
 
     // VL06O
     let mut vl06o = take(
+        rep,
         "vl06o",
         steps.vl06o_by_shipments(&shipments, &sel.vl06o_layout),
         &["delivery", "number_of_packages", "plant"],
     )?;
     let export_date = export_date_label(date);
     stage(
+        rep,
         "vl06o prepare",
         inv::prepare_vl06o(&mut vl06o, &export_date),
     )?;
@@ -211,36 +247,62 @@ pub fn run_xdock(
         Ok(d) => d,
         Err(_) => return Err(no_data("vl06o", "no deliveries")),
     };
-    log(&format!("{} deliveries", deliveries.len()));
+    log(rep, &format!("{} deliveries", deliveries.len()));
 
     // ZMDETPC
     let zmdetpc = take(
+        rep,
         "zmdetpc",
         steps.zmdetpc_summarised(&deliveries, date, &sel.zmdetpc_variant),
         &["delivery", "pallet", "child"],
     )?;
-    let without = stage("zmdetpc coverage", count_without_zmdetpc(&vl06o, &zmdetpc))?;
+    let without = stage(
+        rep,
+        "zmdetpc coverage",
+        count_without_zmdetpc(&vl06o, &zmdetpc),
+    )?;
     if without > 0 {
-        log(&format!(
-            "{without} deliveries have no ZMDETPC row (total = number_of_packages)"
-        ));
+        log(
+            rep,
+            &format!("{without} deliveries have no ZMDETPC row (total = number_of_packages)"),
+        );
     }
 
-    // merge + pivot
-    let merged = stage("merge", inv::merge_zmdetpc(&vl06o, &zmdetpc))?;
-    let pivot = stage("pivot", inv::pivot_sum(&merged, "plant", "total"))?;
+    // merge + pivot (+ trailers)
+    let merged = stage(rep, "merge", inv::merge_zmdetpc(&vl06o, &zmdetpc))?;
+    let pivot = stage(rep, "pivot", inv::pivot_sum(&merged, "plant", "total"))?;
     let tc = pivot.col("total")?;
     let total: f64 = pivot
         .rows
         .iter()
         .filter_map(|r| r[tc].parse::<f64>().ok())
         .sum();
+    // `pivot_sum` names its columns after the arguments (`plant`, `total`), as `trailers` expects
+    let trailers = if with_trailers {
+        Some(stage(rep, "trailers", inv::trailers(&pivot))?)
+    } else {
+        None
+    };
 
     // save (only now, so a failed run leaves no output)
-    let outputs = stage("save", write_outputs(out, date, &vt11, &merged, &pivot))?;
-    for p in &outputs {
-        log(&format!("wrote {}", p.display()));
+    let mut tables: Vec<(&str, &Table)> =
+        vec![("vt11", &vt11), ("vl06o", &merged), ("pivot", &pivot)];
+    if let Some(t) = &trailers {
+        tables.push(("trailers", t));
     }
+    let outputs = stage(rep, "save", write_outputs(def, out, date, &tables))?;
+    for p in &outputs {
+        log(rep, &format!("wrote {}", p.display()));
+    }
+    let trailer_rows = trailers
+        .as_ref()
+        .map(|t| {
+            t.rows
+                .iter()
+                .map(|r| (r[0].clone(), r[1].clone()))
+                .collect()
+        })
+        .unwrap_or_default();
     Ok(InvSummary {
         outputs,
         export_date,
@@ -251,5 +313,6 @@ pub fn run_xdock(
         vl06o_rows: merged.nrows(),
         pivot_rows: pivot.nrows(),
         total: format!("{total}"),
+        trailers: trailer_rows,
     })
 }

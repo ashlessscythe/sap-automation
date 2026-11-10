@@ -1,0 +1,12 @@
+Track Pallet Count
+Delphi Automotive Systems
+
+User       :			VJVDMJ
+Run Date   :			2026-11-10
+Run Time   :			13:53:31
+
+	Delivery	Pallet		Child
+
+	0085628715	    2		   0
+	0085628718	    1		   0
+	0085628719	    0		   1

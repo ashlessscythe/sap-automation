@@ -1,0 +1,4 @@
+delivery	shipto_party	name_of_the_shipto_party	external_delivery_id	total_gds_mvt_stat	plant	number_of_packages	date	delivery_	pallet	child	total	delivery_	pallet	child
+13000821	130013	CUSTOMER 043		C	PL55	1	2026-11-05	13000821	2	0	2	13000821	2	0
+13000822	130013	CUSTOMER 043		C	PL55	1	2026-11-05	13000822	1	0	1	13000822	1	0
+13000823	130013	CUSTOMER 043		C	PL55	1	2026-11-05	13000823	0	1	1	13000823	0	1

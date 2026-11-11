@@ -1,0 +1,12 @@
+Track Pallet Count
+Example Automotive Systems
+
+User       :			UUUUUU
+Run Date   :			2026-11-10
+Run Time   :			13:53:31
+
+	Delivery	Pallet		Child
+
+	0013000821	    2		   0
+	0013000822	    1		   0
+	0013000823	    0		   1

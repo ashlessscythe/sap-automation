@@ -7,7 +7,7 @@
 //!    run** (owner decision; spec 7.0 item 15), re-read from disk at the path
 //!    [`registry::output_path`] gives for `k2xx` / `vl06o`, the same run date and today's
 //!    folder. A missing or empty file stops the run with an error that says to run `k2xx` first;
-//! 2. ZMDESNR by deliveries (variant `relabel_k2xx`, layout `site_relabel`) -> `sn_del`;
+//! 2. ZMDESNR by deliveries (variant `ZMDESNR_RELABEL_VARIANT`, layout `ZMDESNR_RELABEL_LAYOUT`) -> `sn_del`;
 //! 3. if block B4 has serials: ZMDESNR by serial / History for them (same variant and layout);
 //! 4. the pure stages (alias-plant as an effective plant, blocks B1-B7, `_of_labels`, `export_date`,
 //!    pivot customer x plant, cross-tab like the macro) and the save step.
@@ -89,7 +89,7 @@ pub struct RelabelSummary {
     /// Rows of the delivery export (`sn_del`).
     pub sn_del_rows: usize,
     /// Rows treated as plant `alias-plant` during the stage.
-    pub al55_rows: usize,
+    pub alias_rows: usize,
     /// Rows of blocks B1, B2, B3, B4 (not appended), B5, B6, B7.
     pub blocks: [usize; 7],
     /// Serials sent to the History call (0 = no call) and rows it returned.
@@ -184,8 +184,12 @@ pub fn run_relabel(
     }
 
     // alias-plant marks (kept in a side vector, nothing is written back) and the blocks
-    let eff = stage(rep, "al55", relabel::effective_plants(&sn_del, &sel.rules))?;
-    let al55_rows = eff
+    let eff = stage(
+        rep,
+        "alias plant",
+        relabel::effective_plants(&sn_del, &sel.rules),
+    )?;
+    let alias_rows = eff
         .iter()
         .filter(|p| p.as_str() == sel.rules.alias_plant)
         .count();
@@ -250,7 +254,7 @@ pub fn run_relabel(
         export_date,
         deliveries: deliveries.len(),
         sn_del_rows: sn_del.nrows(),
-        al55_rows,
+        alias_rows,
         blocks: [
             blocks.b1.len(),
             blocks.b2.len(),

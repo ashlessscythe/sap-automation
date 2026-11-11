@@ -1,5 +1,5 @@
 //! `relabel` on the REAL exports of the live run of 2026-11-05 (`tests/fixtures/relabel/real/`,
-//! byte-exact, `-text`): ZMDESNR by deliveries (6939 rows, layout `site_relabel`) and by serial /
+//! byte-exact, `-text`): ZMDESNR by deliveries (6939 rows, layout `ZMDESNR_RELABEL_LAYOUT`) and by serial /
 //! History (5 rows), loaded through the production loader. The expected tables come from the
 //! macro's own `11-05-2026_RELABEL.xlsx` of that run (sheets `combined` and `pivot`; the yellow
 //! rows are the 5 rows with a yellow cell fill; the pivot is the macro cross-tab: customer rows x plant columns, Grand Total row and column).

@@ -440,7 +440,7 @@ mod tests {
     }
 
     #[test]
-    fn al55_rule() {
+    fn alias_rule() {
         let f = tbl(&[
             row(["1", "", "", "", "", "", "PL55", "", "", "", "ALIAS_A REDACTED"]),
             row(["2", "", "", "", "", "", "PL55", "", "", "", "alias_b corp"]),

@@ -324,7 +324,7 @@ pub fn relabel_summary_lines(name: &str, s: &RelabelSummary) -> Vec<String> {
         format!("{name} finished (date {})", s.export_date),
         format!(
             "  deliveries {} (from the k2xx vl06o file), sn_del rows {} ({} treated as alias plant)",
-            s.deliveries, s.sn_del_rows, s.al55_rows
+            s.deliveries, s.sn_del_rows, s.alias_rows
         ),
         format!(
             "  blocks B1 {}, B2 {}, B3 {}, B4 {} (history: {} serials, {} rows), B5 {}, B6 {}, B7 {}",
@@ -891,7 +891,7 @@ delete_exports = false
             export_date: "2026-11-05".into(),
             deliveries: 107,
             sn_del_rows: 6939,
-            al55_rows: 11,
+            alias_rows: 11,
             blocks: [87, 262, 48, 5, 9, 15, 0],
             history_serials: 5,
             history_rows: 5,

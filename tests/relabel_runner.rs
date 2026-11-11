@@ -167,7 +167,7 @@ fn full_run_on_the_stand_in_fixtures() {
     assert_eq!(f.serials.iter().collect::<HashSet<_>>().len(), 9);
 
     assert_eq!(s.export_date, "2026-11-05");
-    assert_eq!((s.deliveries, s.sn_del_rows, s.al55_rows), (107, 44, 6));
+    assert_eq!((s.deliveries, s.sn_del_rows, s.alias_rows), (107, 44, 6));
     assert_eq!(s.blocks, [4, 7, 2, 9, 14, 3, 3]);
     assert_eq!((s.history_serials, s.history_rows), (9, 7));
     assert_eq!((s.combined_rows, s.yellow_rows, s.rows_with_4), (33, 4, 8));

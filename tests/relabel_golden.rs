@@ -91,7 +91,7 @@ fn sn_del_is_passed_through() {
 }
 
 #[test]
-fn al55_is_an_effective_plant_only() {
+fn alias_plant_is_an_effective_plant_only() {
     let s = stages();
     let n = s
         .eff

@@ -330,7 +330,7 @@ pub const ZMDESNR_ALIASES: &[(&str, &str)] = &[
     ("shipto", "shipto_party"),
     ("to_number", "transfer_order_number"),
     ("created", "created_by"),
-    // site_relabel layout (real export of the relabel run of 2026-11-05): short list titles for
+    // ZMDESNR_RELABEL_LAYOUT layout (real export of the relabel run of 2026-11-05): short list titles for
     // the long names of the macro sheets
     ("sr_no_verf", "serial_number_2nd_party_verification"),
     ("scan_cpy", "spv_scan_copies"),

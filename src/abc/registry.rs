@@ -29,7 +29,7 @@ pub enum Step {
     Zmdetpc,
     /// Merge ZMDETPC into `vl06o` (spec 4.12, xdock/toyota rules).
     MergeZmdetpc,
-    /// `misc`: replace an `PLACEHOLDER_SP` shipping point by the parenthesised ship-to name part.
+    /// `misc`: replace an marked shipping point by the parenthesised ship-to name part.
     ShipToRegex,
     /// Trailer estimate per plant (toyota, spec 5.2 rows 31-32).
     Trailers,

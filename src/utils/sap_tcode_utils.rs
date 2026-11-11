@@ -198,8 +198,8 @@ mod tests {
 
     #[test]
     fn variant_match_is_case_insensitive_contains() {
-        assert!(variant_matches("VT11_XDOCK_VARIANT", "xd_all"));
-        assert!(!variant_matches("OTHER", "XD_ALL"));
+        assert!(variant_matches("VT11_XDOCK_VARIANT", "vt11_x"));
+        assert!(!variant_matches("OTHER", "VT11_X"));
         assert!(!variant_matches("ANY", "  "));
     }
 }

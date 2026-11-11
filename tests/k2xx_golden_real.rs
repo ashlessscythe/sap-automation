@@ -67,9 +67,9 @@ fn pivot_sums_to_the_sheet_total() {
 }
 
 /// The real ZVT11 Closed export (window 2026-07-28..2027-02-13, layout `add_del`, variant
-/// `k2xx_`). EXPECTED = the macro sheet `K2XX_ZVT11` WITH SPEC 7.0 ITEM 30 APPLIED (owner decision
+/// `ZVT11_K2XX_VARIANT`). EXPECTED = the macro sheet `K2XX_ZVT11` WITH SPEC 7.0 ITEM 30 APPLIED (owner decision
 /// 2026-11-11, a deliberate deviation from the macro): `date` = `shipment_end_date` on every row.
-/// The raw export (and the macro sheet) have 4 rows with a blank `Date` (PL63 shipment 24625349)
+/// The raw export (and the macro sheet) have 4 rows with a blank `Date` (PL63 shipment 13000522)
 /// and 78 rows with `Date` 2026-11-06 although `shipment_end_date` is 2026-11-05.
 #[test]
 fn zvt11_matches_the_xlsx_sheet_with_item_30_applied() {

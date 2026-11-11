@@ -4,7 +4,7 @@
 //!
 //! Flow (spec 5.5 rows 52-58): VT11 (variant `VT11_K2XX_VARIANT`, layout `scorecard`,
 //! `monday_include_sunday`) -> VL06O for all shipments (layout `pallets`) -> one row per
-//! delivery + `date` column -> ZVT11 Closed for the deliveries (variant `k2xx_`, layout
+//! delivery + `date` column -> ZVT11 Closed for the deliveries (variant `ZVT11_K2XX_VARIANT`, layout
 //! `add_del`, run date +- 100 days) -> ZMDETPC summarised for the deliveries (variant
 //! `ZMDETPC_VARIANT`) -> merge (spec 4.12, plain rules) -> pivot plant / sum of `total` -> save.
 //! The pivot is an owner decision (2026-11-10) that overrides spec 7.0 item 1 ("k2xx produces
@@ -64,11 +64,11 @@ impl Default for K2xxSelection {
     fn default() -> Self {
         Self {
             vt11_variant: "VT11_K2XX_VARIANT".to_string(),
-            vt11_layout: "scorecard".to_string(),
+            vt11_layout: "VT11_LAYOUT".to_string(),
             monday_include_sunday: true,
-            vl06o_layout: "pallets".to_string(),
-            zvt11_variant: "k2xx_".to_string(),
-            zvt11_layout: "add_del".to_string(),
+            vl06o_layout: "VL06O_K2XX_LAYOUT".to_string(),
+            zvt11_variant: "ZVT11_K2XX_VARIANT".to_string(),
+            zvt11_layout: "ZVT11_K2XX_LAYOUT".to_string(),
             zvt11_days: k2xx::ZVT11_WINDOW_DAYS,
             zmdetpc_variant: "ZMDETPC_VARIANT".to_string(),
         }

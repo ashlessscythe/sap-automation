@@ -111,7 +111,7 @@ The application also supports command-line operation for automation scenarios. T
 ./sap_automation.exe --run-sequence
 
 # Single-shot run of VT11 with overrides; no config.toml required
-./sap_automation.exe --tcode=vt11 --layout=ob_6 --variant=ob_win --export-type=1
+./sap_automation.exe --tcode=vt11 --layout=my_layout --variant=my_variant --export-type=1
 
 # Override loop timing + iterations from CLI; flags win over config
 ./sap_automation.exe --run-loop --tcode=vt11 --iterations=3 --delay-seconds=30
@@ -148,12 +148,12 @@ For the full flag reference, validation rules, source-file resolution, and end-t
 `--rname=<name> --run-date=<DATE|A..B|WKnn>` runs a whole report unattended (today: `mustgo`, `xdock`, `toyota`, `misc`, `k2xx` and `relabel`): the SAP exports are forced to
 text with tabs, loaded, post-processed offline and written as TSV under `<reports_dir>\K2XX\<today>\mustgo\` (`mustgo`) or
 `<reports_dir>\INV\<today>\xdock\` (`xdock`: VT11, VL06O, ZMDETPC, merged `vl06o` table and plant pivot; `toyota` the same under `...\toyota\` plus a trailers table; `misc`: VT11, VL06O and a pivot of packages by shipping point, no ZMDETPC). `k2xx` writes to `<reports_dir>\K2XX\<today>\k2xx\`
-(VT11, VL06O layout `pallets`, ZVT11 Closed, ZMDETPC; outputs `zvt11`, `vt11`, the merged `vl06o` table and a plant pivot of its `total`); it has run against live SAP and is golden-tested on real exports. `relabel` needs a single run date and the output of `k2xx` for the same date and day (it reads the `VL06O` table `k2xx` wrote); it runs ZMDESNR by deliveries and by serial / History and writes `combined`, `sn_del`, `snr_orig` and a pivot of the label counts to `<reports_dir>\K2XX\<today>\relabel\` (also run against live SAP; golden-tested on real exports). In the TUI they are
+(VT11, VL06O layout `VL06O_K2XX_LAYOUT`, ZVT11 Closed, ZMDETPC; outputs `zvt11`, `vt11`, the merged `vl06o` table and a plant pivot of its `total`); it has run against live SAP and is golden-tested on real exports. `relabel` needs a single run date and the output of `k2xx` for the same date and day (it reads the `VL06O` table `k2xx` wrote); it runs ZMDESNR by deliveries and by serial / History and writes `combined`, `sn_del`, `snr_orig` and a pivot of the label counts to `<reports_dir>\K2XX\<today>\relabel\` (also run against live SAP; golden-tested on real exports). In the TUI they are
 the first entries of the **ABC Headless** submenu (main menu option 30); it asks for the run date and runs the same code. There is
 deliberately **no sequence menu id** for them: the sequence runner is config-driven and has no run date. Options live in the
 optional `[abc.mustgo]` / `[abc.xdock]` / `[abc.toyota]` / `[abc.misc]` / `[abc.k2xx]` / `[abc.relabel]` sections ([CONFIG.md](CONFIG.md)); flags, exit codes and file locations are in
 [COMMAND_LINE_USAGE.md](COMMAND_LINE_USAGE.md). The SAP steps have not been verified on a live system yet; see the live
-verification checklist in `docs/abc_headless_plan.md`.
+verification checklist in `docs/private/abc_headless_plan.md`.
 
 ## Sequence Menu Option IDs
 
@@ -175,7 +175,7 @@ Interactive clerk flow (menu option **Inbond - Shipment to 149**):
 1. Prompt for a shipment number
 2. Run **VL06O** with variant from `[inbond].vl06o_variant` (default `blank_`)
 3. Export the delivery list, parse and **dedupe** delivery numbers
-4. Run **y_xx_99999999** with variant/layout `inb_ship` (configurable), paste deliveries into `S_DELIV`
+4. Run **y_xx_99999999** with variant/layout `INB_149_NAME` (configurable), paste deliveries into `S_DELIV`
 5. Export a timestamped paste-ready `.txt` and open it in Notepad
 
 Clerk then pastes the file into `material.php` `#clipboard`, types the shipment into `#shipmentInput`, and clicks `#splitBtn`.
@@ -185,8 +185,8 @@ This path does **not** use `exec_rest` (no browser/GUI upload).
 ```toml
 [inbond]
 vl06o_variant = "blank_"
-variant_149 = "inb_ship"
-layout_149 = "inb_ship"
+variant_149 = "INB_149_NAME"
+layout_149 = "INB_149_NAME"
 layout_columns = [
   "Plant",
   "Delivery Number",
@@ -199,7 +199,7 @@ export_type = 1
 open_notepad = true
 ```
 
-If `layout_149` is missing in SAP (or empty), the flow sets up `layout_columns` via Change Layout and asks whether to save under that name (default `inb_ship`). When you confirm and SAP save succeeds, `[inbond].layout_149` is written/updated in `config.toml` so the next run uses the confirmed name.
+If `layout_149` is missing in SAP (or empty), the flow sets up `layout_columns` via Change Layout and asks whether to save under that name (default `INB_149_NAME`). When you confirm and SAP save succeeds, `[inbond].layout_149` is written/updated in `config.toml` so the next run uses the confirmed name.
 
 ## Dependencies
 

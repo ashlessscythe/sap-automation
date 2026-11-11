@@ -111,13 +111,13 @@ fn full_run_on_real_fixtures() {
     assert_eq!(f.calls, vec!["vt11", "vl06o", "zmdetpc"]);
     assert_eq!(
         f.vt11_args,
-        vec![("VT11_TOYOTA_VARIANT".to_string(), "scorecard".to_string())]
+        vec![("VT11_TOYOTA_VARIANT".to_string(), "VT11_LAYOUT".to_string())]
     );
-    assert_eq!(f.ships, ["24605455", "24605498", "24605502"]);
-    assert_eq!(f.vl_layout, "xdock");
+    assert_eq!(f.ships, ["13000443", "13000444", "13000445"]);
+    assert_eq!(f.vl_layout, "VL06O_XDOCK_LAYOUT");
     assert_eq!(
         f.dels,
-        ["85628718", "85628715", "85628719"],
+        ["13000822", "13000821", "13000823"],
         "distinct, SAP order"
     );
     assert_eq!(f.zm_variant, "ZMDETPC_VARIANT");

@@ -33,8 +33,8 @@ pub const TRAILER_DIVISOR: f64 = 14.5;
 /// Label of a blank group in the pivot.
 pub const BLANK_LABEL: &str = "(blank)";
 
-/// Delivery key for joining: trimmed, leading zeros dropped (`0085614256` = `85614256`;
-/// `8012734818` is left as it is).
+/// Delivery key for joining: trimmed, leading zeros dropped (`0013000804` = `13000804`;
+/// `1300000000` is left as it is).
 pub fn delivery_key(raw: &str) -> String {
     let t = raw.trim();
     let s = t.trim_start_matches('0');
@@ -246,16 +246,16 @@ pub fn trailers(pivot: &Table) -> Result<Table> {
 }
 
 /// `misc` regex step (spec 5.4 row 47): for rows whose `shipping_pointreceiving_pt` contains
-/// `PLACEHOLDER_SP`, replace it with the first `(...)` group (parentheses included) of
+/// the configured marker (`ship_point_marker`), replace it with the first `(...)` group (parentheses included) of
 /// `name_of_the_shipto_party`; rows without such a group are left alone.
-pub fn misc_ship_to_regex(vl06o: &mut Table) -> Result<()> {
+pub fn misc_ship_to_regex(vl06o: &mut Table, marker: &str) -> Result<()> {
     let (n, p) = (
         vl06o.col("name_of_the_shipto_party")?,
         vl06o.col("shipping_pointreceiving_pt")?,
     );
     let re = Regex::new(r"\((.*?)\)").expect("static regex");
     for r in &mut vl06o.rows {
-        if !r[p].contains("PLACEHOLDER_SP") {
+        if marker.is_empty() || !r[p].contains(marker) {
             continue;
         }
         if let Some(m) = re.find(&r[n]) {
@@ -300,8 +300,8 @@ mod tests {
 
     #[test]
     fn keys() {
-        assert_eq!(delivery_key("0085614256"), "85614256");
-        assert_eq!(delivery_key("8012734818"), "8012734818");
+        assert_eq!(delivery_key("0013000804"), "13000804");
+        assert_eq!(delivery_key("1300000000"), "1300000000");
         assert_eq!(delivery_key("000"), "0");
         assert_eq!(delivery_key(""), "");
         assert_eq!(key_cmp("99", "100"), Ordering::Less, "numeric, not text");
@@ -494,19 +494,19 @@ mod tests {
     }
 
     #[test]
-    fn misc_regex_replaces_only_site_rows() {
+    fn misc_regex_replaces_only_marked_rows() {
         let mut v = t(
             "vl06o",
             &["name_of_the_shipto_party", "shipping_pointreceiving_pt"],
             &[
                 &["ACME (EP-1) plant (x)", "PLACEHOLDER_SP"],
                 &["No parens", "PLACEHOLDER_SP"],
-                &["ACME (EP-2)", "E01"],
+                &["ACME (EP-2)", "WH01"],
             ],
         );
-        misc_ship_to_regex(&mut v).unwrap();
+        misc_ship_to_regex(&mut v, "PLACEHOLDER_SP").unwrap();
         assert_eq!(v.rows[0][1], "(EP-1)");
         assert_eq!(v.rows[1][1], "PLACEHOLDER_SP");
-        assert_eq!(v.rows[2][1], "E01");
+        assert_eq!(v.rows[2][1], "WH01");
     }
 }

@@ -1,4 +1,4 @@
-//! Headless ABC report runner (see `docs/abc_headless_plan.md`).
+//! Headless ABC report runner (see `docs/private/abc_headless_plan.md`).
 pub mod adapters;
 pub mod dispatch;
 pub mod inv;

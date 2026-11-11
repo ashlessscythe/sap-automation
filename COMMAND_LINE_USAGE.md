@@ -178,14 +178,14 @@ optional `[abc.mustgo]` / `[abc.xdock]` / `[abc.toyota]` / `[abc.misc]` / `[abc.
 
 The run needs a logged-in SAP GUI session (checked unless `--skip-sap-check`), asks nothing, and prints the step row counts
 and the output paths. The flow of `mustgo` is VT11 -> VL06O -> ZMDESNR (by deliveries) -> LT23 -> ZMDESNR (by deliveries +
-TOs); the flow of `xdock` is VT11 (variant `VT11_XDOCK_VARIANT`, layout `scorecard`) -> VL06O for all shipments (layout `xdock`, one
+TOs); the flow of `xdock` is VT11 (variant `VT11_XDOCK_VARIANT`, layout `VT11_LAYOUT`) -> VL06O for all shipments (layout `VL06O_XDOCK_LAYOUT`, one
 row per delivery) -> ZMDETPC summarised for the deliveries -> merge (`total` = pallet + child, or the number of packages for a
 delivery without a ZMDETPC row) -> pivot of `total` by plant. `toyota` is the same flow with VT11 variant `VT11_TOYOTA_VARIANT`
-plus a trailers table (`ROUND(total / 14.5)` per pivot row). `misc` is VT11 (variant `VT11_MISC_VARIANT`) -> VL06O (layout `inv`,
-one row per delivery) -> a shipping point `PLACEHOLDER_SP` is replaced by the first parenthesised part of the ship-to name -> pivot of
-`number_of_packages` by shipping point; it has no ZMDETPC step. `k2xx` is VT11 (variant `VT11_K2XX_VARIANT`, layout `scorecard`;
-a Monday run date starts on the Sunday before) -> VL06O for all shipments (layout `pallets`, one row per delivery) -> ZVT11
-Closed for the deliveries (variant `k2xx_`, layout `add_del`, run date -/+ 100 days) -> ZMDETPC summarised for the deliveries
+plus a trailers table (`ROUND(total / 14.5)` per pivot row). `misc` is VT11 (variant `VT11_MISC_VARIANT`) -> VL06O (layout `VL06O_INV_LAYOUT`,
+one row per delivery) -> a shipping point containing the configured `ship_point_marker` is replaced by the first parenthesised part of the ship-to name -> pivot of
+`number_of_packages` by shipping point; it has no ZMDETPC step. `k2xx` is VT11 (variant `VT11_K2XX_VARIANT`, layout `VT11_LAYOUT`;
+a Monday run date starts on the Sunday before) -> VL06O for all shipments (layout `VL06O_K2XX_LAYOUT`, one row per delivery) -> ZVT11
+Closed for the deliveries (variant `ZVT11_K2XX_VARIANT`, layout `ZVT11_K2XX_LAYOUT`, run date -/+ 100 days) -> ZMDETPC summarised for the deliveries
 -> merge (`total` = pallet + child; **blank** for a delivery without a ZMDETPC row, unlike xdock/toyota) -> pivot of `total`
 by plant (the macro has no pivot for k2xx; it was added on the owner's request). The
 first empty result or error stops the run and **nothing is written**.
@@ -193,7 +193,7 @@ first empty result or error stops the run and **nothing is written**.
 `relabel` takes the delivery list from the `VL06O` table that `k2xx` wrote for the **same run date on the same calendar day**
 (`<reports_dir>\K2XX\<today>\k2xx\<date>_K2XX_VL06O.tsv`); without that file (or with an empty one) it stops with "Run k2xx first" and
 SAP is not touched. It needs a **single date** (`--run-date=YYYY-MM-DD`; a range or `WKnn` is rejected). Flow: ZMDESNR by deliveries (variant
-`relabel_k2xx`, layout `site_relabel`) -> rows of plant `PL55` for the customers `REDACTED*`, `GM*`, `GENERAL*` count as plant `AL55` while
+`ZMDESNR_RELABEL_VARIANT`, layout `ZMDESNR_RELABEL_LAYOUT`) -> rows of plant `PL55` for the customers the configured alias customer patterns count as plant `AL55` while
 the blocks are built -> blocks of rows (non-PL55 rows with 2 scan copies or a blank verification dated the run date or the next day,
 the first pallet row per parent serial, the PL55 pallet rows, PL55 rows without pallet and parent, rows with a kanban and a parent) ->
 ZMDESNR by serial / History for the PL55 pallet-1 serials (rows at storage location 11 with status `PRI` are flagged `yellow`) ->
@@ -309,7 +309,7 @@ No sequence options configured. Sequence uses config.toml — create and set up
 ### VT11 single-shot with explicit deliveries
 
 ```bash
-./sap_automation.exe --tcode=vt11 --layout=ob_6 --variant=ob_win \
+./sap_automation.exe --tcode=vt11 --layout=my_layout --variant=my_variant \
   --export-type=1 --by-delivery=true \
   --delivery-file=C:\out\dn.csv --delivery-col="Delivery Number"
 ```
@@ -335,7 +335,7 @@ No sequence options configured. Sequence uses config.toml — create and set up
 Disables the post-export back-send (which `[tcode.ZEXSNR].pre_export_back = "true"` would otherwise do) and selects the inventory-view tab (2) instead of the configured one:
 
 ```bash
-./sap_automation.exe --tcode=zexsnr --variant=INV_VIEW_PLACEHOLDER_SP --layout=mg_view \
+./sap_automation.exe --tcode=zexsnr --variant=ZEXSNR_VARIANT --layout=ZMDESNR_MUSTGO_LAYOUT \
   --by-delivery=true --delivery-file=zvt11 \
   --pre-export-back=false --tab-number=2
 ```
@@ -345,14 +345,14 @@ Disables the post-export back-send (which `[tcode.ZEXSNR].pre_export_back = "tru
 Sets Storage Bin (`LGPLA-LOW`) and skips delivery paste. `--export-type=1` is text with tabs; omit `--export-type` (and no config default) for Excel `.xlsx`. Quote `*` in PowerShell.
 
 ```bash
-./sap_automation.exe --tcode=zmdesnr --variant=INV_VIEW_PLACEHOLDER_SP --layout=audit25 \
+./sap_automation.exe --tcode=zmdesnr --variant=ZEXSNR_VARIANT --layout=my_layout \
   --bin-filter="64EP*" --export-type=1 --reports-dir=C:\reports
 ```
 
 ### LX03 variant + layout (tab-delimited export)
 
 ```bash
-./sap_automation.exe --tcode=lx03 --variant=FG_BIN_AUD --layout=audit25 \
+./sap_automation.exe --tcode=lx03 --variant=my_lx03_variant --layout=my_layout \
   --export-type=1 --reports-dir=C:\reports
 ```
 
@@ -368,8 +368,8 @@ Config plants under `[tcode.y_xx_99999999]`:
 
 ```toml
 [tcode.y_xx_99999999]
-variant = "mg_int_var"
-layout = "mg_view"
+variant = "my_variant"
+layout = "ZMDESNR_MUSTGO_LAYOUT"
 export_type = 1
 plants = ["PLT1", "PLT2"]
 ```

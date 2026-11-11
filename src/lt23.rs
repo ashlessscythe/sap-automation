@@ -74,7 +74,7 @@ pub struct LT23Params {
 impl Default for LT23Params {
     fn default() -> Self {
         Self {
-            warehouse: "E01".to_string(),
+            warehouse: "WH01".to_string(),
             transfer_orders: Vec::new(),
             confirmed_only: true,
             layout_row: None,
@@ -352,18 +352,18 @@ mod tests {
     #[test]
     fn defaults() {
         let p = LT23Params::default();
-        assert_eq!(p.warehouse, "E01");
+        assert_eq!(p.warehouse, "WH01");
         assert!(p.confirmed_only && p.export_target.is_none());
         assert_eq!(p.t_code, "LT23");
     }
 
     #[test]
     fn layout_row_lookup() {
-        let names: Vec<String> = ["A", " TO_MG ", "x"]
+        let names: Vec<String> = ["A", " LT23_MUSTGO_LAYOUT ", "x"]
             .iter()
             .map(|s| s.to_string())
             .collect();
-        assert_eq!(find_layout_row(&names, "to_mg"), Some(1));
+        assert_eq!(find_layout_row(&names, "LT23_MUSTGO_LAYOUT"), Some(1));
         assert_eq!(find_layout_row(&names, "nope"), None);
         assert_eq!(find_layout_row(&names, "  "), None);
         assert_eq!(find_layout_row(&[], "a"), None);

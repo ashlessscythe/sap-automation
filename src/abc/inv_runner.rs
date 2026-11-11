@@ -38,6 +38,8 @@ pub struct InvSelection {
     pub vt11_layout: String,
     pub vl06o_layout: String,
     pub zmdetpc_variant: String,
+    /// `misc` only: shipping-point text that marks rows to replace (`ship_point_marker`).
+    pub ship_point_marker: String,
 }
 
 impl InvSelection {
@@ -53,9 +55,10 @@ impl InvSelection {
     pub fn xdock() -> Self {
         Self {
             vt11_variant: "VT11_XDOCK_VARIANT".to_string(),
-            vt11_layout: "scorecard".to_string(),
-            vl06o_layout: "xdock".to_string(),
+            vt11_layout: "VT11_LAYOUT".to_string(),
+            vl06o_layout: "VL06O_XDOCK_LAYOUT".to_string(),
             zmdetpc_variant: "ZMDETPC_VARIANT".to_string(),
+            ship_point_marker: "PLACEHOLDER_SP".to_string(),
         }
     }
 }
@@ -89,7 +92,7 @@ impl InvSelection {
     pub fn misc() -> Self {
         Self {
             vt11_variant: "VT11_MISC_VARIANT".to_string(),
-            vl06o_layout: "inv".to_string(),
+            vl06o_layout: "VL06O_INV_LAYOUT".to_string(),
             ..Self::xdock()
         }
     }
@@ -110,7 +113,7 @@ pub struct InvSummary {
     pub pivot_rows: usize,
     /// Sum of `total` over all plants.
     pub total: String,
-    /// `misc` only: rows whose `PLACEHOLDER_SP` shipping point was replaced by the ship-to name part.
+    /// `misc` only: rows whose marked shipping point was replaced by the ship-to name part.
     pub regex_replaced: usize,
     /// `toyota` only: `(plant, trailers)` rows of the trailers table (empty for `xdock`).
     pub trailers: Vec<(String, String)>,
@@ -392,7 +395,11 @@ pub fn run_misc(
 
     let pc = vl06o.col("shipping_pointreceiving_pt")?;
     let before: Vec<String> = vl06o.rows.iter().map(|r| r[pc].clone()).collect();
-    stage(rep, "regex", inv::misc_ship_to_regex(&mut vl06o))?;
+    stage(
+        rep,
+        "regex",
+        inv::misc_ship_to_regex(&mut vl06o, &sel.ship_point_marker),
+    )?;
     let replaced = vl06o
         .rows
         .iter()
@@ -400,7 +407,7 @@ pub fn run_misc(
         .filter(|(r, b)| &r[pc] != *b)
         .count();
     if replaced > 0 {
-        log(rep, &format!("{replaced} PLACEHOLDER_SP shipping points replaced"));
+        log(rep, &format!("{replaced} marked shipping points replaced"));
     }
 
     let pivot = stage(

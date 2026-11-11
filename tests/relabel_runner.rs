@@ -148,9 +148,21 @@ fn full_run_on_the_stand_in_fixtures() {
     // the deliveries are those of the k2xx file, distinct
     assert_eq!(f.dels.len(), 107);
     assert_eq!(f.dels.iter().collect::<HashSet<_>>().len(), 107);
-    assert_eq!(f.dels.first().unwrap(), "85626834");
-    assert_eq!(f.del_args, ("relabel_k2xx".into(), "site_relabel".into()));
-    assert_eq!(f.hist_args, ("relabel_k2xx".into(), "site_relabel".into()));
+    assert_eq!(f.dels.first().unwrap(), "13000815");
+    assert_eq!(
+        f.del_args,
+        (
+            "ZMDESNR_RELABEL_VARIANT".into(),
+            "ZMDESNR_RELABEL_LAYOUT".into()
+        )
+    );
+    assert_eq!(
+        f.hist_args,
+        (
+            "ZMDESNR_RELABEL_VARIANT".into(),
+            "ZMDESNR_RELABEL_LAYOUT".into()
+        )
+    );
     assert_eq!(f.serials.len(), 9);
     assert_eq!(f.serials.iter().collect::<HashSet<_>>().len(), 9);
 
@@ -199,6 +211,7 @@ fn custom_variant_and_layout_reach_both_calls() {
     let sel = RelabelSelection {
         zmdesnr_variant: "V".into(),
         zmdesnr_layout: "L".into(),
+        rules: Default::default(),
     };
     run_relabel(&mut f, &day(), &sel, &out).unwrap();
     assert_eq!(f.del_args, ("V".into(), "L".into()));
@@ -244,7 +257,7 @@ fn missing_or_empty_k2xx_output_stops_with_run_k2xx_first() {
         let _ = std::fs::remove_dir_all(&out.reports_dir);
     }
     let out = temp_out("nocol");
-    put_k2xx(&out, "plant\ttotal\nFV33\t1\n");
+    put_k2xx(&out, "plant\ttotal\nPL33\t1\n");
     let mut f = Fake::default();
     let e = run_relabel(&mut f, &day(), &sel(), &out)
         .unwrap_err()

@@ -34,7 +34,7 @@ layout = "delivery_view"
 column_name = "Shipment Number"
 
 [tcode.ZMDESNR]
-variant = "ua_all_stat_"
+variant = "ZMDESNR_VARIANT"
 layout = "MY_LAYOUT"
 # Example: specify the columns to use for the layout
 layout_columns = [
@@ -53,30 +53,30 @@ pre_export_back = true
 
 [tcode.LX03]
 variant = "your_variant"
-layout = "test_bin"
+layout = "LX03_LAYOUT"
 export_type = 1
 
 [tcode.y_dn3_47000149]
 variant = "variant_name"
-layout = "pending"
+layout = "LAYOUT_149"
 plants = [
-  "BRUH",
-  "OTHER",
-  "REBRUH"
+  "PLANT_A",
+  "PLANT_B",
+  "PLANT_C"
 ]
-mat_variant = "material_missing"
+mat_variant = "VARIANT_149_MATERIAL"
 149_days_range = 5
 export_type = 0
-rcv_variant = "material_rcv"
+rcv_variant = "VARIANT_149_RCV"
 rcv_days_back = 1
 rcv_layout = "rcv_layoutname"
 
-# Inbond clerk flow: shipment → VL06O → 149 (inb_ship) → paste-ready txt + Notepad
+# Inbond clerk flow: shipment → VL06O → 149 (INB_149_NAME) → paste-ready txt + Notepad
 # Used by menu "Inbond - Shipment to 149". Does not use exec_rest.
 [inbond]
 vl06o_variant = "blank_"
-variant_149 = "inb_ship"
-layout_149 = "inb_ship"
+variant_149 = "INB_149_NAME"
+layout_149 = "INB_149_NAME"
 # Used when layout_149 is missing or not found in SAP (Change Layout setup)
 layout_columns = [
   "Plant",
@@ -96,3 +96,45 @@ delay_seconds = "15"
 param_list_header = "Shipment Number"
 param_set_field = "date"
 param_set_value = ""
+
+# ---------------------------------------------------------------------------
+# ABC headless reports (--rname=...). All names below are PLACEHOLDERS: put the real SAP
+# variant/layout names, plant codes and customer patterns of your site in config.toml
+# (git-ignored). Every key is optional; the built-in defaults are the same placeholders.
+# ---------------------------------------------------------------------------
+[abc.mustgo]
+vt11_variant = "VT11_XDOCK_VARIANT"
+zmdesnr_variant = "ZMDESNR_MUSTGO_VARIANT"
+zmdesnr_layout = "ZMDESNR_MUSTGO_LAYOUT"
+lt23_layout = "LT23_MUSTGO_LAYOUT"
+warehouse = "WH01"
+
+[abc.xdock]
+vt11_variant = "VT11_XDOCK_VARIANT"
+vt11_layout = "VT11_LAYOUT"
+vl06o_layout = "VL06O_XDOCK_LAYOUT"
+zmdetpc_variant = "ZMDETPC_VARIANT"
+
+[abc.toyota]                      # same keys as [abc.xdock]; only the VT11 variant differs by default
+vt11_variant = "VT11_TOYOTA_VARIANT"
+
+[abc.misc]
+vt11_variant = "VT11_MISC_VARIANT"
+vt11_layout = "VT11_LAYOUT"
+vl06o_layout = "VL06O_INV_LAYOUT"
+ship_point_marker = "PLACEHOLDER_SP"   # shipping points containing this text are replaced by the ship-to "(...)" part
+
+[abc.k2xx]
+vt11_variant = "VT11_K2XX_VARIANT"
+vt11_layout = "VT11_LAYOUT"
+vl06o_layout = "VL06O_K2XX_LAYOUT"
+zvt11_variant = "ZVT11_K2XX_VARIANT"
+zvt11_layout = "ZVT11_K2XX_LAYOUT"
+zmdetpc_variant = "ZMDETPC_VARIANT"
+
+[abc.relabel]
+zmdesnr_variant = "ZMDESNR_RELABEL_VARIANT"
+zmdesnr_layout = "ZMDESNR_RELABEL_LAYOUT"
+label_plant = "PL55"                # plant of the label rows
+alias_plant = "AL55"                # label_plant rows of an alias customer count as this plant
+alias_customers = ["ALIAS_A*", "ALIAS_B*", "ALIAS_C*"]

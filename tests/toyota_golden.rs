@@ -45,14 +45,14 @@ fn t(headers: &[&str], rows: &[&[&str]]) -> Table {
 fn loader_shapes() {
     let vt = vt11();
     assert_eq!((vt.nrows(), vt.headers.len()), (3, 13));
-    assert_eq!(vt.rows[0][0], "24605455");
+    assert_eq!(vt.rows[0][0], "13000443");
     let vl = vl06o_raw();
     assert_eq!((vl.nrows(), vl.headers.len()), (12, 7));
     // 12 item rows, 3 distinct deliveries; the file starts with a blank line, no preamble
     assert_eq!(vl.headers[0], "delivery");
     let z = zmdetpc();
     assert_eq!((z.nrows(), z.headers.len()), (3, 3));
-    assert_eq!(z.rows[0], ["85628715", "2", "0"]);
+    assert_eq!(z.rows[0], ["13000821", "2", "0"]);
 }
 
 /// Differences to the xlsx VT11 sheet: only the list-width truncation of free-text columns
@@ -101,7 +101,7 @@ fn vl06o_matches_xlsx_sheet() {
     // first row per delivery, ordered by delivery, date column
     assert_eq!(
         ours.rows.iter().map(|r| r[0].as_str()).collect::<Vec<_>>(),
-        ["85628715", "85628718", "85628719"]
+        ["13000821", "13000822", "13000823"]
     );
     assert!(ours.rows.iter().all(|r| r[7] == RUN_DATE));
 }
@@ -137,9 +137,9 @@ fn pivot_and_trailers_match_xlsx_except_documented_differences() {
 
 #[test]
 fn edge_deliveries_without_zmdetpc_row_fall_back_to_packages() {
-    // drop the pallet row of 85628718 and the whole table of 85628719
+    // drop the pallet row of 13000822 and the whole table of 13000823
     let mut z = zmdetpc();
-    z.rows.retain(|r| r[0] == "85628715");
+    z.rows.retain(|r| r[0] == "13000821");
     let m = merged_of(vl06o_raw(), &z);
     let tot: Vec<&str> = m.rows.iter().map(|r| r[11].as_str()).collect();
     assert_eq!(
@@ -148,7 +148,7 @@ fn edge_deliveries_without_zmdetpc_row_fall_back_to_packages() {
         "missing rows take number_of_packages (1)"
     );
     assert_eq!(
-        m.rows[1][8], "85628718",
+        m.rows[1][8], "13000822",
         "delivery_ is filled from delivery"
     );
     assert_eq!((m.rows[1][9].as_str(), m.rows[1][10].as_str()), ("", ""));
@@ -166,7 +166,7 @@ fn edge_deliveries_without_zmdetpc_row_fall_back_to_packages() {
 fn edge_zero_total_becomes_one() {
     // pallet + child = 0 on a ZMDETPC row: the exact 0 becomes 1 (spec item 3 reading)
     let mut z = zmdetpc();
-    z.rows[2] = vec!["85628719".into(), "0".into(), "0".into()];
+    z.rows[2] = vec!["13000823".into(), "0".into(), "0".into()];
     let m = merged_of(vl06o_raw(), &z);
     assert_eq!(m.rows[2][11], "1");
 }

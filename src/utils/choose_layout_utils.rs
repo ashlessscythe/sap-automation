@@ -585,7 +585,7 @@ pub fn ensure_inbond_layout_149(
     use dialoguer::{Confirm, Input};
 
     let save_name = if layout_name.trim().is_empty() {
-        "inb_ship".to_string()
+        "INB_149_NAME".to_string()
     } else {
         layout_name.trim().to_string()
     };

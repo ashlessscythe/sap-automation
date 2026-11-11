@@ -7,22 +7,21 @@
 //!
 //! What the report does to the delivery export `F` (`sn_del`, original row order), for the run
 //! date `D` and the window `W = [D, D+1]` on `document_date` (spec 9.5):
-//! 1. **Effective plant.** A row with `plant = PL55` and a `customer` matching `REDACTED*`, `GM*` or
-//!    `GENERAL*` is treated as plant `AL55` for the rest of the stage. The macro writes that mark
+//! 1. **Effective plant.** A row with `plant` = the label plant and a `customer` matching one of the alias customer patterns is treated as the alias plant for the rest of the stage. The macro writes that mark
 //!    into the sheet and replaces it back at the end; here the marks only live in a side vector
 //!    ([`effective_plants`]), so nothing leaks into any output (spec 9.5 "observed side effects",
 //!    items 33-34: owner decision, no marks, no extra row).
 //! 2. **Blocks** (all in the original row order of `F`, never sorted, a row can be in several):
-//!    B1 `plant <> PL55` (not blank), `spv_scan_copies = 2`, `document_date` in `W`;
+//!    B1 `plant` other than the label plant (not blank), `spv_scan_copies = 2`, `document_date` in `W`;
 //!    B2 the same plant rule, `serial_number_2nd_party_verification` blank, in `W`;
 //!    B3 the same plant rule, `status = PAL`, first row per `parent_serial_number`;
-//!    B4 (not appended) `plant = PL55`, `pallet = 1`: its serials go to ZMDESNR by serial /
+//!    B4 (not appended) `plant` = the label plant, `pallet = 1`: its serials go to ZMDESNR by serial /
 //!    History; the returned rows with `storage_location = 11` and `status = PRI` mark their
-//!    serials **yellow**; B5 `pallet` in {1,2} and `plant = PL55`; B6 `plant = PL55`, `pallet`
+//!    serials **yellow**; B5 `pallet` in {1,2} and `plant` = the label plant; B6 `plant` = the label plant, `pallet`
 //!    blank, `parent_serial_number` blank; B7 `parent_serial_number` and `kanban_number` both
 //!    non-blank and `kanban_number` not starting with `0`.
 //!    `combined` = B1, B2, B3, B5, B6, B7. Plant comparisons use the effective plant.
-//! 3. **`_of_labels`**: `4` for a row whose effective plant is `PL55`, with blank
+//! 3. **`_of_labels`**: `4` for a row whose effective plant is the label plant, with blank
 //!    `kanban_number`, `container` not matching `KC*`, `pallet` in {1,2} and not yellow, provided
 //!    at least two such rows exist; `2` for every other row.
 //! 4. **`export_date`** = the run date; the pivot sums `_of_labels` by `customer` x `plant`.
@@ -32,10 +31,10 @@
 //! from the TSV. Rows whose `lm_serial_number` is blank are dropped (the macro deletes empty
 //! rows by that column).
 //!
-//! Not reproduced on purpose (owner decision): the temporary `AL55` marks left in the saved
-//! `sn_del` sheet and the extra last row with only `plant = AL55`. `save full_label` (A!62) was
+//! Not reproduced on purpose (owner decision): the temporary the alias plant marks left in the saved
+//! `sn_del` sheet and the extra last row with only `plant` = the alias plant. `save full_label` (A!62) was
 //! not ticked in the verified run and is left out. See "Design notes: `relabel`" in
-//! `docs/abc_headless_plan.md`.
+//! `docs/private/abc_headless_plan.md`.
 #![allow(dead_code)]
 
 use super::ops;
@@ -45,12 +44,32 @@ use anyhow::{anyhow, Result};
 use chrono::{Duration, NaiveDate};
 use std::collections::{BTreeMap, HashSet};
 
-/// Plant a marked row is treated as during the stage.
-pub const AL55: &str = "AL55";
-/// The plant of the label rows.
-pub const PL55: &str = "PL55";
-/// Customer patterns that move an `PL55` row to `AL55` (`rework_relabel_al55`, three rows).
-pub const AL55_CUSTOMERS: [&str; 3] = ["REDACTED*", "GM*", "GENERAL*"];
+/// Plant codes and customer patterns of the label rules. They come from `[abc.relabel]`
+/// (`label_plant`, `alias_plant`, `alias_customers`); the defaults are placeholders.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RelabelRules {
+    /// The plant of the label rows.
+    pub label_plant: String,
+    /// Plant a marked row is treated as during the stage.
+    pub alias_plant: String,
+    /// Customer patterns that move a `label_plant` row to `alias_plant`.
+    pub alias_customers: Vec<String>,
+}
+
+impl Default for RelabelRules {
+    fn default() -> Self {
+        Self {
+            label_plant: "PL55".to_string(),
+            alias_plant: "AL55".to_string(),
+            alias_customers: vec![
+                "ALIAS_A*".to_string(),
+                "ALIAS_B*".to_string(),
+                "ALIAS_C*".to_string(),
+            ],
+        }
+    }
+}
+
 /// Labels per row of the label rule and of every other row.
 pub const LABELS_SPECIAL: u32 = 4;
 pub const LABELS_DEFAULT: u32 = 2;
@@ -99,20 +118,21 @@ fn in_window(cell: &str, w: (NaiveDate, NaiveDate)) -> bool {
     NaiveDate::parse_from_str(first, "%Y-%m-%d").is_ok_and(|d| d >= w.0 && d <= w.1)
 }
 
-/// Effective plant of every row of `f` (step 1): `AL55` for `PL55` rows of a `REDACTED*` / `GM*` /
-/// `GENERAL*` customer, else the plant as it is (trimmed).
-pub fn effective_plants(f: &Table) -> Result<Vec<String>> {
+/// Effective plant of every row of `f` (step 1): the alias plant for label-plant rows of a customer matching
+/// one of the alias patterns, else the plant as it is (trimmed).
+pub fn effective_plants(f: &Table, rules: &RelabelRules) -> Result<Vec<String>> {
     let (p, c) = (f.col("plant")?, f.col("customer")?);
     Ok(f.rows
         .iter()
         .map(|r| {
             let plant = r[p].trim();
-            if plant.eq_ignore_ascii_case(PL55)
-                && AL55_CUSTOMERS
+            if plant.eq_ignore_ascii_case(&rules.label_plant)
+                && rules
+                    .alias_customers
                     .iter()
                     .any(|pat| ops::wildcard_match(pat, r[c].trim()))
             {
-                AL55.to_string()
+                rules.alias_plant.clone()
             } else {
                 plant.to_string()
             }
@@ -144,7 +164,12 @@ impl Blocks {
 }
 
 /// Step 2: select the blocks. `eff` is [`effective_plants`] of `f`, `d` the run date.
-pub fn select_blocks(f: &Table, eff: &[String], d: NaiveDate) -> Result<Blocks> {
+pub fn select_blocks(
+    f: &Table,
+    eff: &[String],
+    d: NaiveDate,
+    rules: &RelabelRules,
+) -> Result<Blocks> {
     let c = |n: &str| f.col(n);
     let (ser, st, ver, spv, pal, par, dd, kan) = (
         c("lm_serial_number")?,
@@ -164,8 +189,8 @@ pub fn select_blocks(f: &Table, eff: &[String], d: NaiveDate) -> Result<Blocks> 
             continue; // an empty row: the macro deletes those by lm_serial_number
         }
         let plant = eff[i].as_str();
-        let other = !plant.is_empty() && !plant.eq_ignore_ascii_case(PL55);
-        let pl55 = plant.eq_ignore_ascii_case(PL55);
+        let other = !plant.is_empty() && !plant.eq_ignore_ascii_case(&rules.label_plant);
+        let pl55 = plant.eq_ignore_ascii_case(&rules.label_plant);
         let win = in_window(&r[dd], w);
         if other && eq_num(&r[spv], 2.0) && win {
             b.b1.push(i);
@@ -241,6 +266,7 @@ pub fn build_combined(
     blocks: &Blocks,
     yellow: &HashSet<String>,
     export_date: &str,
+    rules: &RelabelRules,
 ) -> Result<Combined> {
     for added in [COL_LABELS, COL_EXPORT_DATE, COL_YELLOW] {
         if f.col(added).is_ok() {
@@ -266,7 +292,7 @@ pub fn build_combined(
         .zip(&is_yellow)
         .map(|(&i, &y)| {
             let r = &f.rows[i];
-            eff[i].eq_ignore_ascii_case(PL55)
+            eff[i].eq_ignore_ascii_case(&rules.label_plant)
                 && blank(&r[kan])
                 && !ops::wildcard_match("KC*", r[con].trim())
                 && (eq_num(&r[pal], 1.0) || eq_num(&r[pal], 2.0))
@@ -416,27 +442,15 @@ mod tests {
     #[test]
     fn al55_rule() {
         let f = tbl(&[
-            row(["1", "", "", "", "", "", "PL55", "", "", "", "GM REDACTED"]),
-            row(["2", "", "", "", "", "", "PL55", "", "", "", "REDACTED corp"]),
-            row([
-                "3",
-                "",
-                "",
-                "",
-                "",
-                "",
-                "PL55",
-                "",
-                "",
-                "",
-                "General Motors",
-            ]),
-            row(["4", "", "", "", "", "", "PL55", "", "", "", "REDACTED"]),
-            row(["5", "", "", "", "", "", "PL33", "", "", "", "GM REDACTED"]),
+            row(["1", "", "", "", "", "", "PL55", "", "", "", "ALIAS_A REDACTED"]),
+            row(["2", "", "", "", "", "", "PL55", "", "", "", "alias_b corp"]),
+            row(["3", "", "", "", "", "", "PL55", "", "", "", "ALIAS_C Corp"]),
+            row(["4", "", "", "", "", "", "PL55", "", "", "", "XALIAS_A"]),
+            row(["5", "", "", "", "", "", "PL33", "", "", "", "ALIAS_A REDACTED"]),
             row(["6", "", "", "", "", "", "PL55", "", "", "", ""]),
         ]);
         assert_eq!(
-            effective_plants(&f).unwrap(),
+            effective_plants(&f, &RelabelRules::default()).unwrap(),
             ["AL55", "AL55", "AL55", "PL55", "PL33", "PL55"]
         );
     }
@@ -515,11 +529,11 @@ mod tests {
                 "A",
             ]),
             // 5: PL55 pallet 1 (B4, B5)
-            row(["15", "SHP", "X", "", "1", "", "PL55", "", "", "", "REDACTED"]),
+            row(["15", "SHP", "X", "", "1", "", "PL55", "", "", "", "BRAND_H"]),
             // 6: PL55 pallet 2 (B5)
-            row(["16", "SHP", "X", "", "2", "", "PL55", "", "", "", "REDACTED"]),
+            row(["16", "SHP", "X", "", "2", "", "PL55", "", "", "", "BRAND_H"]),
             // 7: PL55 pallet blank, parent blank (B6)
-            row(["17", "SHP", "X", "", "", "", "PL55", "", "", "", "REDACTED"]),
+            row(["17", "SHP", "X", "", "", "", "PL55", "", "", "", "BRAND_H"]),
             // 8: AL55 customer: counts as a non-PL55 plant (B2), not B5/B6
             row([
                 "18",
@@ -532,11 +546,11 @@ mod tests {
                 "2026-11-05",
                 "",
                 "",
-                "GM X",
+                "ALIAS_A X",
             ]),
             // 9: B7 (parent and kanban set), not starting 0
             row([
-                "19", "SHP", "X", "", "", "P2", "PL55", "", "K7", "", "REDACTED",
+                "19", "SHP", "X", "", "", "P2", "PL55", "", "K7", "", "BRAND_H",
             ]),
             // 10: kanban "0": not B7
             row(["20", "SHP", "X", "", "", "P2", "PL33", "", "0", "", "A"]),
@@ -556,8 +570,8 @@ mod tests {
             ]),
             row(["21", "SHP", "", "2", "", "", "", "2026-11-05", "", "", "A"]),
         ]);
-        let eff = effective_plants(&f).unwrap();
-        let b = select_blocks(&f, &eff, d()).unwrap();
+        let eff = effective_plants(&f, &RelabelRules::default()).unwrap();
+        let b = select_blocks(&f, &eff, d(), &RelabelRules::default()).unwrap();
         assert_eq!(b.b1, [0]);
         assert_eq!(b.b2, [0, 1, 8]);
         assert_eq!(b.b3, [3]);
@@ -582,24 +596,40 @@ mod tests {
             row([ser, "SHP", "X", "", pal, "", "PL55", "", kan, con, cust])
         }
         let f = tbl(&[
-            mk("1", "1", "", "", "REDACTED"),    // yellow
-            mk("2", "2", "", "SC1", "REDACTED"), // 4
-            mk("3", "2", "", "kc9", "REDACTED"), // KC*: 2
-            mk("4", "2", "9", "", "REDACTED"),   // kanban: 2
-            mk("5", "1", "", "", "GM X"),     // AL55: not in B5
-            mk("6", "2", "", "", "REDACTED"),    // 4
+            mk("1", "1", "", "", "BRAND_H"),    // yellow
+            mk("2", "2", "", "SC1", "BRAND_H"), // 4
+            mk("3", "2", "", "kc9", "BRAND_H"), // KC*: 2
+            mk("4", "2", "9", "", "BRAND_H"),   // kanban: 2
+            mk("5", "1", "", "", "ALIAS_A X"),  // AL55: not in B5
+            mk("6", "2", "", "", "BRAND_H"),    // 4
         ]);
-        let eff = effective_plants(&f).unwrap();
-        let b = select_blocks(&f, &eff, d()).unwrap();
+        let eff = effective_plants(&f, &RelabelRules::default()).unwrap();
+        let b = select_blocks(&f, &eff, d(), &RelabelRules::default()).unwrap();
         let yellow: HashSet<String> = ["1".to_string()].into();
-        let c = build_combined(&f, &eff, &b, &yellow, "2026-11-05").unwrap();
+        let c = build_combined(
+            &f,
+            &eff,
+            &b,
+            &yellow,
+            "2026-11-05",
+            &RelabelRules::default(),
+        )
+        .unwrap();
         let l = c.table.col(COL_LABELS).unwrap();
         let labels: Vec<&str> = c.table.rows.iter().map(|r| r[l].as_str()).collect();
         assert_eq!(labels, ["2", "4", "2", "2", "4"]);
         assert_eq!((c.rows_with_4, c.label_total, c.yellow_rows), (2, 14, 1));
         // the same table with one candidate less: nobody gets 4
         let yellow2: HashSet<String> = ["1".to_string(), "6".to_string()].into();
-        let c = build_combined(&f, &eff, &b, &yellow2, "2026-11-05").unwrap();
+        let c = build_combined(
+            &f,
+            &eff,
+            &b,
+            &yellow2,
+            "2026-11-05",
+            &RelabelRules::default(),
+        )
+        .unwrap();
         assert!(c.table.rows.iter().all(|r| r[l] == "2"));
         assert_eq!((c.rows_with_4, c.label_total, c.yellow_rows), (0, 10, 2));
         // header order and the yellow column
@@ -675,7 +705,9 @@ mod tests {
     fn missing_column_is_named() {
         let mut f = tbl(&[]);
         f.headers[6] = "plnt".into();
-        let e = effective_plants(&f).unwrap_err().to_string();
+        let e = effective_plants(&f, &RelabelRules::default())
+            .unwrap_err()
+            .to_string();
         assert!(e.contains("plant"), "{e}");
     }
 }

@@ -11,7 +11,7 @@
 //! `delete_exports` is set (a file that failed to load is kept for diagnosis).
 //!
 //! NOT run against SAP by the author. See "Live verification checklist (mustgo)", "(xdock)"
-//! "(k2xx)" and "(relabel)" in `docs/abc_headless_plan.md` for every control id / behaviour that is
+//! "(k2xx)" and "(relabel)" in `docs/private/abc_headless_plan.md` for every control id / behaviour that is
 //! unverified.
 #![allow(dead_code)]
 
@@ -93,11 +93,11 @@ impl Default for MustgoSapConfig {
     fn default() -> Self {
         Self {
             vt11_variant: "VT11_XDOCK_VARIANT".to_string(),
-            zmdesnr_variant: "mg_k2xx".to_string(),
-            zmdesnr_layout: "mg_view".to_string(),
-            lt23_layout: "to_mg".to_string(),
+            zmdesnr_variant: "ZMDESNR_MUSTGO_VARIANT".to_string(),
+            zmdesnr_layout: "ZMDESNR_MUSTGO_LAYOUT".to_string(),
+            lt23_layout: "LT23_MUSTGO_LAYOUT".to_string(),
             lt23_create_layout_columns: None,
-            warehouse: "E01".to_string(),
+            warehouse: "WH01".to_string(),
             export_dir: "reports".to_string(),
             date_format: None,
             ignore_display_error: true,
@@ -646,8 +646,11 @@ mod tests {
         let cfg = MustgoSapConfig::default();
         let t = export_target(&cfg, "ZMDESNR", now());
         let p = zmdesnr_by_deliveries_params(&cfg, &s(&["8"]), t.clone());
-        assert_eq!(p.sap_variant_name.as_deref(), Some("mg_k2xx"));
-        assert_eq!(p.layout_row.as_deref(), Some("mg_view"));
+        assert_eq!(
+            p.sap_variant_name.as_deref(),
+            Some("ZMDESNR_MUSTGO_VARIANT")
+        );
+        assert_eq!(p.layout_row.as_deref(), Some("ZMDESNR_MUSTGO_LAYOUT"));
         assert_eq!(p.tab_number, Some(2));
         assert!(p.scroll_paste && p.transfer_numbers.is_empty());
         assert!(p.serial_number.is_none() && p.bin_filter.is_none());
@@ -663,9 +666,9 @@ mod tests {
         let cfg = MustgoSapConfig::default();
         let t = export_target(&cfg, "LT23", now());
         let p = lt23_params(&cfg, &s(&["5"]), t);
-        assert_eq!(p.warehouse, "E01");
+        assert_eq!(p.warehouse, "WH01");
         assert!(p.confirmed_only && !p.save_layout);
-        assert_eq!(p.layout_row.as_deref(), Some("to_mg"));
+        assert_eq!(p.layout_row.as_deref(), Some("LT23_MUSTGO_LAYOUT"));
         assert!(p.create_layout_columns.is_none());
     }
 
@@ -680,17 +683,29 @@ mod tests {
             date2: None,
         };
         let t = export_target(&cfg, "VT11", now());
-        let p = inv_vt11_params(&cfg, &single, "VT11_XDOCK_VARIANT", "scorecard", t.clone());
+        let p = inv_vt11_params(
+            &cfg,
+            &single,
+            "VT11_XDOCK_VARIANT",
+            "VT11_LAYOUT",
+            t.clone(),
+        );
         assert_eq!(p.sap_variant_name.as_deref(), Some("VT11_XDOCK_VARIANT"));
-        assert_eq!(p.layout_row.as_deref(), Some("scorecard"));
+        assert_eq!(p.layout_row.as_deref(), Some("VT11_LAYOUT"));
         assert_eq!(p.closed_range, Some((d(11, 5), d(11, 5))));
         assert_eq!(p.export_target, Some(t.clone()));
         assert!(inv_vt11_params(&cfg, &single, "V", " ", t.clone())
             .layout_row
             .is_none());
 
-        let v = inv_vl06o_params(&cfg, &s(&["1", "2"]), "xdock", t.clone(), d(11, 10));
-        assert_eq!(v.layout_row.as_deref(), Some("xdock"));
+        let v = inv_vl06o_params(
+            &cfg,
+            &s(&["1", "2"]),
+            "VL06O_XDOCK_LAYOUT",
+            t.clone(),
+            d(11, 10),
+        );
+        assert_eq!(v.layout_row.as_deref(), Some("VL06O_XDOCK_LAYOUT"));
         assert!(v.sap_variant_name.is_none());
         assert_eq!(v.shipment_numbers, s(&["1", "2"]));
 
@@ -733,13 +748,13 @@ mod tests {
             &cfg,
             &monday,
             "VT11_K2XX_VARIANT",
-            "scorecard",
+            "VT11_LAYOUT",
             true,
             t.clone(),
         );
         assert!(p.monday_include_sunday);
         assert_eq!(p.sap_variant_name.as_deref(), Some("VT11_K2XX_VARIANT"));
-        assert_eq!(p.layout_row.as_deref(), Some("scorecard"));
+        assert_eq!(p.layout_row.as_deref(), Some("VT11_LAYOUT"));
         // the Monday becomes Sunday..Monday inside the VT11 step
         assert_eq!(
             crate::vt11::effective_start_date(d(11, 2), p.monday_include_sunday),
@@ -753,12 +768,12 @@ mod tests {
             &s(&["8", "9"]),
             d(7, 28),
             NaiveDate::from_ymd_opt(2027, 2, 13).unwrap(),
-            "k2xx_",
-            "add_del",
+            "ZVT11_K2XX_VARIANT",
+            "ZVT11_K2XX_LAYOUT",
             t.clone(),
         );
-        assert_eq!(z.variant.as_deref(), Some("k2xx_"));
-        assert_eq!(z.layout_row.as_deref(), Some("add_del"));
+        assert_eq!(z.variant.as_deref(), Some("ZVT11_K2XX_VARIANT"));
+        assert_eq!(z.layout_row.as_deref(), Some("ZVT11_K2XX_LAYOUT"));
         assert_eq!(z.date_start, d(7, 28));
         assert_eq!(z.date_end, NaiveDate::from_ymd_opt(2027, 2, 13).unwrap());
         assert_eq!(z.date_format.as_deref(), Some("yyyy-mm-dd"));
@@ -776,21 +791,30 @@ mod tests {
         let p = relabel_by_deliveries_params(
             &cfg,
             &s(&["8", "9"]),
-            "relabel_k2xx",
-            "site_relabel",
+            "ZMDESNR_RELABEL_VARIANT",
+            "ZMDESNR_RELABEL_LAYOUT",
             t.clone(),
         );
-        assert_eq!(p.sap_variant_name.as_deref(), Some("relabel_k2xx"));
-        assert_eq!(p.layout_row.as_deref(), Some("site_relabel"));
+        assert_eq!(
+            p.sap_variant_name.as_deref(),
+            Some("ZMDESNR_RELABEL_VARIANT")
+        );
+        assert_eq!(p.layout_row.as_deref(), Some("ZMDESNR_RELABEL_LAYOUT"));
         assert_eq!(p.tab_number, Some(2));
         assert!(p.scroll_paste && p.history_serials.is_empty());
         assert_eq!(p.delivery_numbers, s(&["8", "9"]));
         assert_eq!(p.export_target, Some(t.clone()));
-        let h = relabel_history_params(&cfg, &s(&["5", "6"]), "relabel_k2xx", "site_relabel", t);
+        let h = relabel_history_params(
+            &cfg,
+            &s(&["5", "6"]),
+            "ZMDESNR_RELABEL_VARIANT",
+            "ZMDESNR_RELABEL_LAYOUT",
+            t,
+        );
         assert_eq!(h.tab_number, Some(1));
         assert_eq!(h.history_serials, s(&["5", "6"]));
         assert!(h.delivery_numbers.is_empty() && h.export_target.is_some());
-        assert_eq!(h.layout_row.as_deref(), Some("site_relabel"));
+        assert_eq!(h.layout_row.as_deref(), Some("ZMDESNR_RELABEL_LAYOUT"));
     }
 
     #[test]
@@ -871,7 +895,7 @@ mod tests {
         p
     }
 
-    const LT23_SAMPLE: &str = "Warehouse No.\t\t\tE01\tExample\r\n\r\n\r\n\tDelivery\tTO Number\t\t\tCreated On\tTime\tUser\tPlnt\tMaterial\tTyp\tSource Bin\tSource target qty\tCS\r\n\r\n\tREDACTED\tREDACTED\t\t\t2026-11-05\t06:26:01\tHZTDX4\tFV33\tREDACTED\tSKD\t75EP-2-010\t         144.000\r\n";
+    const LT23_SAMPLE: &str = "Warehouse No.\t\t\tWH01\tExample\r\n\r\n\r\n\tDelivery\tTO Number\t\t\tCreated On\tTime\tUser\tPlnt\tMaterial\tTyp\tSource Bin\tSource target qty\tCS\r\n\r\n\t13000917\t0130000089\t\t\t2026-11-05\t06:26:01\tNAAAA4\tPL33\t13000723\tSKD\t75GM-2-010\t         144.000\r\n";
 
     #[test]
     fn finish_step_loads_and_deletes() {
@@ -884,7 +908,7 @@ mod tests {
         assert_eq!(t.nrows(), 1);
         assert_eq!(
             t.rows[0][t.col("transfer_order_number").unwrap()],
-            "209193416"
+            "130000089"
         );
         assert_eq!(t.rows[0][t.col("source_target_qty").unwrap()], "144");
         assert!(!p.exists(), "export deleted after a successful load");

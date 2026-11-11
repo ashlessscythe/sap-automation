@@ -15,14 +15,14 @@ const RUN_DATE: &str = "2026-11-05";
 
 /// The 8 deliveries without a ZMDETPC row (spec 9.6).
 const NO_ZMDETPC: [&str; 8] = [
-    "85603116",
-    "85607680",
-    "85609181",
-    "85628836",
-    "85640568",
-    "85650310",
-    "85655488",
-    "8012734818",
+    "13000801",
+    "13000802",
+    "13000803",
+    "13000825",
+    "13000834",
+    "13000914",
+    "13000948",
+    "1300000000",
 ];
 
 fn vt11() -> Table {
@@ -113,13 +113,13 @@ fn loader_shapes() {
     assert_eq!((z.nrows(), z.headers.len()), (140, 3));
     assert_eq!(z.headers, ["delivery", "pallet", "child"]);
     // zero padded in the raw file, normalised by the loader; 10 digits stay as they are
-    assert_eq!(z.rows[0], ["85614256", "1", "0"]);
+    assert_eq!(z.rows[0], ["13000804", "1", "0"]);
 }
 
 #[test]
 fn spec_96_counts() {
     let vt = vt11();
-    assert_eq!(inv::delivery_key("0085614256"), "85614256");
+    assert_eq!(inv::delivery_key("0013000804"), "13000804");
     let mut shipments: Vec<String> = col(&vt, "shipment_number");
     shipments.sort();
     shipments.dedup();

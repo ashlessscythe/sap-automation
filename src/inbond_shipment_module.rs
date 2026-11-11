@@ -21,7 +21,7 @@ pub fn run_inbond_shipment_module(session: &GuiSession) -> Result<()> {
     clear_screen();
     println!("Inbond - Shipment to 149");
     println!("========================");
-    println!("VL06O (blank_/config) → deliveries → y_dn3_47000149 (inb_ship)");
+    println!("VL06O (blank_/config) → deliveries → y_dn3_47000149 (INB_149_NAME)");
     println!("→ timestamped paste-ready txt → Notepad for material.php\n");
 
     let settings = InbondSettings::load();

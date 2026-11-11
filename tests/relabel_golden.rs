@@ -39,10 +39,18 @@ struct Stages {
 
 fn stages() -> Stages {
     let f = sn_del();
-    let eff = effective_plants(&f).unwrap();
-    let blocks = select_blocks(&f, &eff, run_date()).unwrap();
+    let eff = effective_plants(&f, &RelabelRules::default()).unwrap();
+    let blocks = select_blocks(&f, &eff, run_date(), &RelabelRules::default()).unwrap();
     let yellow = yellow_serials(&history()).unwrap();
-    let combined = build_combined(&f, &eff, &blocks, &yellow, "2026-11-05").unwrap();
+    let combined = build_combined(
+        &f,
+        &eff,
+        &blocks,
+        &yellow,
+        "2026-11-05",
+        &RelabelRules::default(),
+    )
+    .unwrap();
     Stages {
         f,
         eff,
@@ -85,15 +93,19 @@ fn sn_del_is_passed_through() {
 #[test]
 fn al55_is_an_effective_plant_only() {
     let s = stages();
-    let n = s.eff.iter().filter(|p| *p == AL55).count();
+    let n = s
+        .eff
+        .iter()
+        .filter(|p| **p == RelabelRules::default().alias_plant)
+        .count();
     assert_eq!(n, 6, "GM, REDACTED, GENERAL (any case) on PL55; not REDACTED");
     // the marks never reach a table: the plant column of F and of combined is untouched
-    assert!(!col(&s.f, "plant").contains(&AL55.to_string()));
-    assert!(!col(&s.combined.table, "plant").contains(&AL55.to_string()));
+    assert!(!col(&s.f, "plant").contains(&RelabelRules::default().alias_plant));
+    assert!(!col(&s.combined.table, "plant").contains(&RelabelRules::default().alias_plant));
     // ... and every AL55 row is still PL55 in F
     let p = s.f.col("plant").unwrap();
     for (i, e) in s.eff.iter().enumerate() {
-        if e == AL55 {
+        if *e == RelabelRules::default().alias_plant {
             assert_eq!(s.f.rows[i][p], "PL55");
         }
     }
@@ -150,7 +162,7 @@ fn history_serials_are_the_pl55_pallet_1_rows() {
         .eff
         .iter()
         .zip(&s.f.rows)
-        .filter(|(e, r)| *e == AL55 && r[pal] == "1")
+        .filter(|(e, r)| **e == RelabelRules::default().alias_plant && r[pal] == "1")
         .count();
     assert_eq!(gm_pallet1, 2);
 }
@@ -212,8 +224,8 @@ fn labels_follow_the_four_two_rule() {
             && !r[c("container")].to_uppercase().starts_with("KC")
             && ["1", "2"].contains(&r[c("pallet")].as_str())
             && r[c("yellow")].is_empty()
-            // AL55 customers are PL55 in the table but were AL55 for the rule
-            && !["GM", "REDACTED", "GENERAL"]
+            // alias-pattern customers are PL55 in the table but were AL55 for the rule
+            && !["ALIAS_A", "ALIAS_B", "ALIAS_C"]
                 .iter()
                 .any(|p| r[c("customer")].to_uppercase().starts_with(p));
         assert_eq!(r[c("_of_labels")], if four { "4" } else { "2" }, "{r:?}");
@@ -240,21 +252,45 @@ fn fewer_than_two_candidates_means_two_labels_everywhere() {
     assert_eq!(fours.len(), 8);
     let mut yellow = s.yellow.clone();
     yellow.extend(fours[1..].iter().cloned());
-    let c = build_combined(&s.f, &s.eff, &s.blocks, &yellow, "2026-11-05").unwrap();
+    let c = build_combined(
+        &s.f,
+        &s.eff,
+        &s.blocks,
+        &yellow,
+        "2026-11-05",
+        &RelabelRules::default(),
+    )
+    .unwrap();
     assert_eq!(c.rows_with_4, 0);
     assert!(col(&c.table, "_of_labels").iter().all(|v| v == "2"));
     assert_eq!(c.label_total as usize, c.table.nrows() * 2);
     // with exactly two candidates left, both get 4
     let mut yellow = s.yellow.clone();
     yellow.extend(fours[2..].iter().cloned());
-    let c = build_combined(&s.f, &s.eff, &s.blocks, &yellow, "2026-11-05").unwrap();
+    let c = build_combined(
+        &s.f,
+        &s.eff,
+        &s.blocks,
+        &yellow,
+        "2026-11-05",
+        &RelabelRules::default(),
+    )
+    .unwrap();
     assert_eq!(c.rows_with_4, 2);
 }
 
 #[test]
 fn no_history_means_no_yellow_and_more_fours() {
     let s = stages();
-    let c = build_combined(&s.f, &s.eff, &s.blocks, &HashSet::new(), "2026-11-05").unwrap();
+    let c = build_combined(
+        &s.f,
+        &s.eff,
+        &s.blocks,
+        &HashSet::new(),
+        "2026-11-05",
+        &RelabelRules::default(),
+    )
+    .unwrap();
     assert_eq!(c.yellow_rows, 0);
     // the 3 yellow pallet-1 rows without kanban now qualify (the 4th has a kanban number)
     assert_eq!(c.rows_with_4, 8 + 3);
@@ -281,9 +317,9 @@ fn window_is_the_run_date_and_the_next_day() {
     assert_eq!(b.to_string(), "2026-11-06");
     // another run date moves the window: only the 11-05 rows of the stand-in fall out
     let f = sn_del();
-    let eff = effective_plants(&f).unwrap();
+    let eff = effective_plants(&f, &RelabelRules::default()).unwrap();
     let nov4 = chrono::NaiveDate::from_ymd_opt(2026, 11, 4).unwrap();
-    let b = select_blocks(&f, &eff, nov4).unwrap();
+    let b = select_blocks(&f, &eff, nov4, &RelabelRules::default()).unwrap();
     // window 11-04..11-05: the 11-06 rows drop out, the 11-04 row comes in
     assert_ne!(b.b2.len(), 7);
     assert_eq!(b.b3.len(), 2, "B3 has no date window");
@@ -294,7 +330,9 @@ fn a_missing_column_is_named() {
     let mut f = sn_del();
     let i = f.col("kanban_number").unwrap();
     f.headers[i] = "kanban".into();
-    let eff = effective_plants(&f).unwrap();
-    let e = select_blocks(&f, &eff, run_date()).unwrap_err().to_string();
+    let eff = effective_plants(&f, &RelabelRules::default()).unwrap();
+    let e = select_blocks(&f, &eff, run_date(), &RelabelRules::default())
+        .unwrap_err()
+        .to_string();
     assert!(e.contains("kanban_number"), "{e}");
 }

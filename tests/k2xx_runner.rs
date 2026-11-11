@@ -149,18 +149,28 @@ fn full_run_on_the_stand_in_fixtures() {
     assert_eq!(f.dates, vec![day()]);
     assert_eq!(
         f.vt11_args,
-        vec![("VT11_K2XX_VARIANT".to_string(), "scorecard".to_string(), true)]
+        vec![(
+            "VT11_K2XX_VARIANT".to_string(),
+            "VT11_LAYOUT".to_string(),
+            true
+        )]
     );
     assert_eq!(f.ships.len(), 53);
     assert_eq!(f.ships.iter().collect::<HashSet<_>>().len(), 53);
-    assert_eq!(f.vl_layout, "pallets");
+    assert_eq!(f.vl_layout, "VL06O_K2XX_LAYOUT");
     // ZVT11 Closed and ZMDETPC get the same 107 distinct deliveries
     assert_eq!(f.zv_dels.len(), 107);
     assert_eq!(f.zv_dels.iter().collect::<HashSet<_>>().len(), 107);
     assert_eq!(f.zm_dels, f.zv_dels);
     // run date -/+ 100 days
     assert_eq!(f.zv_window, Some((ymd(2026, 7, 28), ymd(2027, 2, 13))));
-    assert_eq!(f.zv_args, ("k2xx_".to_string(), "add_del".to_string()));
+    assert_eq!(
+        f.zv_args,
+        (
+            "ZVT11_K2XX_VARIANT".to_string(),
+            "ZVT11_K2XX_LAYOUT".to_string()
+        )
+    );
     assert_eq!(f.zm_date, Some(day()));
     assert_eq!(f.zm_variant, "ZMDETPC_VARIANT");
 
@@ -248,9 +258,9 @@ fn pivot_puts_a_blank_plant_last() {
     let out = temp_out("piv_blank");
     let mut vl = load_real_in("k2xx", "vl06o", "raw_vl06o.txt");
     let (dc, pc) = (vl.col("delivery").unwrap(), vl.col("plant").unwrap());
-    // 85626834 (PL50, total 2) and 8012734818 (PL63, no ZMDETPC row) lose their plant
+    // 13000815 (PL50, total 2) and 1300000000 (PL63, no ZMDETPC row) lose their plant
     for r in vl.rows.iter_mut() {
-        if r[dc] == "85626834" || r[dc] == "8012734818" {
+        if r[dc] == "13000815" || r[dc] == "1300000000" {
             r[pc].clear();
         }
     }

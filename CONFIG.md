@@ -94,11 +94,11 @@ empty or wrongly typed key falls back to the default. Precedence: CLI flag > `[a
 ```toml
 [abc.mustgo]
 vt11_variant = "VT11_XDOCK_VARIANT"   # VT11 variant (carries the shipment selection)
-zmdesnr_variant = "mg_k2xx"     # ZMDESNR variant (carries the date)
-zmdesnr_layout = "mg_view"      # ZMDESNR layout (19 columns)
-lt23_layout = "to_mg"           # LT23 layout
+zmdesnr_variant = "ZMDESNR_MUSTGO_VARIANT"     # ZMDESNR variant (carries the date)
+zmdesnr_layout = "ZMDESNR_MUSTGO_LAYOUT"      # ZMDESNR layout (19 columns)
+lt23_layout = "LT23_MUSTGO_LAYOUT"           # LT23 layout
 lt23_create_layout = false      # true: create the LT23 layout from the built-in column list when it is missing
-warehouse = "E01"               # LT23 warehouse
+warehouse = "WH01"               # LT23 warehouse
 delete_exports = true           # delete each temporary export after it was loaded
 ignore_display_error = true     # treat "no display authorization" as harmless (VT11)
 ```
@@ -111,23 +111,26 @@ ignore_display_error = true     # treat "no display authorization" as harmless (
 vt11_variant = "VT11_TOYOTA_VARIANT"
 ```
 
-`[abc.misc]` (used by `--rname=misc`) takes `vt11_variant` (default `VT11_MISC_VARIANT`), `vt11_layout` (`scorecard`), `vl06o_layout`
-(default `inv`), `delete_exports` and `ignore_display_error`; `misc` does not call ZMDETPC, so `zmdetpc_variant` is ignored.
+`[abc.misc]` (used by `--rname=misc`) takes `vt11_variant` (default `VT11_MISC_VARIANT`), `vt11_layout` (`VT11_LAYOUT`), `vl06o_layout`
+(default `VL06O_INV_LAYOUT`), `ship_point_marker`, `delete_exports` and `ignore_display_error`; `misc` does not call ZMDETPC, so
+`zmdetpc_variant` is ignored. A shipping point that contains `ship_point_marker` is replaced by the first parenthesised part of the
+ship-to name (default marker `PLACEHOLDER_SP`: set the real text of your site).
 
 ```toml
 [abc.misc]
 vt11_variant = "VT11_MISC_VARIANT"
-vl06o_layout = "inv"
+vl06o_layout = "VL06O_INV_LAYOUT"
+ship_point_marker = "PLACEHOLDER_SP"
 ```
 
 | Key | Default |
 | --- | --- |
 | `vt11_variant` | `VT11_XDOCK_VARIANT` |
-| `zmdesnr_variant` | `mg_k2xx` |
-| `zmdesnr_layout` | `mg_view` |
-| `lt23_layout` | `to_mg` |
+| `zmdesnr_variant` | `ZMDESNR_MUSTGO_VARIANT` |
+| `zmdesnr_layout` | `ZMDESNR_MUSTGO_LAYOUT` |
+| `lt23_layout` | `LT23_MUSTGO_LAYOUT` |
 | `lt23_create_layout` | `false` (a missing layout fails the run; the creation path has not been run live) |
-| `warehouse` | `E01` |
+| `warehouse` | `WH01` |
 | `delete_exports` | `true` |
 | `ignore_display_error` | `true` |
 
@@ -145,8 +148,8 @@ Used only by `--rname=xdock` (and the ABC Headless > xdock menu entry). `reports
 ```toml
 [abc.xdock]
 vt11_variant = "VT11_XDOCK_VARIANT"   # VT11 variant
-vt11_layout = "scorecard"       # VT11 layout (13 columns incl. shipment_number)
-vl06o_layout = "xdock"          # VL06O layout (delivery, ship-to, name, external id, GM, plant, no. of packages)
+vt11_layout = "VT11_LAYOUT"       # VT11 layout (13 columns incl. shipment_number)
+vl06o_layout = "VL06O_XDOCK_LAYOUT"          # VL06O layout (delivery, ship-to, name, external id, GM, plant, no. of packages)
 zmdetpc_variant = "ZMDETPC_VARIANT"   # ZMDETPC variant (taken from the toyota row of the spec; check it exists)
 delete_exports = true           # delete each temporary export after it was loaded
 ignore_display_error = true     # treat "no display authorization" as harmless (VT11)
@@ -166,11 +169,11 @@ key to switch the pivot off.
 ```toml
 [abc.k2xx]
 vt11_variant = "VT11_K2XX_VARIANT" # VT11 variant
-vt11_layout = "scorecard"       # VT11 layout (13 columns incl. shipment_number)
+vt11_layout = "VT11_LAYOUT"       # VT11 layout (13 columns incl. shipment_number)
 monday_include_sunday = true    # a Monday run date makes VT11 start on the Sunday before (Sunday..Monday)
 vl06o_layout = "pallets"        # VL06O layout (delivery, ship-to, name, deliv. date, GM, plant, external id, no. of packages)
 zvt11_variant = "k2xx_"         # ZVT11 Closed variant
-zvt11_layout = "add_del"        # ZVT11 layout (date, trailer, shipment, delivery, plant, ship to/from name, shipment end date)
+zvt11_layout = "ZVT11_K2XX_LAYOUT"        # ZVT11 layout (date, trailer, shipment, delivery, plant, ship to/from name, shipment end date)
 zvt11_days = 100                # ZVT11 Closed date window: run date minus/plus this many days (the delivery list is the filter)
 zmdetpc_variant = "ZMDETPC_VARIANT"   # ZMDETPC variant
 delete_exports = true           # delete each temporary export after it was loaded
@@ -188,11 +191,18 @@ uses the same variant and layout as the call by deliveries.
 
 ```toml
 [abc.relabel]
-zmdesnr_variant = "relabel_k2xx" # ZMDESNR variant of both calls
-zmdesnr_layout = "site_relabel"  # ZMDESNR layout of both calls (20 columns, see the live verification checklist)
+zmdesnr_variant = "ZMDESNR_RELABEL_VARIANT" # ZMDESNR variant of both calls
+zmdesnr_layout = "ZMDESNR_RELABEL_LAYOUT"  # ZMDESNR layout of both calls (20 columns, see the live verification checklist)
 delete_exports = true            # delete each temporary export after it was loaded
 ignore_display_error = true      # treat "no display authorization" as harmless
+label_plant = "PL55"             # plant of the label rows (blocks B4-B6, the 4-label rule)
+alias_plant = "AL55"             # label_plant rows of an alias customer count as this plant while the blocks are built
+alias_customers = ["ALIAS_A*", "ALIAS_B*", "ALIAS_C*"]   # customer patterns (case-insensitive, `*` and `?` wildcards)
 ```
+
+**All site-specific names (variants, layouts, warehouse, plant codes, customer patterns) come from `config.toml`.** The built-in
+defaults are neutral placeholders (`VT11_XDOCK_VARIANT`, `PL55`, ...), so a run without the matching keys will fail in SAP or
+treat no row as special. `config.toml.example` lists every key; keep your real values in the git-ignored `config.toml`.
 
 ## Migration from Legacy Format
 
@@ -261,8 +271,8 @@ Used by menu **Inbond - Shipment to 149** (VL06O by shipment → 149 by delivery
 ```toml
 [inbond]
 vl06o_variant = "blank_"
-variant_149 = "inb_ship"
-layout_149 = "inb_ship"
+variant_149 = "INB_149_NAME"
+layout_149 = "INB_149_NAME"
 layout_columns = [
   "Plant",
   "Delivery Number",

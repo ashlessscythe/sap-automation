@@ -6,7 +6,7 @@
 //!
 //! NOT run against SAP by the author. Every control id below comes from the VBA spec only
 //! (nothing in this repo confirms any of them); see "Live verification checklist (xdock)" in
-//! `docs/abc_headless_plan.md`. UNVERIFIED live:
+//! `docs/private/abc_headless_plan.md`. UNVERIFIED live:
 //! * selection screen controls `wnd[0]/usr/ctxtS_DATE-LOW`, `ctxtS_DATE-HIGH`,
 //!   `btn%_S_VBELN_%_APP_%-VALU_PUSH`, `radR_SUMM`, `radR_COMPL`,
 //! * the value cells of the delivery multi-selection (`ctxt` or `txt`; both are tried) and the

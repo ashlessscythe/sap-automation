@@ -1,5 +1,5 @@
 //! Typed result of an SAP export plus shared helpers used by the headless runner
-//! (phase 4.0 of `docs/abc_headless_plan.md`): outcome classifier (P6) and the
+//! (phase 4.0 of `docs/private/abc_headless_plan.md`): outcome classifier (P6) and the
 //! value-list preparation used before every multi-value paste (P3).
 #![allow(dead_code)]
 

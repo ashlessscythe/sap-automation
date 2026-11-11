@@ -169,7 +169,7 @@ fn create_149_rcv_params_from_config(config: &HashMap<String, String>) -> Report
             params.plant = plant.clone();
         } else {
             // If no variant and no plant in config, use a default or ask user
-            params.plant = "BRUH".to_string(); // Default plant from config example
+            params.plant = "PLANT_A".to_string(); // Default plant from config example
         }
     } else {
         // Set empty plant when variant is used

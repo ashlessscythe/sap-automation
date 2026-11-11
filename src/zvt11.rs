@@ -514,7 +514,7 @@ pub fn run_export(session: &GuiSession, params: &ZVT11Params) -> Result<bool> {
 // overrides, no clock, no console prompt. The legacy flow above (tab 1, "Open") is untouched.
 //
 // NOT run against SAP by the author. Every control id below comes from the VBA spec only; see
-// "Live verification checklist (k2xx)" in `docs/abc_headless_plan.md`. UNVERIFIED live:
+// "Live verification checklist (k2xx)" in `docs/private/abc_headless_plan.md`. UNVERIFIED live:
 // * tab `wnd[0]/usr/tabsTABSTRIP_BLK1/tabpTAB2` and the sub-screen prefix [`CLOSED_PREFIX`],
 // * `ctxtS_DATE_2-LOW` / `-HIGH`, `btn%_S_VBELN2_%_APP_%-VALU_PUSH`, `radR1`, `chkP_ALV_2`,
 //   `ctxtS_VSTEL2-LOW` (ship point, only typed when given),

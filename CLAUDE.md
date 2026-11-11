@@ -42,7 +42,7 @@ Dependency pins matter: `aes = "=0.9.2"` is pinned because newer needs rustc 1.8
 `mustgo`, `xdock`, `toyota`, `misc`, `k2xx` and `relabel` are runnable and **have been run live by the owner** (k2xx and relabel confirmed working 2026-11-11): `sap_automation --rname=<mustgo|xdock|toyota|misc> --run-date=<DATE|A..B|WKnn>`
 (also TUI > ABC Headless; optional `--date-range-buffer=<n>`). Code is unit/golden tested offline (`mustgo` reproduces spec 9.3,
 `xdock` spec 9.6 with documented differences to the xlsx). `k2xx` (v0.8.0) is golden-tested offline against the owner's **real exports and macro xlsx** of 2026-11-05 (`tests/fixtures/k2xx/real/`; VL06O/ZMDETPC merge, VT11 and ZVT11 equal the macro sheets) and has run live. Owner decision: `k2xx` also writes a plant pivot of `total` (departs from spec 7.0 item 1). `repack` is not built yet. The
-"Live verification checklist" sections in `docs/abc_headless_plan.md` list the SAP control ids that come from the spec only.
+"Live verification checklist" sections in `docs/private/abc_headless_plan.md` list the SAP control ids that come from the spec only.
 Exports are read as UTF-8, else Windows-1252 (`raw::decode_export`). Owner decisions and live findings: "RESUME HERE" in the plan.
 
 Modules in `src/abc/`: `run` (date/week parsing), `registry` (rName registry, output paths), `table` + `ops` (in-memory table,
@@ -58,7 +58,7 @@ the `*Params` struct (new optional fields such as `export_target`; `None` keeps 
 default resolved by the caller. Columns are matched by sanitised header name, never by position. Any empty list, no-data or error
 stops a report run and nothing is written.
 
-Fixtures: `tests/fixtures/mustgo/` holds xlsx-derived TSVs (approximate stand-ins) and `real/`, the owner's real exports,
+Fixtures: `tests/fixtures/mustgo/` holds xlsx-derived TSVs (approximate stand-ins) and `real/`, the owner's exports (anonymised),
 **byte-exact** (`-text` in `.gitattributes`: do not re-encode or normalise line endings). Tests: `mustgo_golden`,
 `mustgo_pipeline`, `mustgo_pipeline_real`, `mustgo_runner` (a fake `SapSteps` serving the real fixtures). `xdock`:
 `tests/fixtures/xdock/` (expected TSVs from the macro xlsx, `real/` byte-exact), `xdock_golden`, `xdock_runner`; `toyota`: `tests/fixtures/toyota/` (tiny: 3 deliveries, one plant), `toyota_golden`
@@ -70,10 +70,22 @@ macro's AL55 leaks, the extra `sn_del` row and `save full_label` are deliberatel
 `ZMDESNRParams.history_serials` + `tab_number = Some(1)` is the by-serial/History flow (spec-only control ids). Fixtures `tests/fixtures/relabel/`
 are synthetic; tests `relabel_golden`, `relabel_runner`.
 
-**Resume from `docs/abc_headless_plan.md` ("RESUME HERE")**; the spec is `docs/abc_headless_migration_spec.md`.
+**Resume from `docs/private/abc_headless_plan.md` ("RESUME HERE")**; the spec is `docs/private/abc_headless_migration_spec.md`.
+
+## Data hygiene (no site data in the repo)
+
+- **No real SAP data, names, plants, variants or layouts are committed.** Site-specific names come from the git-ignored `config.toml`
+  (every one is a config key; `config.toml.example` shows them with placeholder values, and the built-in defaults are the same
+  neutral placeholders such as `VT11_XDOCK_VARIANT`, `PL55`, `ALIAS_A*`). Relabel's plant codes and alias customer patterns
+  (`label_plant`, `alias_plant`, `alias_customers`) and misc's `ship_point_marker` are config keys too (`RelabelRules`, `InvSelection`).
+- Keep real values in the git-ignored `config.private.toml` / `config.toml` and `docs/private/` (the migration spec and the plan
+  live there, local only). Never put them in code, tests, docs, commit messages or fixtures.
+- Fixtures under `tests/fixtures/` are **anonymised** copies (consistent, shape- and order-preserving substitutions of ids, plants,
+  names, users, ...). `tests/fixtures/relabel/real/alias_customers.txt` lists the anonymised customer names that the real-export
+  relabel tests use as alias patterns. New fixtures must be anonymised before they are added.
 
 ## Workflow notes
 
 - Branches: work on `dev`; `public` is the release mirror, force-reset to `dev` by `sync_public.sh` / `sync_public.bat` (these rewrite and force-push `public` — never run without being asked).
-- `docs/abc_headless_migration_spec.md` is a spec for re-implementing an Excel/VBA macro as a headless runner that uses this repo as the SAP automation reference; it is not documentation of existing code.
+- `docs/private/abc_headless_migration_spec.md` is a spec for re-implementing an Excel/VBA macro as a headless runner that uses this repo as the SAP automation reference; it is not documentation of existing code.
 - Line endings are managed via `.gitattributes` (see README "Line Endings").

@@ -12,8 +12,8 @@ use std::collections::BTreeSet;
 
 const RUN_DATE: &str = "2026-11-05";
 
-/// Deliveries of the real run without a ZMDETPC row (`8012734818` is the one of spec 9.5).
-const NO_ZMDETPC: [&str; 1] = ["8012734818"];
+/// Deliveries of the real run without a ZMDETPC row (`1300000000` is the one of spec 9.5).
+const NO_ZMDETPC: [&str; 1] = ["1300000000"];
 
 fn vt11() -> Table {
     load_real_in("k2xx", "vt11_inv", "raw_vt11.txt")
@@ -102,7 +102,7 @@ fn merged_vl06o_follows_spec_9_5() {
     let d = col(&m, "delivery");
     let nums: Vec<u64> = d.iter().map(|v| v.parse().unwrap()).collect();
     assert!(nums.windows(2).all(|w| w[0] < w[1]), "ascending, distinct");
-    assert_eq!(d.last().unwrap(), "8012734818");
+    assert_eq!(d.last().unwrap(), "1300000000");
     assert!(col(&m, "date").iter().all(|v| v == RUN_DATE));
     assert_eq!(
         m.headers[8..],
@@ -131,7 +131,7 @@ fn merged_vl06o_follows_spec_9_5() {
     assert_eq!(k2xx::total_sum(&m).unwrap(), 1148.0);
 }
 
-/// The dedup keeps the FIRST row of a delivery: `85650066` has two plants in the item rows.
+/// The dedup keeps the FIRST row of a delivery: `13000901` has two plants in the item rows.
 #[test]
 fn dedup_keeps_the_first_row() {
     let raw = vl06o_raw();
@@ -139,7 +139,7 @@ fn dedup_keeps_the_first_row() {
     let plants: Vec<&str> = raw
         .rows
         .iter()
-        .filter(|r| r[dc] == "85650066")
+        .filter(|r| r[dc] == "13000901")
         .map(|r| r[pc].as_str())
         .collect();
     assert!(plants.iter().collect::<BTreeSet<_>>().len() > 1);
@@ -147,7 +147,7 @@ fn dedup_keeps_the_first_row() {
     let row = m
         .rows
         .iter()
-        .find(|r| r[m.col("delivery").unwrap()] == "85650066")
+        .find(|r| r[m.col("delivery").unwrap()] == "13000901")
         .unwrap();
     assert_eq!(row[m.col("plant").unwrap()], plants[0]);
 }

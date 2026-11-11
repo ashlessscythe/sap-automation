@@ -28,8 +28,8 @@ impl Default for InbondSettings {
     fn default() -> Self {
         Self {
             vl06o_variant: "blank_".to_string(),
-            variant_149: "inb_ship".to_string(),
-            layout_149: "inb_ship".to_string(),
+            variant_149: "INB_149_NAME".to_string(),
+            layout_149: "INB_149_NAME".to_string(),
             layout_columns: crate::utils::choose_layout_utils::inbond_default_layout_columns(),
             export_type: 1,
             open_notepad: true,
@@ -150,7 +150,7 @@ pub fn persist_inbond_layout_149(layout_name: &str) -> anyhow::Result<()> {
         if !table.contains_key("variant_149") {
             table.insert(
                 "variant_149".to_string(),
-                Value::String("inb_ship".to_string()),
+                Value::String("INB_149_NAME".to_string()),
             );
         }
         if !table.contains_key("export_type") {

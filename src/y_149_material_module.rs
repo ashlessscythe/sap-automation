@@ -180,7 +180,7 @@ fn create_149_material_params_from_config(
             params.plant = plant.clone();
         } else {
             // If no variant and no plant in config, use a default
-            params.plant = "BRUH".to_string();
+            params.plant = "PLANT_A".to_string();
         }
     } else {
         // Set empty plant when variant is used

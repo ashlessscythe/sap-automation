@@ -8,3 +8,7 @@ config.toml.bk
 
 # local data bundles
 resources/*.zip
+
+# private / site-specific material (never commit)
+docs/private/
+config.private.toml

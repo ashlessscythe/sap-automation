@@ -146,7 +146,7 @@ fn loader_shapes() {
     // 6 item rows of 3 deliveries; the header `ShPt` maps to shipping_pointreceiving_pt
     assert_eq!((vl.nrows(), vl.headers.len()), (6, 7));
     assert_eq!(vl.headers, VL_HEADERS);
-    // the first row of 85623472 has no `No.Pk` cell (short row): blank
+    // the first row of 13000811 has no `No.Pk` cell (short row): blank
     assert_eq!(vl.rows[0][6], "");
 }
 
@@ -175,7 +175,7 @@ fn vt11_matches_xlsx_sheet() {
 }
 
 /// Real data through the runner vs the xlsx sheets. KNOWN DIFFERENCES:
-/// 1. `number_of_packages` of 85623472 is blank in the text export (SAP leaves the cell out)
+/// 1. `number_of_packages` of 13000811 is blank in the text export (SAP leaves the cell out)
 ///    and 0 in the xlsx export; both count as 0 in the pivot.
 /// 2. The xlsx pivot has the header `Row Labels` / `Sum of number_of_packages` and a `Grand
 ///    Total` row; ours is the long table `shipping_pointreceiving_pt`, `number_of_packages`
@@ -191,10 +191,10 @@ fn real_run_matches_xlsx_except_documented_differences() {
     assert_eq!(f.calls, ["vt11", "vl06o"]);
     assert_eq!(
         f.vt11_args,
-        [("VT11_MISC_VARIANT".to_string(), "scorecard".to_string())]
+        [("VT11_MISC_VARIANT".to_string(), "VT11_LAYOUT".to_string())]
     );
-    assert_eq!(f.ships, ["24602236", "24605562", "24611870"]);
-    assert_eq!(f.vl_layout, "inv");
+    assert_eq!(f.ships, ["13000435", "13000446", "13000452"]);
+    assert_eq!(f.vl_layout, "VL06O_INV_LAYOUT");
     assert_eq!(
         (s.shipments, s.deliveries, s.vl06o_rows, s.pivot_rows),
         (3, 3, 3, 2)
@@ -235,29 +235,37 @@ fn real_run_matches_xlsx_except_documented_differences() {
 }
 
 #[test]
-fn edge_site_with_parentheses_is_replaced_and_labels_sort() {
+fn edge_marker_with_parentheses_is_replaced_and_labels_sort() {
     let vl = t(
         &VL_HEADERS,
         &[
-            &["1", "S", "ACME (PLACEHOLDER_SP-1) CORP (X)", "", "C", "PLACEHOLDER_SP", "2"],
+            &[
+                "1",
+                "S",
+                "ACME (SP-1) CORP (X)",
+                "",
+                "C",
+                "PLACEHOLDER_SP",
+                "2",
+            ],
             &["2", "S", "OTHER", "", "C", "PL55", "3"],
-            &["3", "S", "BETA (PLACEHOLDER_SP-2)", "", "C", "PLACEHOLDER_SP", "4"],
+            &["3", "S", "BETA (SP-2)", "", "C", "PLACEHOLDER_SP", "4"],
             &["4", "S", "NO SHIP POINT", "", "C", "", "5"],
-            &["5", "S", "GAMMA (PLACEHOLDER_SP-1)", "", "C", "PLACEHOLDER_SP", "6"],
+            &["5", "S", "GAMMA (SP-1)", "", "C", "PLACEHOLDER_SP", "6"],
         ],
     );
-    let (v, p, s) = run_with("site", vl);
+    let (v, p, s) = run_with("placeholder_sp", vl);
     // first parenthesised group, parentheses kept; other rows untouched
     let pc = v.col("shipping_pointreceiving_pt").unwrap();
     let col: Vec<&str> = v.rows.iter().map(|r| r[pc].as_str()).collect();
-    assert_eq!(col, ["(PLACEHOLDER_SP-1)", "PL55", "(PLACEHOLDER_SP-2)", "", "(PLACEHOLDER_SP-1)"]);
+    assert_eq!(col, ["(SP-1)", "PL55", "(SP-2)", "", "(SP-1)"]);
     assert_eq!(s.regex_replaced, 3);
     // '(' sorts before letters; the blank label is last
     assert_eq!(
         pairs(&p),
         [
-            ("(PLACEHOLDER_SP-1)", "8"),
-            ("(PLACEHOLDER_SP-2)", "4"),
+            ("(SP-1)", "8"),
+            ("(SP-2)", "4"),
             ("PL55", "3"),
             ("(blank)", "5")
         ]
@@ -265,26 +273,26 @@ fn edge_site_with_parentheses_is_replaced_and_labels_sort() {
 }
 
 #[test]
-fn edge_site_without_parentheses_and_lowercase_stay() {
+fn edge_marker_without_parentheses_and_lowercase_stay() {
     let vl = t(
         &VL_HEADERS,
         &[
             &["1", "S", "NO PARENS HERE", "", "C", "PLACEHOLDER_SP", "1"],
-            &["2", "S", "ACME (X)", "", "C", "site", "1"],
+            &["2", "S", "ACME (X)", "", "C", "placeholder_sp", "1"],
         ],
     );
     let (v, p, s) = run_with("noparens", vl);
     let pc = v.col("shipping_pointreceiving_pt").unwrap();
     // no group: unchanged; `contains("PLACEHOLDER_SP")` is case sensitive
     assert_eq!(v.rows[0][pc], "PLACEHOLDER_SP");
-    assert_eq!(v.rows[1][pc], "site");
+    assert_eq!(v.rows[1][pc], "placeholder_sp");
     assert_eq!(s.regex_replaced, 0);
     // the pivot groups labels case-insensitively, like Excel (first spelling kept)
     assert_eq!(pairs(&p), [("PLACEHOLDER_SP", "2")]);
 }
 
 #[test]
-fn edge_no_site_rows_and_blank_shipping_point_only() {
+fn edge_no_marked_rows_and_blank_shipping_point_only() {
     let vl = t(
         &VL_HEADERS,
         &[

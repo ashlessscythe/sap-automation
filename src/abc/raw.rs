@@ -416,7 +416,7 @@ mod tests {
 
     #[test]
     fn preamble_header_blank_line_data() {
-        let t = p("Warehouse No.\t\t\tE01\tExample\r\n\r\n\r\n\tDelivery\tTO Number\t\tQty\tCS\r\n\r\n\t0085\t0209\t\t     144.000\r\n\t0086\t0210\t\t  1,200.500\r\n");
+        let t = p("Warehouse No.\t\t\tWH01\tExample\r\n\r\n\r\n\tDelivery\tTO Number\t\tQty\tCS\r\n\r\n\t0085\t0209\t\t     144.000\r\n\t0086\t0210\t\t  1,200.500\r\n");
         assert_eq!(t.headers, vec!["delivery", "to_number", "qty", "cs"]);
         assert_eq!(
             t.rows,
@@ -514,9 +514,9 @@ mod tests {
     #[test]
     fn non_breaking_space_in_a_cell_loads_and_trims() {
         let txt: &[u8] =
-            b"\tShipment\tSeal Number 2\r\n\r\n\t24571599\t\xA0FEDX\xA0 729656 S\xA0\r\n";
+            b"\tShipment\tSeal Number 2\r\n\r\n\t13000308\t\xA0FEDX\xA0 729656 S\xA0\r\n";
         let t = load_export("t", txt, &RawOptions::default()).unwrap();
-        assert_eq!(t.rows[0][0], "24571599");
+        assert_eq!(t.rows[0][0], "13000308");
         // leading/trailing NBSP are trimmed like spaces, an interior one is kept
         assert_eq!(t.rows[0][1], "FEDX\u{a0} 729656 S");
     }
@@ -545,19 +545,19 @@ mod tests {
     fn equal_width_preamble_does_not_hide_the_header() {
         // ZMDETPC: equally wide preamble lines, then the header (the blank column between
         // Pallet and Child is dropped); zero padded deliveries are normalised.
-        let txt = "Track Pallet Count\r\nExample\r\n\r\nUser       :\t\t\tX\r\nRun Date   :\t\t\t2026-11-10\r\nRun Time   :\t\t\t13:57:15\r\n\r\n\tDelivery\tPallet\t\tChild\r\n\r\n\t0085614256\t    1\t\t   0\r\n\t8012734818\t    0\t\t   2\r\n";
+        let txt = "Track Pallet Count\r\nExample\r\n\r\nUser       :\t\t\tX\r\nRun Date   :\t\t\t2026-11-10\r\nRun Time   :\t\t\t13:57:15\r\n\r\n\tDelivery\tPallet\t\tChild\r\n\r\n\t0013000804\t    1\t\t   0\r\n\t1300000000\t    0\t\t   2\r\n";
         let t =
             load_export_canonical("zmdetpc", "t", txt.as_bytes(), &RawOptions::default()).unwrap();
         assert_eq!(t.headers, vec!["delivery", "pallet", "child"]);
         assert_eq!(
             t.rows,
-            vec![vec!["85614256", "1", "0"], vec!["8012734818", "0", "2"]]
+            vec![vec!["13000804", "1", "0"], vec!["1300000000", "0", "2"]]
         );
     }
 
     #[test]
     fn vl06o_xdock_layout_headers() {
-        let txt = "\tDelivery\tShip-to\tName of the ship-to party\tExternal Delivery ID\tGM\tPlnt\tNo.Pk\r\n\r\n\tREDACTED\tREDACTED\tCROWN (1)\t\tC\tFV34\t    1\r\n";
+        let txt = "\tDelivery\tShip-to\tName of the ship-to party\tExternal Delivery ID\tGM\tPlnt\tNo.Pk\r\n\r\n\t13000939\t130034\tZJKBR (1)\t\tC\tPL34\t    1\r\n";
         let t =
             load_export_canonical("vl06o", "t", txt.as_bytes(), &RawOptions::default()).unwrap();
         assert_eq!(
@@ -577,7 +577,7 @@ mod tests {
     #[test]
     fn zvt11_headers_are_trimmed_before_sanitising() {
         // spec 9.5: the ZVT11 header ` Date` becomes `date`
-        let txt = "\t Date\tTrailer Number\tShipment Number\tDelivery Number\tPlant\tShip To/From Name\tShipment End date\r\n\r\n\t2026-11-05\t53145\t24625349\t0085650001\tFW63\tACME (1)\t2026-11-05\r\n";
+        let txt = "\t Date\tTrailer Number\tShipment Number\tDelivery Number\tPlant\tShip To/From Name\tShipment End date\r\n\r\n\t2026-11-05\t53145\t13000522\t0085650001\tPL63\tACME (1)\t2026-11-05\r\n";
         let t =
             load_export_canonical("zvt11", "t", txt.as_bytes(), &RawOptions::default()).unwrap();
         assert_eq!(

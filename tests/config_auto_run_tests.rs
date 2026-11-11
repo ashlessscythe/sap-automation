@@ -240,7 +240,7 @@ fn lx03_full_config_round_trips() {
         r#"
 [tcode.LX03]
 variant = "LX03_VARIANT"
-layout = "test_bin"
+layout = "LX03_LAYOUT"
 export_type = 1
 "#,
     );
@@ -250,7 +250,7 @@ export_type = 1
     let p = lx03_from_map(&map);
 
     assert_eq!(p.sap_variant_name.as_deref(), Some("LX03_VARIANT"));
-    assert_eq!(p.layout_row.as_deref(), Some("test_bin"));
+    assert_eq!(p.layout_row.as_deref(), Some("LX03_LAYOUT"));
     assert_eq!(p.export_type, Some(1));
 }
 

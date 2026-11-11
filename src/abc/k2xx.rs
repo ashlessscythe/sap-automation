@@ -17,7 +17,7 @@
 //!   pivot"): the macro workbook has no such sheet, so there is nothing to compare it with.
 //!
 //! Assumptions that are NOT confirmed by data (no raw k2xx export was available when this was
-//! written; see "Design notes: `k2xx`" in `docs/abc_headless_plan.md`):
+//! written; see "Design notes: `k2xx`" in `docs/private/abc_headless_plan.md`):
 //! * the owner's INV `total` decision (fallback to `number_of_packages`, `0 -> 1`) is **not**
 //!   applied here, because spec 9.5 shows the macro output with a blank `total`;
 //! * the ZVT11 window of a range run is `start - 100` .. `end + 100` (the spec only defines
@@ -129,7 +129,7 @@ mod tests {
             &[
                 &["85650002", "PL55", "4"],
                 &["85650002", "", "4"],
-                &["8012734818", "PL61", "7"],
+                &["1300000000", "PL61", "7"],
                 &["85650001", "PL33", "0"],
             ],
         );
@@ -179,7 +179,7 @@ mod tests {
                     "3"
                 ],
                 // the 10-digit delivery sorts last and has no ZMDETPC row: all four blank
-                vec!["8012734818", "PL61", "7", "2026-11-05", "", "", "", ""],
+                vec!["1300000000", "PL61", "7", "2026-11-05", "", "", "", ""],
             ]
         );
         assert_eq!(total_sum(&m).unwrap(), 3.0);

@@ -1,5 +1,5 @@
 //! "ABC Headless" submenu: entry point for the reports used by the headless ABC runner
-//! (see `docs/abc_headless_plan.md`). Entries for steps without a standalone run (ZMDETPC,
+//! (see `docs/private/abc_headless_plan.md`). Entries for steps without a standalone run (ZMDETPC,
 //! LT23) are shown but only print a notice. The report entries (`mustgo`, `xdock`, `toyota`,
 //! `misc`, `k2xx`, `relabel`) run the whole headless report after asking for the run date.
 //! `relabel` reads the k2xx output of the same run, so run `k2xx` for that date first.

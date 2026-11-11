@@ -72,7 +72,7 @@ fn real_headers_map_to_the_canonical_columns() {
 /// The exact header line of the error message (what SAP wrote, short titles), alone.
 #[test]
 fn the_failing_header_set_loads() {
-    let txt = "Serial Number History\r\nNo. of records:        1\r\n\r\n\tLM Serial\tStatus\tSr No Verf\tScan Cpy\tPallet\tParent no\tMaterial\tCust. Part\tDelivery\t\tPlnt\tSLoc\tWhN\tDoc. Date\tCreated On\tCreated By\tPlant Doc\tDLOC\tKanban Num\tContainer\r\n\r\n\tREDACTED\tPRI\t2\t\t1\t\tREDACTED\t32156T6Z AL10\tREDACTED\tHONDA C/O REDACTED\tFV55\t0011\tE01\t2026-11-04\t2026-11-04\tPLACEHOLDER_SPMDE054\tREDACTED\t\t\tC0015210\r\n";
+    let txt = "Serial Number History\r\nNo. of records:        1\r\n\r\n\tLM Serial\tStatus\tSr No Verf\tScan Cpy\tPallet\tParent no\tMaterial\tCust. Part\tDelivery\t\tPlnt\tSLoc\tWhN\tDoc. Date\tCreated On\tCreated By\tPlant Doc\tDLOC\tKanban Num\tContainer\r\n\r\n\t0130007098\tPRI\t2\t\t1\t\t13000540\t32156T6Z MT10\t13000875\tCUSTOMER 033\tPL55\t0011\tWH01\t2026-11-04\t2026-11-04\tGNAAAAA049\t20261120\t\t\tC0013005\r\n";
     let t = load_export_canonical("zmdesnr", "t", txt.as_bytes(), &RawOptions::default()).unwrap();
     for c in SN_DEL_COLUMNS {
         assert!(t.col(c).is_ok(), "missing {c}: {:?}", t.headers);
@@ -96,11 +96,11 @@ impl RelabelSteps for Real {
         assert_eq!(
             s,
             [
-                "373170875",
-                "373170768",
-                "373170103",
-                "373169636",
-                "373169211"
+                "130007102",
+                "130007101",
+                "130007100",
+                "130007099",
+                "130007098"
             ]
         );
         Ok(StepOutput::Table(hist()))
@@ -113,10 +113,11 @@ fn read(p: &std::path::Path, n: &str) -> Table {
 
 #[test]
 fn stages_reproduce_the_macro_output() {
+    let rules = common::real_relabel_rules();
     let f = del();
-    let eff = effective_plants(&f).unwrap();
-    assert_eq!(eff.iter().filter(|p| *p == AL55).count(), 619);
-    let b = select_blocks(&f, &eff, day()).unwrap();
+    let eff = effective_plants(&f, &rules).unwrap();
+    assert_eq!(eff.iter().filter(|p| **p == rules.alias_plant).count(), 619);
+    let b = select_blocks(&f, &eff, day(), &rules).unwrap();
     assert_eq!(
         [
             b.b1.len(),
@@ -131,7 +132,7 @@ fn stages_reproduce_the_macro_output() {
     );
     let y = yellow_serials(&hist()).unwrap();
     assert_eq!(y.len(), 5);
-    let c = build_combined(&f, &eff, &b, &y, "2026-11-05").unwrap();
+    let c = build_combined(&f, &eff, &b, &y, "2026-11-05", &rules).unwrap();
     assert_eq!((c.rows_with_4, c.label_total, c.yellow_rows), (4, 850, 5));
     assert_tables_equal(
         &load_fixture("relabel", "expected_real_combined.tsv"),
@@ -172,7 +173,16 @@ fn run_relabel_on_the_real_exports() {
     }
     std::fs::write(&p, text).unwrap();
 
-    let s = run_relabel(&mut Real, &date, &RelabelSelection::default(), &out).unwrap();
+    let s = run_relabel(
+        &mut Real,
+        &date,
+        &RelabelSelection {
+            rules: common::real_relabel_rules(),
+            ..RelabelSelection::default()
+        },
+        &out,
+    )
+    .unwrap();
     assert_eq!(s.deliveries, dels.len());
     assert_eq!(s.sn_del_rows, 6939);
     assert_eq!(s.blocks, [87, 262, 48, 5, 9, 15, 0]);

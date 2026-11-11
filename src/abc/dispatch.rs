@@ -6,39 +6,43 @@
 //! ```toml
 //! [abc.mustgo]
 //! vt11_variant = "VT11_XDOCK_VARIANT"
-//! zmdesnr_variant = "mg_k2xx"
-//! zmdesnr_layout = "mg_view"
-//! lt23_layout = "to_mg"
+//! zmdesnr_variant = "ZMDESNR_MUSTGO_VARIANT"
+//! zmdesnr_layout = "ZMDESNR_MUSTGO_LAYOUT"
+//! lt23_layout = "LT23_MUSTGO_LAYOUT"
 //! lt23_create_layout = false      # true: create the layout from the spec column list when missing
-//! warehouse = "E01"
+//! warehouse = "WH01"
 //! delete_exports = true
 //! ignore_display_error = true
 //!
 //! [abc.k2xx]
 //! vt11_variant = "VT11_K2XX_VARIANT"
-//! vt11_layout = "scorecard"
+//! vt11_layout = "VT11_LAYOUT"
 //! monday_include_sunday = true    # a Monday run date makes VT11 start on the Sunday
-//! vl06o_layout = "pallets"
-//! zvt11_variant = "k2xx_"
-//! zvt11_layout = "add_del"
+//! vl06o_layout = "VL06O_K2XX_LAYOUT"
+//! zvt11_variant = "ZVT11_K2XX_VARIANT"
+//! zvt11_layout = "ZVT11_K2XX_LAYOUT"
 //! zvt11_days = 100                # ZVT11 Closed dates = run date -/+ this many days
 //! zmdetpc_variant = "ZMDETPC_VARIANT"
 //!
 //! [abc.relabel]                      # needs the k2xx output of the same run (same date, today's folder)
-//! zmdesnr_variant = "relabel_k2xx"   # used by both ZMDESNR calls (by deliveries, by serial / History)
-//! zmdesnr_layout = "site_relabel"
+//! zmdesnr_variant = "ZMDESNR_RELABEL_VARIANT"   # used by both ZMDESNR calls (by deliveries, by serial / History)
+//! zmdesnr_layout = "ZMDESNR_RELABEL_LAYOUT"
+//! label_plant = "PL55"               # plant of the label rows
+//! alias_plant = "AL55"               # label_plant rows of an alias customer count as this plant
+//! alias_customers = ["ALIAS_A*", "ALIAS_B*", "ALIAS_C*"]
 //! delete_exports = true
 //! ignore_display_error = true
 //!
-//! [abc.misc]                         # vt11_variant = "VT11_MISC_VARIANT", vt11_layout, vl06o_layout = "inv"
+//! [abc.misc]                         # vt11_variant = "VT11_MISC_VARIANT", vt11_layout, vl06o_layout = "VL06O_INV_LAYOUT"
+//! ship_point_marker = "PLACEHOLDER_SP"  # shipping points containing this text are replaced by the ship-to "(...)"
 //!
 //! [abc.toyota]                       # same keys as [abc.xdock]; only the defaults differ
 //! vt11_variant = "VT11_TOYOTA_VARIANT"        # (vt11_layout, vl06o_layout, zmdetpc_variant: as xdock)
 //!
 //! [abc.xdock]
 //! vt11_variant = "VT11_XDOCK_VARIANT"
-//! vt11_layout = "scorecard"
-//! vl06o_layout = "xdock"
+//! vt11_layout = "VT11_LAYOUT"
+//! vl06o_layout = "VL06O_XDOCK_LAYOUT"
 //! zmdetpc_variant = "ZMDETPC_VARIANT"   # from the toyota row of the spec; check the variant exists
 //! delete_exports = true
 //! ignore_display_error = true
@@ -53,6 +57,7 @@ use super::inv_runner::{run_misc, run_toyota, run_xdock, InvSelection, InvSummar
 use super::k2xx_runner::{run_k2xx, K2xxSelection, K2xxSummary};
 use super::raw::RawOptions;
 use super::registry;
+use super::relabel::RelabelRules;
 use super::relabel_runner::{run_relabel, RelabelSelection, RelabelSummary};
 use super::run::RunDate;
 use super::runner::{run_mustgo, NoDataError, OutputSpec, RunSummary};
@@ -102,6 +107,20 @@ fn s(section: &Option<toml::Value>, key: &str) -> Option<String> {
         .map(str::trim)
         .filter(|v| !v.is_empty())
         .map(str::to_string)
+}
+
+fn str_list(section: &Option<toml::Value>, key: &str) -> Option<Vec<String>> {
+    let v: Vec<String> = section
+        .as_ref()?
+        .get(key)?
+        .as_array()?
+        .iter()
+        .filter_map(|x| x.as_str())
+        .map(str::trim)
+        .filter(|x| !x.is_empty())
+        .map(str::to_string)
+        .collect();
+    (!v.is_empty()).then_some(v)
 }
 
 fn int(section: &Option<toml::Value>, key: &str) -> Option<i64> {
@@ -196,6 +215,7 @@ fn resolve_inv(input: &ResolveInput, d: InvSelection) -> ResolvedInv {
         vt11_layout: s(&input.section, "vt11_layout").unwrap_or(d.vt11_layout),
         vl06o_layout: s(&input.section, "vl06o_layout").unwrap_or(d.vl06o_layout),
         zmdetpc_variant: s(&input.section, "zmdetpc_variant").unwrap_or(d.zmdetpc_variant),
+        ship_point_marker: s(&input.section, "ship_point_marker").unwrap_or(d.ship_point_marker),
     };
     ResolvedInv {
         cfg: base.cfg,
@@ -278,6 +298,12 @@ pub fn resolve_relabel(input: &ResolveInput) -> ResolvedRelabel {
     let sel = RelabelSelection {
         zmdesnr_variant: s(&input.section, "zmdesnr_variant").unwrap_or(d.zmdesnr_variant),
         zmdesnr_layout: s(&input.section, "zmdesnr_layout").unwrap_or(d.zmdesnr_layout),
+        rules: RelabelRules {
+            label_plant: s(&input.section, "label_plant").unwrap_or(d.rules.label_plant),
+            alias_plant: s(&input.section, "alias_plant").unwrap_or(d.rules.alias_plant),
+            alias_customers: str_list(&input.section, "alias_customers")
+                .unwrap_or(d.rules.alias_customers),
+        },
     };
     ResolvedRelabel {
         cfg: base.cfg,
@@ -297,7 +323,7 @@ pub fn relabel_summary_lines(name: &str, s: &RelabelSummary) -> Vec<String> {
     let mut v = vec![
         format!("{name} finished (date {})", s.export_date),
         format!(
-            "  deliveries {} (from the k2xx vl06o file), sn_del rows {} ({} treated as AL55)",
+            "  deliveries {} (from the k2xx vl06o file), sn_del rows {} ({} treated as alias plant)",
             s.deliveries, s.sn_del_rows, s.al55_rows
         ),
         format!(
@@ -434,7 +460,7 @@ pub fn misc_summary_lines(name: &str, s: &InvSummary) -> Vec<String> {
     let mut v = vec![
         format!("{name} finished (date {})", s.export_date),
         format!(
-            "  shipments {}, deliveries {}, PLACEHOLDER_SP shipping points replaced {}",
+            "  shipments {}, deliveries {}, marked shipping points replaced {}",
             s.shipments, s.deliveries, s.regex_replaced
         ),
         format!(
@@ -555,8 +581,8 @@ mod tests {
         let r = resolve_mustgo(&ResolveInput::default());
         let d = MustgoSapConfig::default();
         assert_eq!(r.cfg.vt11_variant, d.vt11_variant);
-        assert_eq!(r.cfg.zmdesnr_layout, "mg_view");
-        assert_eq!(r.cfg.lt23_layout, "to_mg");
+        assert_eq!(r.cfg.zmdesnr_layout, "ZMDESNR_MUSTGO_LAYOUT");
+        assert_eq!(r.cfg.lt23_layout, "LT23_MUSTGO_LAYOUT");
         assert!(r.cfg.lt23_create_layout_columns.is_none());
         assert!(r.cfg.delete_exports && r.cfg.ignore_display_error);
         assert_eq!(r.reports_dir, PathBuf::from("reports"));
@@ -606,7 +632,7 @@ mod tests {
         });
         assert_eq!(r.reports_dir, PathBuf::from("reports"));
         assert_eq!(r.cfg.vt11_variant, "VT11_XDOCK_VARIANT");
-        assert_eq!(r.cfg.warehouse, "E01", "wrong type is ignored");
+        assert_eq!(r.cfg.warehouse, "WH01", "wrong type is ignored");
     }
 
     #[test]
@@ -614,8 +640,8 @@ mod tests {
         let r = resolve_xdock(&ResolveInput::default());
         assert_eq!(r.sel, InvSelection::xdock());
         assert_eq!(r.sel.vt11_variant, "VT11_XDOCK_VARIANT");
-        assert_eq!(r.sel.vt11_layout, "scorecard");
-        assert_eq!(r.sel.vl06o_layout, "xdock");
+        assert_eq!(r.sel.vt11_layout, "VT11_LAYOUT");
+        assert_eq!(r.sel.vl06o_layout, "VL06O_XDOCK_LAYOUT");
         assert_eq!(r.sel.zmdetpc_variant, "ZMDETPC_VARIANT");
         assert_eq!(r.reports_dir, PathBuf::from("reports"));
         assert!(r.cfg.delete_exports && r.cfg.ignore_display_error);
@@ -636,7 +662,10 @@ mod tests {
         assert!(!r.cfg.delete_exports);
         assert_eq!(r.sel.zmdetpc_variant, "MYVAR");
         assert_eq!(r.sel.vl06o_layout, "xd2");
-        assert_eq!(r.sel.vt11_layout, "scorecard", "blank value falls through");
+        assert_eq!(
+            r.sel.vt11_layout, "VT11_LAYOUT",
+            "blank value falls through"
+        );
         assert_eq!(r.sel.vt11_variant, "VT11_XDOCK_VARIANT");
     }
 
@@ -679,8 +708,8 @@ mod tests {
         let r = resolve_toyota(&ResolveInput::default());
         assert_eq!(r.sel, InvSelection::toyota());
         assert_eq!(r.sel.vt11_variant, "VT11_TOYOTA_VARIANT");
-        assert_eq!(r.sel.vt11_layout, "scorecard");
-        assert_eq!(r.sel.vl06o_layout, "xdock");
+        assert_eq!(r.sel.vt11_layout, "VT11_LAYOUT");
+        assert_eq!(r.sel.vl06o_layout, "VL06O_XDOCK_LAYOUT");
         assert_eq!(r.sel.zmdetpc_variant, "ZMDETPC_VARIANT");
         let r = resolve_toyota(&ResolveInput {
             section: section("vt11_variant = \"MYTOYO\"\n"),
@@ -699,8 +728,8 @@ mod tests {
         let r = resolve_misc(&ResolveInput::default());
         assert_eq!(r.sel, InvSelection::misc());
         assert_eq!(r.sel.vt11_variant, "VT11_MISC_VARIANT");
-        assert_eq!(r.sel.vt11_layout, "scorecard");
-        assert_eq!(r.sel.vl06o_layout, "inv");
+        assert_eq!(r.sel.vt11_layout, "VT11_LAYOUT");
+        assert_eq!(r.sel.vl06o_layout, "VL06O_INV_LAYOUT");
         let r = resolve_misc(&ResolveInput {
             section: section("vl06o_layout = \"inv2\"\n"),
             ..ResolveInput::default()
@@ -729,11 +758,11 @@ mod tests {
         let r = resolve_k2xx(&ResolveInput::default());
         assert_eq!(r.sel, K2xxSelection::default());
         assert_eq!(r.sel.vt11_variant, "VT11_K2XX_VARIANT");
-        assert_eq!(r.sel.vt11_layout, "scorecard");
+        assert_eq!(r.sel.vt11_layout, "VT11_LAYOUT");
         assert!(r.sel.monday_include_sunday);
-        assert_eq!(r.sel.vl06o_layout, "pallets");
-        assert_eq!(r.sel.zvt11_variant, "k2xx_");
-        assert_eq!(r.sel.zvt11_layout, "add_del");
+        assert_eq!(r.sel.vl06o_layout, "VL06O_K2XX_LAYOUT");
+        assert_eq!(r.sel.zvt11_variant, "ZVT11_K2XX_VARIANT");
+        assert_eq!(r.sel.zvt11_layout, "ZVT11_K2XX_LAYOUT");
         assert_eq!(r.sel.zvt11_days, 100);
         assert_eq!(r.sel.zmdetpc_variant, "ZMDETPC_VARIANT");
         assert_eq!(r.reports_dir, PathBuf::from("reports"));
@@ -752,7 +781,10 @@ mod tests {
         assert_eq!(r.sel.vt11_variant, "V");
         assert!(!r.sel.monday_include_sunday);
         assert_eq!(r.sel.zvt11_variant, "Z");
-        assert_eq!(r.sel.zvt11_layout, "add_del", "blank value falls through");
+        assert_eq!(
+            r.sel.zvt11_layout, "ZVT11_K2XX_LAYOUT",
+            "blank value falls through"
+        );
         assert_eq!(r.sel.zvt11_days, 30);
         assert_eq!(r.sel.vl06o_layout, "p2");
         // a negative or wrongly typed day count is ignored
@@ -785,12 +817,53 @@ mod tests {
     }
 
     #[test]
+    fn relabel_rules_and_misc_marker_come_from_the_section() {
+        let r = resolve_relabel(&ResolveInput {
+            section: section(
+                "label_plant = \" P1 \"
+alias_plant = \"P1X\"
+alias_customers = [\"AB*\", \" \", \"CD\"]
+",
+            ),
+            ..ResolveInput::default()
+        });
+        assert_eq!(r.sel.rules.label_plant, "P1");
+        assert_eq!(r.sel.rules.alias_plant, "P1X");
+        assert_eq!(r.sel.rules.alias_customers, ["AB*", "CD"]);
+
+        // an empty or wrong-typed list falls back to the default
+        let r = resolve_relabel(&ResolveInput {
+            section: section(
+                "alias_customers = []
+label_plant = 5
+",
+            ),
+            ..ResolveInput::default()
+        });
+        assert_eq!(r.sel.rules, RelabelRules::default());
+
+        let r = resolve_misc(&ResolveInput {
+            section: section(
+                "ship_point_marker = \"SITE\"
+",
+            ),
+            ..ResolveInput::default()
+        });
+        assert_eq!(r.sel.ship_point_marker, "SITE");
+        assert_eq!(
+            resolve_misc(&ResolveInput::default()).sel.ship_point_marker,
+            "PLACEHOLDER_SP"
+        );
+    }
+
+    #[test]
     fn relabel_defaults_precedence_and_summary() {
         let r = resolve_relabel(&ResolveInput::default());
         assert_eq!(r.sel, RelabelSelection::default());
-        assert_eq!(r.sel.zmdesnr_variant, "relabel_k2xx");
-        assert_eq!(r.sel.zmdesnr_layout, "site_relabel");
+        assert_eq!(r.sel.zmdesnr_variant, "ZMDESNR_RELABEL_VARIANT");
+        assert_eq!(r.sel.zmdesnr_layout, "ZMDESNR_RELABEL_LAYOUT");
         assert_eq!(r.reports_dir, PathBuf::from("reports"));
+        assert_eq!(r.sel.rules, RelabelRules::default());
 
         let r = resolve_relabel(&ResolveInput {
             cli_reports_dir: Some("C:/cli".into()),
@@ -807,7 +880,10 @@ delete_exports = false
         assert_eq!(r.reports_dir, PathBuf::from("C:/cli"));
         assert!(!r.cfg.ignore_display_error && !r.cfg.delete_exports);
         assert_eq!(r.sel.zmdesnr_variant, "V");
-        assert_eq!(r.sel.zmdesnr_layout, "site_relabel", "blank falls through");
+        assert_eq!(
+            r.sel.zmdesnr_layout, "ZMDESNR_RELABEL_LAYOUT",
+            "blank falls through"
+        );
 
         assert_eq!(check_report(" RELABEL ").unwrap(), "relabel");
         let s = RelabelSummary {

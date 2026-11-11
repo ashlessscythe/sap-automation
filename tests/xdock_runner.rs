@@ -120,12 +120,12 @@ fn full_run_on_real_fixtures() {
     assert_eq!(f.dates, vec![day()]);
     assert_eq!(
         f.vt11_args,
-        vec![("VT11_XDOCK_VARIANT".to_string(), "scorecard".to_string())]
+        vec![("VT11_XDOCK_VARIANT".to_string(), "VT11_LAYOUT".to_string())]
     );
     // VL06O gets all 91 distinct shipments with layout xdock
     assert_eq!(f.ships.len(), 91);
     assert_eq!(f.ships.iter().collect::<HashSet<_>>().len(), 91);
-    assert_eq!(f.vl_layout, "xdock");
+    assert_eq!(f.vl_layout, "VL06O_XDOCK_LAYOUT");
     // ZMDETPC gets the 148 distinct deliveries, the run date and the variant
     assert_eq!(f.dels.len(), 148);
     assert_eq!(f.dels.iter().collect::<HashSet<_>>().len(), 148);

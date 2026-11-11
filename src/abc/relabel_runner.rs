@@ -9,7 +9,7 @@
 //!    folder. A missing or empty file stops the run with an error that says to run `k2xx` first;
 //! 2. ZMDESNR by deliveries (variant `relabel_k2xx`, layout `site_relabel`) -> `sn_del`;
 //! 3. if block B4 has serials: ZMDESNR by serial / History for them (same variant and layout);
-//! 4. the pure stages (AL55 as an effective plant, blocks B1-B7, `_of_labels`, `export_date`,
+//! 4. the pure stages (alias-plant as an effective plant, blocks B1-B7, `_of_labels`, `export_date`,
 //!    pivot customer x plant, cross-tab like the macro) and the save step.
 //!
 //! The run date must be a single date (spec 7.0 item 16: the window is `D`..`D+1`). Error
@@ -19,7 +19,7 @@
 //! Outputs (TSV, `registry::output_path`, folder `K2XX`):
 //! `<reports_dir>\K2XX\<today>\relabel\<date>_RELABEL_{COMBINED,SN_DEL,SNR_ORIG,PIVOT}.tsv`.
 //! `COMBINED` has the columns of the export plus `_of_labels`, `export_date`, `yellow`;
-//! `SN_DEL` and `SNR_ORIG` are the export as loaded (the macro's two sheets; the temporary AL55
+//! `SN_DEL` and `SNR_ORIG` are the export as loaded (the macro's two sheets; the temporary alias-plant
 //! marks and the extra last row of the macro sheet are not reproduced); `PIVOT` is the macro cross-tab
 //! (header `customer`, one column per plant, `Grand Total`; one row per customer, then a
 //! `Grand Total` row; blank cells where a customer has no rows). `save full_label` (A!62) is not implemented (it was not
@@ -46,14 +46,17 @@ use std::path::PathBuf;
 pub struct RelabelSelection {
     pub zmdesnr_variant: String,
     pub zmdesnr_layout: String,
+    /// Plant codes and customer patterns of the label rules (`[abc.relabel]`).
+    pub rules: relabel::RelabelRules,
 }
 
 impl Default for RelabelSelection {
-    /// Defaults of spec 5.6 (rows 61 and the PL55 history call).
+    /// Defaults of spec 5.6 (rows 61 and the label-plant history call).
     fn default() -> Self {
         Self {
-            zmdesnr_variant: "relabel_k2xx".to_string(),
-            zmdesnr_layout: "site_relabel".to_string(),
+            zmdesnr_variant: "ZMDESNR_RELABEL_VARIANT".to_string(),
+            zmdesnr_layout: "ZMDESNR_RELABEL_LAYOUT".to_string(),
+            rules: relabel::RelabelRules::default(),
         }
     }
 }
@@ -85,7 +88,7 @@ pub struct RelabelSummary {
     pub deliveries: usize,
     /// Rows of the delivery export (`sn_del`).
     pub sn_del_rows: usize,
-    /// Rows treated as plant `AL55` during the stage.
+    /// Rows treated as plant `alias-plant` during the stage.
     pub al55_rows: usize,
     /// Rows of blocks B1, B2, B3, B4 (not appended), B5, B6, B7.
     pub blocks: [usize; 7],
@@ -180,10 +183,17 @@ pub fn run_relabel(
         return Err(no_data("zmdesnr_by_deliveries", "empty list"));
     }
 
-    // AL55 marks (kept in a side vector, nothing is written back) and the blocks
-    let eff = stage(rep, "al55", relabel::effective_plants(&sn_del))?;
-    let al55_rows = eff.iter().filter(|p| p.as_str() == relabel::AL55).count();
-    let blocks = stage(rep, "blocks", relabel::select_blocks(&sn_del, &eff, d))?;
+    // alias-plant marks (kept in a side vector, nothing is written back) and the blocks
+    let eff = stage(rep, "al55", relabel::effective_plants(&sn_del, &sel.rules))?;
+    let al55_rows = eff
+        .iter()
+        .filter(|p| p.as_str() == sel.rules.alias_plant)
+        .count();
+    let blocks = stage(
+        rep,
+        "blocks",
+        relabel::select_blocks(&sn_del, &eff, d, &sel.rules),
+    )?;
 
     // PL55 history -> yellow
     let serials = stage(
@@ -192,7 +202,7 @@ pub fn run_relabel(
         relabel::history_serials(&sn_del, &blocks),
     )?;
     let (yellow, history_rows) = if serials.is_empty() {
-        log(rep, "no PL55 pallet 1 rows: no history call");
+        log(rep, "no label-plant pallet 1 rows: no history call");
         (Default::default(), 0)
     } else {
         let h = take(
@@ -214,7 +224,7 @@ pub fn run_relabel(
     let combined = stage(
         rep,
         "combined",
-        relabel::build_combined(&sn_del, &eff, &blocks, &yellow, &export_date),
+        relabel::build_combined(&sn_del, &eff, &blocks, &yellow, &export_date, &sel.rules),
     )?;
     if combined.table.nrows() == 0 {
         return Err(no_data("combined", "no rows in any block"));

@@ -151,7 +151,7 @@ fn date_end_garbage_errors_with_iso_hint() {
 fn string_flags_round_trip() {
     let cli = parse(&[
         "--tcode=ZMDESNR",
-        "--layout=ob_6",
+        "--layout=my_layout",
         "--variant=window_tk",
         "--limiter=date_range",
         "--reports-dir=C:\\Reports",
@@ -166,7 +166,7 @@ fn string_flags_round_trip() {
     .unwrap();
     let o = cli.to_overrides().unwrap();
     assert_eq!(o.tcode.as_deref(), Some("ZMDESNR"));
-    assert_eq!(o.layout.as_deref(), Some("ob_6"));
+    assert_eq!(o.layout.as_deref(), Some("my_layout"));
     assert_eq!(o.variant.as_deref(), Some("window_tk"));
     assert_eq!(o.limiter.as_deref(), Some("date_range"));
     assert_eq!(o.reports_dir.as_deref(), Some("C:\\Reports"));

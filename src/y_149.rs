@@ -200,8 +200,8 @@ pub struct Report149ByDeliveryParams {
 impl Default for Report149ByDeliveryParams {
     fn default() -> Self {
         Self {
-            variant: "inb_ship".to_string(),
-            layout: "inb_ship".to_string(),
+            variant: "INB_149_NAME".to_string(),
+            layout: "INB_149_NAME".to_string(),
             layout_columns: crate::utils::choose_layout_utils::inbond_default_layout_columns(),
             delivery_numbers: Vec::new(),
             export_type: 1,

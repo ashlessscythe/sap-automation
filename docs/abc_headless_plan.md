@@ -407,7 +407,7 @@ produced the 7-column list), the live k2xx run itself, the pivot (no macro count
 (FW63 shipment 24625349) and `Date` 2026-11-06 (vs `shipment_end_date` 2026-11-05) in 78 rows; the macro sheet is identical to the
 export. k2xx applies spec 7.0 item 30: `date` = `shipment_end_date` on every row (`k2xx::apply_zvt11_end_date`), so the output
 differs from the macro sheet in those 82 rows; `expected_real_zvt11.tsv` = macro sheet with item 30 applied. `run_k2xx` requires
-`delivery_number` and `shipment_number` in a non-empty ZVT11 table (wrong layout stops the run). **An empty ZVT11 list no longer
+`delivery` and `shipment_number` in a non-empty ZVT11 table (wrong layout stops the run). **An empty ZVT11 list no longer
 stops k2xx** (owner decision 2026-11-11): warning in the log, header-only `..._ZVT11.tsv` (the 7 `add_del` columns), the rest of
 the run is unchanged.
 
@@ -423,7 +423,7 @@ the run is unchanged.
 4. **ZVT11 "No data exists" popup**: the spec calls it an error; here it is a clean `NO DATA at step 'zvt11'`. **Decided
    (owner, 2026-11-11): an empty ZVT11 list does NOT stop k2xx**: warning, header-only ZVT11 output, run continues (other
    reports keep stop-on-empty).
-5. **ZVT11 columns**: `delivery_number`/`shipment_number` are checked when the list is non-empty; the table is written as
+5. **ZVT11 columns**: `delivery`/`shipment_number` are checked when the list is non-empty; the table is written as
    exported except `date` (item 30, see above).
 6. **VL06O**: `delivery` and `plant` (for the pivot) are required; the `pallets` column order of spec 3.3 is not enforced. Is the list layout name
    really `pallets` on the owner's SAP (as `xdock` / `inv` were)?

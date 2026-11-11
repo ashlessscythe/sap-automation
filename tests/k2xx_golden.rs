@@ -75,7 +75,7 @@ fn loader_shapes() {
             "date",
             "trailer_number",
             "shipment_number",
-            "delivery_number",
+            "delivery",
             "plant",
             "ship_tofrom_name",
             "shipment_end_date"

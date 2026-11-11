@@ -342,14 +342,15 @@ pub const ZMDESNR_ALIASES: &[(&str, &str)] = &[
 /// `Child`; a blank column sits between `Pallet` and `Child` and is dropped by the loader).
 pub const ZMDETPC_ALIASES: &[(&str, &str)] = &[];
 /// ZVT11 (Closed, layout `add_del`). Canonical names are the sanitised layout titles of spec
-/// 3.2 / 8.2: `date`, `trailer_number`, `shipment_number`, `delivery_number`, `plant`,
+/// 3.2 / 8.2: `date`, `trailer_number`, `shipment_number`, `delivery`, `plant`,
 /// `ship_tofrom_name`, `shipment_end_date`. The real list (run of 2026-11-05) shortens three titles
 /// (`Trailer Nu`, `Delivery N`, `Shipment E`) and calls the shipment column `Shipment`; a blank
 /// column sits between `Date` and `Trailer Nu` and is dropped by the loader.
 pub const ZVT11_ALIASES: &[(&str, &str)] = &[
     ("trailer_nu", "trailer_number"),
     ("shipment", "shipment_number"),
-    ("delivery_n", "delivery_number"),
+    ("delivery_n", "delivery"),
+    ("delivery_number", "delivery"),
     ("plnt", "plant"),
     ("shipment_e", "shipment_end_date"),
 ];
@@ -585,7 +586,7 @@ mod tests {
                 "date",
                 "trailer_number",
                 "shipment_number",
-                "delivery_number",
+                "delivery",
                 "plant",
                 "ship_tofrom_name",
                 "shipment_end_date"

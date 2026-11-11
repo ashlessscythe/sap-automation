@@ -1,4 +1,4 @@
-date	trailer_number	shipment_number	delivery_number	plant	ship_tofrom_name	shipment_end_date
+date	trailer_number	shipment_number	delivery	plant	ship_tofrom_name	shipment_end_date
 2026-11-05	53491	24604314	85626834	FV50	GM SPRING HILL (22010)	2026-11-05
 2026-11-05	53491	24604314	85626835	FV50	GM SPRING HILL (22010)	2026-11-05
 2026-11-05	53491	24604314	85650105	FV50	GM SPRING HILL (22010)	2026-11-05

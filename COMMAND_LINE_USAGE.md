@@ -154,7 +154,7 @@ The file extension drives the parser:
 
 | Flag | Meaning |
 | --- | --- |
-| `--rname=<name>` | Report to run. `mustgo`, `xdock`, `toyota`, `misc`, `k2xx` and `relabel` have a runner today (case-insensitive; `k2xx` and `relabel` have not run against live SAP yet). Unknown names fail with the list of known reports. |
+| `--rname=<name>` | Report to run. `mustgo`, `xdock`, `toyota`, `misc`, `k2xx` and `relabel` have a runner today (case-insensitive). Unknown names fail with the list of known reports. |
 | `--run-date=<DATE\|A..B\|WKnn>` | `YYYY-MM-DD`, `YYYY-MM-DD..YYYY-MM-DD`, or a week `WK45` / `WK45/2026` (Sunday..Saturday, Excel WEEKNUM; the year defaults to the current year). A range or week is **one run**: VT11 gets the whole range and `export_date` becomes `WK_<n>` (a single date gives `yyyy-mm-dd`). |
 
 | `--date-range-buffer=<DAYS>` | Days added before the start and after the end of the run date range of every tcode that sets one (VT11, ZMDETPC). **Omitted**: ZMDETPC gets **3** days each side when the run is a week (`WKnn`, or the exact Sunday..Saturday range), everything else gets **0**, so a single date or other range is not widened. An explicit value (also `0`) applies to every such tcode and to single dates too. Overrides `[abc.<report>] date_range_buffer`. |
@@ -187,8 +187,7 @@ one row per delivery) -> a shipping point `EPDC` is replaced by the first parent
 a Monday run date starts on the Sunday before) -> VL06O for all shipments (layout `pallets`, one row per delivery) -> ZVT11
 Closed for the deliveries (variant `k2xx_`, layout `add_del`, run date -/+ 100 days) -> ZMDETPC summarised for the deliveries
 -> merge (`total` = pallet + child; **blank** for a delivery without a ZMDETPC row, unlike xdock/toyota) -> pivot of `total`
-by plant (the macro has no pivot for k2xx; it was added on the owner's request). `k2xx` has
-not run against live SAP yet and is tested on synthetic stand-in data only (checklist in `docs/abc_headless_plan.md`). The
+by plant (the macro has no pivot for k2xx; it was added on the owner's request). The
 first empty result or error stops the run and **nothing is written**.
 
 `relabel` takes the delivery list from the `VL06O` table that `k2xx` wrote for the **same run date on the same calendar day**
@@ -199,8 +198,7 @@ the blocks are built -> blocks of rows (non-FV55 rows with 2 scan copies or a bl
 the first pallet row per parent serial, the FV55 pallet rows, FV55 rows without pallet and parent, rows with a kanban and a parent) ->
 ZMDESNR by serial / History for the FV55 pallet-1 serials (rows at storage location 11 with status `PRI` are flagged `yellow`) ->
 `_of_labels` (4 for FV55 pallet rows 1/2 without kanban, not container `KC*`, not yellow, when at least two exist; 2 otherwise) ->
-`export_date` -> pivot of `_of_labels` by customer and plant. `relabel` has not run against live SAP yet and is tested on
-synthetic stand-in data only (checklist in `docs/abc_headless_plan.md`).
+`export_date` -> pivot of `_of_labels` by customer and plant. Both `k2xx` and `relabel` have run against live SAP and are golden-tested on the owner's real exports.
 
 **Exit codes:** `0` success; non-zero for every failure. The message tells them apart:
 `NO DATA at step '<step>': <reason>` (SAP returned nothing, or a stage had nothing left, e.g. no TPDC shipments or no delivery

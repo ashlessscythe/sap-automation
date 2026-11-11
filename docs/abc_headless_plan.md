@@ -12,12 +12,11 @@ Do not re-read the whole spec. One chunk per session; end by updating this file.
 `relabel` (commits `ecf4379`..`8051179`) and the docs commit `56369dd`. Those are **committed but not pushed, not tagged, not
 version-bumped**. `repack` (3.5) is **not started**. CI (`fmt`, `clippy -D warnings`, `build`, `test`, all `--locked`) is green.
 
-**Nothing new has been tested against live SAP.** Only `mustgo`, `xdock`, `toyota` and `misc` have run live (by the owner).
-`k2xx` is now tested on the owner's **real exports and macro xlsx of 2026-11-05** (`tests/fixtures/k2xx/real/`; no live k2xx run yet);
-`relabel` is tested only on **synthetic stand-in fixtures** (labelled in its `tests/fixtures/relabel/README.txt`);
-every SAP control id they use for ZVT11 Closed and ZMDESNR by serial / History comes from the spec alone. Expect the first live
-runs to fail on a control id, a layout/variant name or a list title; fix them one by one from the log (the tcode steps log why a
-candidate failed) and add the finding under "Live findings".
+**Live status (2026-11-11): `mustgo`, `xdock`, `toyota`, `misc`, `k2xx` and `relabel` have all run live and work (owner-confirmed).**
+`k2xx` and `relabel` are golden-tested on the owner's real exports and macro xlsx (`tests/fixtures/{k2xx,relabel}/real/`); the
+synthetic relabel fixtures remain for edge cases. Any control id still listed as spec-only in the checklists below that was not
+exercised in those runs (e.g. the relabel B7 block was empty) stays unverified. For `repack`, expect the first live run to fail on a
+control id, layout/variant name or list title; fix from the log and add the finding under "Live findings".
 
 **Live test runbook (owner, with SAP GUI open and logged in):**
 1. `cargo build --locked` (32-bit target, see CLAUDE.md), copy `config.toml.example` to `config.toml`.

@@ -300,52 +300,77 @@ pub fn build_combined(
     })
 }
 
-/// Pivot of `combined` as a long table `customer`, `plant`, `_of_labels` (sum), like the INV
-/// pivots ([`super::inv::pivot_sum`] has one grouping column only, so this is its two-level
-/// form): ascending by customer, then plant (case-insensitive), a blank value is `(blank)` and
-/// sorts last at its level, no grand-total row.
+/// Label of the first column of the pivot's header and of its last row / column (as in Excel).
+pub const PIVOT_TOTAL_LABEL: &str = "Grand Total";
+
+/// Pivot of `combined` in the macro's cross-tab layout: header `customer`, one column per plant,
+/// `Grand Total`; one row per customer, then a `Grand Total` row. Customers and plants ascending
+/// (case-insensitive), a blank one is `(blank)` and sorts last; a cell without rows is blank.
 pub fn pivot_customer_plant(combined: &Table) -> Result<Table> {
     let (c, p, l) = (
         combined.col("customer")?,
         combined.col("plant")?,
         combined.col(COL_LABELS)?,
     );
-    type Key = ((bool, String), (bool, String));
-    let key = |v: &str| {
+    type Key = (bool, String);
+    let key = |v: &str| -> (Key, String) {
         let v = v.trim();
         if v.is_empty() {
-            (true, super::inv::BLANK_LABEL.to_string())
+            ((true, String::new()), super::inv::BLANK_LABEL.to_string())
         } else {
-            (false, v.to_string())
+            ((false, v.to_lowercase()), v.to_string())
         }
     };
-    let mut sums: BTreeMap<Key, (String, String, i64)> = BTreeMap::new();
+    let mut custs: BTreeMap<Key, String> = BTreeMap::new();
+    let mut plants: BTreeMap<Key, String> = BTreeMap::new();
+    let mut cells: BTreeMap<(Key, Key), i64> = BTreeMap::new();
     for r in &combined.rows {
-        let (kc, kp) = (key(&r[c]), key(&r[p]));
-        let e = sums
-            .entry(((kc.0, kc.1.to_lowercase()), (kp.0, kp.1.to_lowercase())))
-            .or_insert((kc.1.clone(), kp.1.clone(), 0));
-        e.2 += r[l].trim().parse::<i64>().unwrap_or(0);
+        let ((kc, nc), (kp, np)) = (key(&r[c]), key(&r[p]));
+        custs.entry(kc.clone()).or_insert(nc);
+        plants.entry(kp.clone()).or_insert(np);
+        *cells.entry((kc, kp)).or_insert(0) += r[l].trim().parse::<i64>().unwrap_or(0);
     }
-    let rows = sums
-        .into_values()
-        .map(|(cu, pl, n)| vec![cu, pl, n.to_string()])
-        .collect();
-    Ok(Table::new(
-        "pivot",
-        vec!["customer".into(), "plant".into(), COL_LABELS.into()],
-        rows,
-    ))
+    let mut headers = vec!["customer".to_string()];
+    headers.extend(plants.values().cloned());
+    headers.push(PIVOT_TOTAL_LABEL.to_string());
+    let show = |n: Option<i64>| n.map(|n| n.to_string()).unwrap_or_default();
+    let mut rows = Vec::new();
+    for (kc, name) in &custs {
+        let mut row = vec![name.clone()];
+        let mut total = 0;
+        for kp in plants.keys() {
+            let n = cells.get(&(kc.clone(), kp.clone())).copied();
+            total += n.unwrap_or(0);
+            row.push(show(n));
+        }
+        row.push(total.to_string());
+        rows.push(row);
+    }
+    let mut last = vec![PIVOT_TOTAL_LABEL.to_string()];
+    let mut grand = 0;
+    for kp in plants.keys() {
+        let n: i64 = cells
+            .iter()
+            .filter(|((_, k), _)| k == kp)
+            .map(|(_, n)| *n)
+            .sum();
+        grand += n;
+        last.push(n.to_string());
+    }
+    last.push(grand.to_string());
+    rows.push(last);
+    Ok(Table::new("pivot", headers, rows))
 }
 
-/// Sum of the `_of_labels` cells of the pivot (for the run summary).
+/// The grand total of the pivot (bottom right cell), for the run summary.
 pub fn pivot_total(pivot: &Table) -> Result<i64> {
-    let l = pivot.col(COL_LABELS)?;
-    Ok(pivot
-        .rows
-        .iter()
-        .map(|r| r[l].trim().parse::<i64>().unwrap_or(0))
-        .sum())
+    let l = pivot
+        .headers
+        .len()
+        .checked_sub(1)
+        .ok_or_else(|| anyhow!("empty pivot"))?;
+    let r = pivot.rows.last().ok_or_else(|| anyhow!("empty pivot"))?;
+    Ok(r[l].trim().parse::<i64>().unwrap_or(0))
 }
 
 #[cfg(test)]
@@ -609,11 +634,7 @@ mod tests {
     }
 
     #[test]
-    fn pivot_sorts_blank_last_and_sums() {
-        let mut headers: Vec<String> = ["customer", "plant", COL_LABELS]
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
+    fn pivot_is_a_cross_tab_with_totals() {
         let rows: Vec<Vec<String>> = [
             ["b corp", "FV55", "4"],
             ["A corp", "FV33", "2"],
@@ -625,17 +646,26 @@ mod tests {
         .iter()
         .map(|r| r.iter().map(|s| s.to_string()).collect())
         .collect();
-        let t = Table::new("combined", std::mem::take(&mut headers), rows);
+        let t = Table::new(
+            "combined",
+            ["customer", "plant", COL_LABELS]
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+            rows,
+        );
         let p = pivot_customer_plant(&t).unwrap();
-        assert_eq!(p.headers, ["customer", "plant", COL_LABELS]);
+        assert_eq!(
+            p.headers,
+            ["customer", "FV33", "FV50", "FV55", "(blank)", "Grand Total"]
+        );
         assert_eq!(
             p.rows,
             vec![
-                vec!["A corp", "FV33", "4"],
-                vec!["A corp", "FV50", "2"],
-                vec!["A corp", "(blank)", "2"],
-                vec!["b corp", "FV55", "4"],
-                vec!["(blank)", "FV33", "2"],
+                vec!["A corp", "4", "2", "", "2", "8"],
+                vec!["b corp", "", "", "4", "", "4"],
+                vec!["(blank)", "2", "", "", "", "2"],
+                vec!["Grand Total", "6", "2", "4", "2", "14"],
             ]
         );
         assert_eq!(pivot_total(&p).unwrap(), 14);

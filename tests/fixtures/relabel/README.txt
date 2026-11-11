@@ -1,3 +1,11 @@
+REAL DATA (added 2026-11-11): real/ holds the owner's real exports of the live run (byte-exact, -text; do not re-encode):
+  raw_zmdesnr_del.txt        ZMDESNR by deliveries, 6939 rows (short list titles: Sr No Verf, Scan Cpy, Doc. Date, ...)
+  raw_zmdesnr_hist.txt       ZMDESNR by serial / History, 5 rows
+  raw_zmdesnr_del_rerun.txt  a second export of the same run (the one that triggered the missing-column error)
+expected_real_combined.tsv / expected_real_pivot.tsv come from the macro xlsx of the run (11-05-2026_RELABEL.xlsx): yellow =
+the 5 rows with a yellow fill; blank Scan Cpy shown as 0 by Excel is blank here. Test: tests/relabel_real.rs. The synthetic
+files below remain for edge cases the real run does not cover (B7 rows, 4-label variants).
+
 relabel fixtures (run date 2026-11-05)
 
 !! SYNTHETIC STAND-INS. NOT real relabel exports and NOT the macro output. !!
@@ -8,7 +16,7 @@ section 8.2 / 9.2: 20 columns, the 20th with a blank title = customer) and the r
 rules of spec 9.5; they do not prove equality with the macro. Replace this directory with real exports (then under
 real/, byte-exact, -text) when the owner supplies them.
 
-The delivery list comes from the k2xx stand-in (../k2xx/expected_vl06o.tsv, 107 deliveries): the runner test copies it to
+The delivery list is a private copy of the former k2xx stand-in (k2xx_vl06o_stand_in.tsv, 107 deliveries): the runner test copies it to
 the path of the k2xx block's vl06o output of the same run. The deliveries inside the stand-in ZMDESNR rows are taken from
 that list round-robin and have no meaning for the tests (the fake SAP seam ignores the input lists).
 
@@ -38,7 +46,7 @@ raw text with its own parser and implements spec 9.5 from scratch, independently
   expected_combined.tsv  33 x 23  B1, B2, B3, B5, B6, B7 in F order (4 + 7 + 2 + 14 + 3 + 3 rows; B4 = 9 rows is not
                                   appended), then _of_labels (8 rows with 4, 25 with 2, sum 82), export_date
                                   (2026-11-05) and yellow (`1` for the 4 history hits)
-  expected_pivot.tsv     10 x 3   customer, plant, sum of _of_labels (long form, ascending, (blank) last, no grand
-                                  total; sum 82); GM-type customers show their real plant FV55
+  expected_pivot.tsv     9 x 6    cross-tab like the macro pivot: customer rows x plant columns + Grand Total column and
+                                  row (ascending, (blank) last; sum 82); GM-type customers show their real plant FV55
 
 Tests: tests/relabel_golden.rs, tests/relabel_runner.rs.

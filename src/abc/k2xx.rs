@@ -52,6 +52,38 @@ pub fn zvt11_window(date: &RunDate, days: i64) -> (NaiveDate, NaiveDate) {
     crate::zvt11::closed_window(start, end, days)
 }
 
+/// Canonical headers of the ZVT11 Closed list (layout `add_del`), for the header-only output of
+/// an empty list.
+pub const ZVT11_HEADERS: [&str; 7] = [
+    "date",
+    "trailer_number",
+    "shipment_number",
+    "delivery_number",
+    "plant",
+    "ship_tofrom_name",
+    "shipment_end_date",
+];
+
+/// Header-only ZVT11 table (owner decision: an empty ZVT11 list does not stop `k2xx`).
+pub fn empty_zvt11() -> Table {
+    Table::new(
+        "zvt11",
+        ZVT11_HEADERS.iter().map(|s| s.to_string()).collect(),
+        Vec::new(),
+    )
+}
+
+/// Spec 7.0 item 30: `date` = `shipment_end_date` on every row. **Deliberately differs from the
+/// macro sheet** (and from the raw export): there 4 rows have a blank `Date` and 78 rows a
+/// `Date` one day after the shipment end.
+pub fn apply_zvt11_end_date(zvt11: &mut Table) -> Result<()> {
+    let (d, e) = (zvt11.col("date")?, zvt11.col("shipment_end_date")?);
+    for r in &mut zvt11.rows {
+        r[d] = r[e].clone();
+    }
+    Ok(())
+}
+
 /// Pivot of the merged table (owner decision, departs from spec 7.0 item 1): long table
 /// `plant`, `total` with the sum of the numeric `total` cells per plant; a blank `total` (no
 /// ZMDETPC row) adds nothing, a plant with only such rows shows `0`. Conventions of

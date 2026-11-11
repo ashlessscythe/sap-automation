@@ -41,7 +41,7 @@ Dependency pins matter: `aes = "=0.9.2"` is pinned because newer needs rustc 1.8
 
 `mustgo`, `xdock`, `toyota` and `misc` are runnable and **have been run live by the owner**: `sap_automation --rname=<mustgo|xdock|toyota|misc> --run-date=<DATE|A..B|WKnn>`
 (also TUI > ABC Headless; optional `--date-range-buffer=<n>`). Code is unit/golden tested offline (`mustgo` reproduces spec 9.3,
-`xdock` spec 9.6 with documented differences to the xlsx). `k2xx` (v0.8.0) is coded and passes CI but is tested on **synthetic** fixtures only (the ZVT11 Closed step, `zvt11::run_closed_export_outcome`, has never touched SAP). Owner decision: `k2xx` also writes a plant pivot of `total` (departs from spec 7.0 item 1). New reports (`k2xx`, `relabel`, `repack`) have not run live yet: the
+`xdock` spec 9.6 with documented differences to the xlsx). `k2xx` (v0.8.0) is coded and golden-tested offline against the owner's **real exports and macro xlsx** of 2026-11-05 (`tests/fixtures/k2xx/real/`; VL06O/ZMDETPC merge, VT11 and ZVT11 equal the macro sheets) but has not run live (the ZVT11 Closed step, `zvt11::run_closed_export_outcome`, has never touched SAP; its control ids are spec-only). Owner decision: `k2xx` also writes a plant pivot of `total` (departs from spec 7.0 item 1). New reports (`k2xx`, `relabel`, `repack`) have not run live yet: the
 "Live verification checklist" sections in `docs/abc_headless_plan.md` list the SAP control ids that come from the spec only.
 Exports are read as UTF-8, else Windows-1252 (`raw::decode_export`). Owner decisions and live findings: "RESUME HERE" in the plan.
 
@@ -64,7 +64,7 @@ Fixtures: `tests/fixtures/mustgo/` holds xlsx-derived TSVs (approximate stand-in
 `tests/fixtures/xdock/` (expected TSVs from the macro xlsx, `real/` byte-exact), `xdock_golden`, `xdock_runner`; `toyota`: `tests/fixtures/toyota/` (tiny: 3 deliveries, one plant), `toyota_golden`
 (also synthetic edge cases), `toyota_runner`; `misc`: `tests/fixtures/misc/` (tiny), `misc_golden` (real data + edge cases through
 `run_misc`); `k2xx`: `src/abc/k2xx.rs` + `k2xx_runner.rs` (`K2xxSteps` seam, `run_k2xx`; submodules are registered once in `src/abc/mod.rs`, not in lib.rs/main.rs), `tests/fixtures/k2xx/`
-(synthetic stand-ins derived from the xdock/mustgo real exports, ZVT11 invented), `k2xx_golden`, `k2xx_runner`. `relabel` (`abc/relabel.rs` pure stages, `relabel_runner.rs`: `RelabelSteps` seam, `run_relabel`; `--rname=relabel`, `[abc.relabel]`, single run date only)
+(`real/` byte-exact exports, `expected_real_*.tsv` from the macro xlsx, pivot computed; ZVT11 expected = macro sheet WITH spec 7.0 item 30 applied, `date` = `shipment_end_date`, a deliberate owner-approved deviation; an empty ZVT11 list does not stop k2xx, header-only output + warning), `k2xx_golden_real`, `k2xx_golden`, `k2xx_runner`. `relabel` (`abc/relabel.rs` pure stages, `relabel_runner.rs`: `RelabelSteps` seam, `run_relabel`; `--rname=relabel`, `[abc.relabel]`, single run date only)
 re-reads the k2xx `vl06o` TSV of the same run (owner decision) and stops with "Run k2xx first" if it is missing/empty. Spec 9.5 wins over 5.6; the
 macro's GM55 leaks, the extra `sn_del` row and `save full_label` are deliberately not reproduced; yellow is an explicit `yellow` column of `combined`.
 `ZMDESNRParams.history_serials` + `tab_number = Some(1)` is the by-serial/History flow (spec-only control ids). Fixtures `tests/fixtures/relabel/`

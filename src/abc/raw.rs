@@ -330,15 +330,29 @@ pub const ZMDESNR_ALIASES: &[(&str, &str)] = &[
     ("shipto", "shipto_party"),
     ("to_number", "transfer_order_number"),
     ("created", "created_by"),
+    // epdc_relabel layout (real export of the relabel run of 2026-11-05): short list titles for
+    // the long names of the macro sheets
+    ("sr_no_verf", "serial_number_2nd_party_verification"),
+    ("scan_cpy", "spv_scan_copies"),
+    ("doc_date", "document_date"),
+    ("plant_doc", "plant_doc_line"),
+    ("kanban_num", "kanban_number"),
 ];
 /// ZMDETPC summarised: the list titles already are the canonical names (`Delivery`, `Pallet`,
 /// `Child`; a blank column sits between `Pallet` and `Child` and is dropped by the loader).
 pub const ZMDETPC_ALIASES: &[(&str, &str)] = &[];
 /// ZVT11 (Closed, layout `add_del`). Canonical names are the sanitised layout titles of spec
 /// 3.2 / 8.2: `date`, `trailer_number`, `shipment_number`, `delivery_number`, `plant`,
-/// `ship_tofrom_name`, `shipment_end_date`. **No real text export has been seen**, so the short
-/// list titles (if the list shortens them) are unknown and nothing is mapped yet.
-pub const ZVT11_ALIASES: &[(&str, &str)] = &[];
+/// `ship_tofrom_name`, `shipment_end_date`. The real list (run of 2026-11-05) shortens three titles
+/// (`Trailer Nu`, `Delivery N`, `Shipment E`) and calls the shipment column `Shipment`; a blank
+/// column sits between `Date` and `Trailer Nu` and is dropped by the loader.
+pub const ZVT11_ALIASES: &[(&str, &str)] = &[
+    ("trailer_nu", "trailer_number"),
+    ("shipment", "shipment_number"),
+    ("delivery_n", "delivery_number"),
+    ("plnt", "plant"),
+    ("shipment_e", "shipment_end_date"),
+];
 pub const LT23_ALIASES: &[(&str, &str)] = &[
     ("to_number", "transfer_order_number"),
     ("created_on", "creation_date"),

@@ -98,8 +98,8 @@ fn k2xx_stand_in() -> String {
         env!("CARGO_MANIFEST_DIR"),
         "tests",
         "fixtures",
-        "k2xx",
-        "expected_vl06o.tsv",
+        "relabel",
+        "k2xx_vl06o_stand_in.tsv",
     ]
     .iter()
     .collect();
@@ -159,7 +159,7 @@ fn full_run_on_the_stand_in_fixtures() {
     assert_eq!(s.blocks, [4, 7, 2, 9, 14, 3, 3]);
     assert_eq!((s.history_serials, s.history_rows), (9, 7));
     assert_eq!((s.combined_rows, s.yellow_rows, s.rows_with_4), (33, 4, 8));
-    assert_eq!((s.labels.as_str(), s.pivot_rows), ("82", 10));
+    assert_eq!((s.labels.as_str(), s.pivot_rows), ("82", 9));
 
     // outputs: <reports_dir>\K2XX\<today>\relabel\<date>_RELABEL_<TABLE>.tsv
     assert_eq!(s.outputs.len(), 4);

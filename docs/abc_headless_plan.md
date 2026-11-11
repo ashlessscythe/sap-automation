@@ -13,7 +13,8 @@ Do not re-read the whole spec. One chunk per session; end by updating this file.
 version-bumped**. `repack` (3.5) is **not started**. CI (`fmt`, `clippy -D warnings`, `build`, `test`, all `--locked`) is green.
 
 **Nothing new has been tested against live SAP.** Only `mustgo`, `xdock`, `toyota` and `misc` have run live (by the owner).
-`k2xx` and `relabel` are tested only on **synthetic stand-in fixtures** (labelled in each `tests/fixtures/<report>/README.txt`);
+`k2xx` is now tested on the owner's **real exports and macro xlsx of 2026-11-05** (`tests/fixtures/k2xx/real/`; no live k2xx run yet);
+`relabel` is tested only on **synthetic stand-in fixtures** (labelled in its `tests/fixtures/relabel/README.txt`);
 every SAP control id they use for ZVT11 Closed and ZMDESNR by serial / History comes from the spec alone. Expect the first live
 runs to fail on a control id, a layout/variant name or a list title; fix them one by one from the log (the tcode steps log why a
 candidate failed) and add the finding under "Live findings".
@@ -36,7 +37,14 @@ candidate failed) and add the finding under "Live findings".
   the run; is the VL06O layout really `pallets`.
 * relabel: keep the explicit `yellow` column in `combined`; empty History result stops the run (intended?); B7 kanban "not starting
   with 0" is evaluated after the loader strips leading zeros; a genuine `GM55` plant stays `GM55`; real list titles of the
-  `epdc_relabel` layout may need entries in `raw::ZMDESNR_ALIASES`.
+  `epdc_relabel` layout may need entries in `raw::ZMDESNR_ALIASES`. **Resolved 2026-11-11** (first live relabel run): the real
+  titles are short (`Sr No Verf`, `Scan Cpy`, `Doc. Date`, `Plant Doc`, `Kanban Num`); aliases added to `raw::ZMDESNR_ALIASES`.
+  The by-deliveries export and the History export have the same 20-column layout. Verified against the owner's real exports
+  and the macro `11-05-2026_RELABEL.xlsx` (`tests/relabel_real.rs`, fixtures `tests/fixtures/relabel/real/`): `combined` (421
+  rows, 5 yellow, 4 labels on 4 rows, 850 labels) and the pivot equal the macro's; only `spv_scan_copies` differs (xlsx 0, SAP
+  blank). Still spec-only: the History flow's control ids were exercised live (5 serials returned) but the B7 block was empty
+  in that run. The "Max retries, exiting...." lines are `close_popups` giving up after its retry count (it returns `Ok(false)`,
+  callers ignore it); benign.
 
 **Next steps for the next session / agent, in order:**
 1. Process the owner's live results for k2xx and relabel (above); answer the open questions with the owner.
@@ -62,8 +70,7 @@ a single worker subagent codes one report at a time; the lead re-runs the four C
 Status: `mustgo`, `xdock`, `toyota` and `misc` are runnable end to end (`sap_automation --rname=<name> --run-date=<DATE|A..B|WKnn>`)
 and **the owner has run all four live successfully** (2026-11-10, after the live fixes listed under "Live findings"). Offline
 they are unit/golden tested on the owner's real exports (`mustgo` reproduces spec 9.3; `xdock` spec 9.6 with the documented
-differences to the macro xlsx, see "Design notes: `xdock`"). Chunk 3.2 is complete. **`k2xx` (3.3) is coded but NOT run live
-and NOT verified on real data** (no raw k2xx export or macro xlsx was available: fixtures are synthetic stand-ins, see "Design
+differences to the macro xlsx, see "Design notes: `xdock`"). Chunk 3.2 is complete. **`k2xx` (3.3) is coded, verified offline on real exports + macro xlsx, but NOT run live** (fixtures: see "Design
 notes: `k2xx`" for the open questions and "Live verification checklist (k2xx)"). `relabel` (3.4) is coded too (2026-11-10, synthetic fixtures only, see "Design notes: `relabel`"). **Next for Claude: get the owner's k2xx
 exports + answers, then the relabel exports ("Live verification checklist (relabel)"), then `repack` (3.5).** Ask the owner for the raw exports (VT11, VL06O, ZMDETPC, ZMDESNR ...) and the macro xlsx of
 the next report first; golden tests need them. Work like the existing reports: pure stages in `src/abc/`, a seam trait in
@@ -160,11 +167,11 @@ Decisions made while building (all tested):
   ZVT11 flow is untouched; `zmdetpc::paste_multi` is shared for the delivery paste), `RealSapSteps` implements the seam,
   `dispatch` resolves `[abc.k2xx]`, registry `K2XX` (folder `K2XX`, outputs `zvt11`, `vt11`, `vl06o`, `pivot`; the pivot is `k2xx::pivot_plant_total` =
   `inv::pivot_sum(merged, "plant", "total")`, owner decision overriding spec item 1), ABC menu
-  entry, `raw::ZVT11_ALIASES` (empty: real titles unknown). Fixtures `tests/fixtures/k2xx/` are **synthetic** (README
-  there). Tests: `k2xx_golden`, `k2xx_runner`.
+  entry, `raw::ZVT11_ALIASES` (real titles `Trailer Nu`, `Shipment`, `Delivery N`, `Plnt`, `Shipment E`). Fixtures `tests/fixtures/k2xx/real/` are the
+  owner's real exports (README there). Tests: `k2xx_golden_real`, `k2xx_golden`, `k2xx_runner`.
 
 * **relabel (3.4, code only, 2026-11-10):** `abc/relabel.rs` (pure stages: GM55 as an effective plant, blocks B1-B7,
-  yellow set, `_of_labels`, `export_date`, pivot customer x plant), `abc/relabel_runner.rs` (`RelabelSteps` seam of its own:
+  yellow set, `_of_labels`, `export_date`, pivot customer x plant cross-tab), `abc/relabel_runner.rs` (`RelabelSteps` seam of its own:
   ZMDESNR by deliveries, ZMDESNR by serial / History; `run_relabel`; the deliveries are **re-read from the k2xx block's
   `vl06o` TSV of the same run**, owner decision), `zmdesnr::ZMDESNRParams.history_serials` + tab 1 flow
   (`handle_tab1_history`: radio History, `S_SERIAL` paste via the shared `zmdetpc::paste_multi`), `RealSapSteps` implements the
@@ -390,10 +397,20 @@ output can never be compared with the macro; on the stand-in data it is 12 plant
 Seam: `k2xx_runner::K2xxSteps` (`vt11`, `vl06o_by_shipments`, `zvt11_closed`, `zmdetpc_summarised`); names travel in
 `K2xxSelection`. An empty shipment / delivery / ZVT11 list, SAP no-data or any error stops the run; nothing is written.
 
-**Test data is synthetic** (`tests/fixtures/k2xx/README.txt`): VT11/VL06O/ZMDETPC are derived from the real xdock and mustgo
-exports of 2026-11-05 (54 TPDC shipments, 834 item rows, 107 deliveries, 104 ZMDETPC rows), the ZVT11 file is invented, and
-the expected tables were computed from the spec text by a one-off script. So the tests pin spec 9.5's rules; they do **not**
-show equality with the macro's `11-05-2026_K2XX.xlsx`.
+**Test data is real (2026-11-11, owner)** (`tests/fixtures/k2xx/README.txt`): raw VT11 (53 shipments), VL06O (840 item rows, 107
+deliveries), ZMDETPC (106 rows) and ZVT11 Closed (409 rows), byte-exact, plus the macro's `11-05-2026_K2XX.xlsx` as expected
+tables. **Verified offline:** header titles of all four exports (aliases), VL06O prepare + ZMDETPC merge equal the xlsx sheet cell
+for cell (total 1148, only 8012734818 without a ZMDETPC row, spec 9.5), VT11 and ZVT11 equal the sheets (VT11 free text is
+truncated by the list), the ZVT11 window really was run date -/+ 100 days (2026-07-28..2027-02-13). **Still spec-only /
+unverified:** every SAP control id of the ZVT11 Closed step (the export shows only that variant `k2xx_` + layout `add_del`
+produced the 7-column list), the live k2xx run itself, the pivot (no macro counterpart; `expected_real_pivot.tsv` is computed).
+**ZVT11 `Date` (owner decision 2026-11-11, DELIBERATE DEVIATION from the macro):** the real export has a blank `Date` in 4 rows
+(FW63 shipment 24625349) and `Date` 2026-11-06 (vs `shipment_end_date` 2026-11-05) in 78 rows; the macro sheet is identical to the
+export. k2xx applies spec 7.0 item 30: `date` = `shipment_end_date` on every row (`k2xx::apply_zvt11_end_date`), so the output
+differs from the macro sheet in those 82 rows; `expected_real_zvt11.tsv` = macro sheet with item 30 applied. `run_k2xx` requires
+`delivery_number` and `shipment_number` in a non-empty ZVT11 table (wrong layout stops the run). **An empty ZVT11 list no longer
+stops k2xx** (owner decision 2026-11-11): warning in the log, header-only `..._ZVT11.tsv` (the 7 `add_del` columns), the rest of
+the run is unchanged.
 
 **Open questions for the owner (each is a guess or an unconfirmed reading; the code does what is written here):**
 1. **`total` without a ZMDETPC row stays blank** (also `delivery_`, `pallet`, `child`), and a ZMDETPC `0 + 0` stays `0`: this
@@ -404,10 +421,11 @@ show equality with the macro's `11-05-2026_K2XX.xlsx`.
    column, ZVT11 and ZMDETPC keep using the run date (Monday) either way. On by default; `[abc.k2xx] monday_include_sunday`.
 3. **ZVT11 window on a range/week run**: spec 3.2 only defines `date1 - 100` .. `date1 + 100`; a range uses `start - 100` ..
    `end + 100`. `--date-range-buffer` is not added to it (`[abc.k2xx] zvt11_days` changes the 100).
-4. **ZVT11 "No data exists" popup**: the spec calls it an error; here it is a clean `NO DATA at step 'zvt11'`. Either way the
-   run stops and writes nothing. **Should an empty ZVT11 really stop k2xx**, given that VL06O is what relabel/repack need?
-5. **ZVT11 columns are not checked** (header titles of the text export unknown) and the table is written as exported. Spec 9.5
-   says the macro's sheet is the unformatted export too.
+4. **ZVT11 "No data exists" popup**: the spec calls it an error; here it is a clean `NO DATA at step 'zvt11'`. **Decided
+   (owner, 2026-11-11): an empty ZVT11 list does NOT stop k2xx**: warning, header-only ZVT11 output, run continues (other
+   reports keep stop-on-empty).
+5. **ZVT11 columns**: `delivery_number`/`shipment_number` are checked when the list is non-empty; the table is written as
+   exported except `date` (item 30, see above).
 6. **VL06O**: `delivery` and `plant` (for the pivot) are required; the `pallets` column order of spec 3.3 is not enforced. Is the list layout name
    really `pallets` on the owner's SAP (as `xdock` / `inv` were)?
 7. **ZMDETPC-only rows** (a delivery in ZMDETPC that is not in VL06O) are kept as rows with blank VL06O columns, as in the
@@ -416,10 +434,9 @@ show equality with the macro's `11-05-2026_K2XX.xlsx`.
    `vl06o`), then `_PIVOT.tsv` (not in the macro). relabel/repack (3.4/3.5) will need this run's `vl06o`: within one process, or re-read from the TSV (spec 7.0
    item 15 says "from the k2xx block's `vl06o` TSV of the same run"). **Decided with 3.4 (owner): re-read the TSV**
    (`relabel_runner::read_k2xx_deliveries`); repack should do the same.
-9. **VT11 stand-in**: the fixtures assume `TIER_VT11_K2XX` selects the TPDC shipments (the spec 9.5 run had 107 deliveries,
-   like mustgo's TPDC set). Unconfirmed; irrelevant for the code, only for the fixture story.
+9. **VT11 stand-in**: resolved, the real k2xx VT11 export (53 shipments, all TPDC) is now a fixture.
 10. **Pivot and the blank `total`** (follows from question 1): a delivery without a ZMDETPC row counts as 0 in the pivot. If
-    the owner wants the INV fallback (`number_of_packages`) for k2xx, the pivot changes with it (stand-in data: FV58, FW63).
+    the owner wants the INV fallback (`number_of_packages`) for k2xx, the pivot changes with it (real data: FV58, FW63).
 
 ## Live verification checklist (relabel)
 
@@ -513,9 +530,9 @@ plant -> outputs. Nothing is written before the last step; an empty list, no-dat
 9. **The 4-label count** (`at least 2`) counts rows of `combined`, so a row that appears in several blocks counts several times
    (it is evaluated on the visible rows of the macro's `combined`). With fewer than two candidates every row gets 2.
 10. **History variant/layout** are the by-deliveries ones (spec 5.6 names `relabel_k2xx` / `epdc_relabel` for both calls).
-11. **Pivot shape**: long table `customer`, `plant`, `_of_labels` (sorted ascending, `(blank)` last, no grand total), the
-    two-level form of the INV pivots (`inv::pivot_sum` has one key). The macro's pivot is a cross-tab (customer rows x plant
-    columns, with totals): decision 11 of the spec asks for long form.
+11. **Pivot shape**: the macro's cross-tab (owner decision 2026-11-11, replacing the earlier long form): header `customer`,
+    one column per plant (ascending, `(blank)` last), `Grand Total`; one row per customer (same order), blank cell where a
+    customer has no rows, last row `Grand Total`. Verified equal to the xlsx pivot of the run of 2026-11-05.
 12. **A range / week run date** is rejected (spec 7.0 item 16), also from the TUI menu; a range with equal ends counts as a
     single date.
 13. **No sequence menu id** (as for the other reports: the sequence runner has no run date).

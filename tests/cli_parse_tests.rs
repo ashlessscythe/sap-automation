@@ -396,3 +396,24 @@ fn rname_dir_flag() {
         .unwrap();
     assert_eq!(o.rname_dir.as_deref(), Some("./mustgo"));
 }
+
+#[test]
+fn mm60_flags_parse() {
+    let cli = Cli::try_parse_from([
+        "sap_automation",
+        "--tcode",
+        "mm60",
+        "--layout",
+        "lay",
+        "--variant",
+        "var",
+        "--lx03-file",
+        "lx03",
+    ])
+    .unwrap();
+    let o = cli.to_overrides().unwrap();
+    assert_eq!(o.tcode.as_deref(), Some("MM60"));
+    assert_eq!(o.layout.as_deref(), Some("lay"));
+    assert_eq!(o.variant.as_deref(), Some("var"));
+    assert_eq!(o.lx03_file.as_deref(), Some("lx03"));
+}

@@ -23,3 +23,4 @@ tests/fixtures/toyota/real/** -text
 tests/fixtures/misc/real/** -text
 tests/fixtures/k2xx/real/** -text
 tests/fixtures/relabel/real/** -text
+tests/fixtures/mm60/** -text

@@ -511,6 +511,11 @@ impl SapConfig {
                     .additional_params
                     .insert("cli_delivery_col".to_string(), v.clone());
             }
+            if let Some(v) = &o.lx03_file {
+                entry
+                    .additional_params
+                    .insert("cli_lx03_file".to_string(), v.clone());
+            }
             if let Some(v) = &o.shipment_file {
                 entry
                     .additional_params

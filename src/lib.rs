@@ -7,6 +7,8 @@ pub mod inbond_shipment_module;
 pub mod lt23;
 pub mod lx03;
 pub mod lx03_module;
+pub mod mm60;
+pub mod mm60_module;
 pub mod tui;
 pub mod utils;
 pub mod vl06o;

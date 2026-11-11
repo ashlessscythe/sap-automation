@@ -17,6 +17,8 @@ mod inbond_shipment_module;
 mod lt23;
 mod lx03;
 mod lx03_module;
+mod mm60;
+mod mm60_module;
 mod tui;
 mod utils;
 mod vl06o;

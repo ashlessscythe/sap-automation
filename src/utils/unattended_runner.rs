@@ -115,6 +115,9 @@ fn run_loop_unattended_internal(session: &GuiSession) -> Result<()> {
             "LX03" => {
                 crate::lx03_module::run_lx03_auto(session)?;
             }
+            "MM60" => {
+                crate::mm60_module::run_mm60_auto(session)?;
+            }
             "y_dn3_47000149" | "Y_DN3_47000149" => {
                 // Handle 149 report with different run types
                 let run_type = config
@@ -337,6 +340,7 @@ pub fn run_single_tcode_unattended(
         "ZVT11" => crate::zvt11_module::run_zvt11_auto(session)?,
         "ZMDESNR" => crate::zmdesnr_module::run_zmdesnr_auto(session)?,
         "LX03" => crate::lx03_module::run_lx03_auto(session)?,
+        "MM60" => crate::mm60_module::run_mm60_auto(session)?,
         "Y_DN3_47000149" => {
             let run_type = tcode_run_type.map(|s| s.to_ascii_lowercase());
             match run_type.as_deref() {
@@ -363,7 +367,7 @@ pub fn run_single_tcode_unattended(
         other => {
             return Err(anyhow::anyhow!(
                 "Single-shot mode does not support TCode '{other}'. Supported: \
-                 VT11, ZVT11, VL06O, ZMDESNR, LX03, Y_DN3_47000149."
+                 VT11, ZVT11, VL06O, ZMDESNR, LX03, MM60, Y_DN3_47000149."
             ));
         }
     }
@@ -404,6 +408,7 @@ pub fn init_sap_connection() -> Result<(
     GuiConnection,
     GuiSession,
 )> {
+    crate::utils::cli_overrides::set_unattended(true);
     println!("Initializing SAP connection for unattended execution...");
 
     // Initialize COM environment

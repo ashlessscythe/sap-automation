@@ -56,6 +56,14 @@ variant = "your_variant"
 layout = "LX03_LAYOUT"
 export_type = 1
 
+# MM60 reads the material list of the newest LX03 export (plants are NOT copied; the plant
+# selection is cleared). Layout/variant/export_type apply to MM60 only.
+[tcode.MM60]
+variant = "your_mm60_variant"
+layout = "MM60_LAYOUT"
+export_type = 1
+# lx03_file = "lx03"   # slug under reports_dir, or a path; default: newest file in the LX03 export dir
+
 [tcode.y_dn3_47000149]
 variant = "variant_name"
 layout = "LAYOUT_149"

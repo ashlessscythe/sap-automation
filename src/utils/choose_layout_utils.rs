@@ -290,6 +290,11 @@ pub fn choose_layout(
                 // Ask user for a new layout name or to exit
                 use dialoguer::{Input, Select};
 
+                if !crate::utils::cli_overrides::can_prompt() {
+                    println!("Layout '{current_layout}' not found.");
+                    close_popups(session, None, None)?;
+                    return Err(layout_not_found_err(&current_layout));
+                }
                 println!("Layout '{current_layout}' not found.");
 
                 let options = vec!["Enter another layout name", "Exit layout selection"];
@@ -356,6 +361,14 @@ pub fn choose_layout(
     println!("{msg}");
     eprintln!("DEBUG: Exiting choose_layout function with message: {msg}");
     Ok(msg)
+}
+
+/// Unattended / no-terminal runs never prompt: a layout that is not found is an error.
+fn layout_not_found_err(layout: &str) -> windows::core::Error {
+    windows::core::Error::new(
+        windows::Win32::Foundation::E_FAIL,
+        windows::core::HSTRING::from(format!("Layout '{layout}' not found")),
+    )
 }
 
 /// Special layout selection method for 149 tcode (y_dn3_47000149)
@@ -438,6 +451,11 @@ pub fn choose_layout_149(session: &GuiSession, layout_name: &str) -> windows::co
                 // Ask user for a new layout name or to exit
                 use dialoguer::{Input, Select};
 
+                if !crate::utils::cli_overrides::can_prompt() {
+                    println!("Layout '{layout_name}' not found in the grid.");
+                    close_popups(session, None, None)?;
+                    return Err(layout_not_found_err(layout_name));
+                }
                 println!("Layout '{layout_name}' not found in the grid.");
 
                 let options = vec!["Enter another layout name", "Exit layout selection"];
@@ -763,6 +781,11 @@ pub fn choose_layout_zvt11(
                 // Ask user for a new layout name or to exit
                 use dialoguer::{Input, Select};
 
+                if !crate::utils::cli_overrides::can_prompt() {
+                    println!("Layout '{layout_name}' not found in the ZVT11 grid.");
+                    close_popups(session, None, None)?;
+                    return Err(layout_not_found_err(layout_name));
+                }
                 println!("Layout '{layout_name}' not found in the ZVT11 grid.");
 
                 let options = vec!["Enter another layout name", "Exit layout selection"];

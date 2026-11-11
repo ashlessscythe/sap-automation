@@ -610,3 +610,26 @@ variant = "FILE"
     assert_eq!(entry.variant.as_deref(), Some("CLI"));
     assert_eq!(entry.by_delivery.as_deref(), Some("false"));
 }
+
+#[test]
+fn mm60_layout_variant_and_lx03_file_land_in_tcode_entry() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("missing.toml");
+    let mut cfg = SapConfig::load_from_path(path.to_str().unwrap()).unwrap();
+
+    let overrides = CliOverrides {
+        tcode: Some("MM60".into()),
+        layout: Some("lay".into()),
+        variant: Some("var".into()),
+        export_type: Some(1),
+        lx03_file: Some("lx03".into()),
+        ..Default::default()
+    };
+    cfg.apply_overrides_with(&overrides);
+
+    let m = cfg.get_tcode_config("MM60", Some(true)).unwrap();
+    assert_eq!(m.get("layout").map(String::as_str), Some("lay"));
+    assert_eq!(m.get("variant").map(String::as_str), Some("var"));
+    assert_eq!(m.get("export_type").map(String::as_str), Some("1"));
+    assert_eq!(m.get("cli_lx03_file").map(String::as_str), Some("lx03"));
+}

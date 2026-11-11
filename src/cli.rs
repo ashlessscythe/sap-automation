@@ -137,6 +137,13 @@ pub struct Cli {
     #[arg(long)]
     pub delivery_col: Option<String>,
 
+    /// MM60 ONLY: LX03 export the material list is read from (`.txt` or `.xlsx`). A path is
+    /// used literally (a directory = its newest file); a bare slug like `lx03` is
+    /// `<reports_dir>\<slug>`. Default: newest file in the LX03 export dir (honours
+    /// --rname-dir). Overrides `[tcode.MM60].lx03_file`.
+    #[arg(long, value_name = "SLUG|PATH")]
+    pub lx03_file: Option<String>,
+
     /// Where to read shipment numbers from (VL06O only). Same resolution as
     /// --delivery-file.
     #[arg(long)]
@@ -250,6 +257,7 @@ impl Cli {
             delivery_col: self.delivery_col.clone(),
             shipment_file: self.shipment_file.clone(),
             shipment_col: self.shipment_col.clone(),
+            lx03_file: self.lx03_file.clone(),
             ignore_display_error: self.ignore_display_error,
             vt11_closed_date,
             vt11_created_date,

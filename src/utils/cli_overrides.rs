@@ -13,6 +13,23 @@ use crate::abc::run::RunDate;
 use chrono::NaiveDate;
 use std::sync::OnceLock;
 
+static UNATTENDED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Mark the process as an unattended run (`--tcode`, loop, sequence, `--rname`): no prompts.
+pub fn set_unattended(on: bool) {
+    UNATTENDED.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
+pub fn is_unattended() -> bool {
+    UNATTENDED.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// May the program ask the user something? Not in unattended mode, and only with a terminal.
+pub fn can_prompt() -> bool {
+    use std::io::IsTerminal;
+    !is_unattended() && std::io::stdin().is_terminal() && std::io::stdout().is_terminal()
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct CliOverrides {
     /// Target TCode (case-insensitive on input; stored upper-cased).
@@ -74,6 +91,9 @@ pub struct CliOverrides {
     pub shipment_file: Option<String>,
     /// Header column to read for shipment numbers. Default `"Shipment Number"`.
     pub shipment_col: Option<String>,
+    /// MM60-only: LX03 export the material list comes from (path or slug). Default: newest
+    /// file of the LX03 export dir.
+    pub lx03_file: Option<String>,
 
     /// VT11-only: ignore "no display authorization" status-bar errors.
     /// Maps to `[tcode.VT11].ignore_display_error` in `config.toml`.
@@ -174,6 +194,9 @@ impl CliOverrides {
         if self.shipment_file.is_some() {
             v.push("--shipment-file");
         }
+        if self.lx03_file.is_some() {
+            v.push("--lx03-file");
+        }
         if self.shipment_col.is_some() {
             v.push("--shipment-col");
         }
@@ -264,6 +287,9 @@ impl CliOverrides {
         }
         if let Some(v) = &self.shipment_file {
             parts.push(format!("--shipment-file={v}"));
+        }
+        if let Some(v) = &self.lx03_file {
+            parts.push(format!("--lx03-file={v}"));
         }
         if let Some(v) = &self.shipment_col {
             parts.push(format!("--shipment-col={v}"));

@@ -356,6 +356,20 @@ Sets Storage Bin (`LGPLA-LOW`) and skips delivery paste. `--export-type=1` is te
   --export-type=1 --reports-dir=C:\reports
 ```
 
+### MM60 from the newest LX03 export
+
+MM60 is standalone: it pastes the `Material` column of the newest LX03 export (`.txt` or
+`.xlsx`; default dir = the LX03 export dir, honours `--rname-dir`) into the material
+selection, clears the plant selection, runs, and exports. `--layout`, `--variant` and
+`--export-type` apply to MM60 only (omit export type for an Excel `.xlsx` export). Rows are
+de-duplicated by (material, plant) only. `--lx03-file=<slug|path>` pins the source.
+
+```bash
+./sap_automation.exe --tcode=lx03 --variant=my_lx03_variant --layout=missing --export-type=1
+./sap_automation.exe --tcode=mm60 --layout=value --export-type=1
+./sap_automation.exe --tcode=mm60 --layout=value --lx03-file=C:\reports\LX03\x.txt
+```
+
 ### Sequence (config-driven) with a faster cadence
 
 ```bash

@@ -6,7 +6,52 @@ once its dependencies are ticked. Tick the box and add a one-line note when a ch
 **Session protocol (keeps usage low):** read `CLAUDE.md`, this file, and *only* the spec sections the chunk names.
 Do not re-read the whole spec. One chunk per session; end by updating this file.
 
-## RESUME HERE (state as of 2026-11-10)
+## HANDOFF (2026-11-11): read this first
+
+**State.** `dev` is ahead of `public`: `public` and tag `v0.8.0` = k2xx + k2xx pivot (version bump `850bea1`); `dev` additionally has
+`relabel` (commits `ecf4379`..`8051179`) and the docs commit `56369dd`. Those are **committed but not pushed, not tagged, not
+version-bumped**. `repack` (3.5) is **not started**. CI (`fmt`, `clippy -D warnings`, `build`, `test`, all `--locked`) is green.
+
+**Nothing new has been tested against live SAP.** Only `mustgo`, `xdock`, `toyota` and `misc` have run live (by the owner).
+`k2xx` and `relabel` are tested only on **synthetic stand-in fixtures** (labelled in each `tests/fixtures/<report>/README.txt`);
+every SAP control id they use for ZVT11 Closed and ZMDESNR by serial / History comes from the spec alone. Expect the first live
+runs to fail on a control id, a layout/variant name or a list title; fix them one by one from the log (the tcode steps log why a
+candidate failed) and add the finding under "Live findings".
+
+**Live test runbook (owner, with SAP GUI open and logged in):**
+1. `cargo build --locked` (32-bit target, see CLAUDE.md), copy `config.toml.example` to `config.toml`.
+2. `sap_automation --rname=k2xx --run-date=<DATE>` (ideally 2026-11-05, the spec 9.5 run). Outputs go to
+   `<reports_dir>\K2XX\<today>\k2xx\` (`<date>_K2XX_{ZVT11,VT11,VL06O,PIVOT}.tsv`).
+3. Then `sap_automation --rname=relabel --run-date=<same DATE>` (re-reads the k2xx `vl06o` TSV of the same date and day; run k2xx
+   first). Outputs in `...\K2XX\<today>\relabel\`.
+4. Work through "Live verification checklist (k2xx)" and "(relabel)" below; the likely first failure is the ZVT11 Closed export
+   (ALV grid and local-file menu ids) and the VL06O `pallets` layout (must have a `Plnt`/`Plant` column).
+5. Bring back to the next session, per report: the raw text exports (VT11, VL06O, ZVT11, ZMDETPC / ZMDESNR deliveries + History),
+   the macro xlsx of the same date, and the error log or a SAP recording of any failing step. Save raw exports byte-exact under
+   `tests/fixtures/<report>/real/` (`-text` in `.gitattributes`; do not re-encode) and replace the synthetic goldens.
+
+**Open questions for the owner (still unanswered; full text in "Design notes: k2xx" / "relabel"):**
+* k2xx: blank `total` for a delivery without a ZMDETPC row (keep blank/0, or apply the INV `number_of_packages` fallback and
+  `0 -> 1`? also changes the k2xx pivot); `monday_include_sunday` typing; ZVT11 window on range/week runs; should an empty ZVT11 stop
+  the run; is the VL06O layout really `pallets`.
+* relabel: keep the explicit `yellow` column in `combined`; empty History result stops the run (intended?); B7 kanban "not starting
+  with 0" is evaluated after the loader strips leading zeros; a genuine `GM55` plant stays `GM55`; real list titles of the
+  `epdc_relabel` layout may need entries in `raw::ZMDESNR_ALIASES`.
+
+**Next steps for the next session / agent, in order:**
+1. Process the owner's live results for k2xx and relabel (above); answer the open questions with the owner.
+2. Build `repack` (3.5): spec 5.7 + 9.5 (9.5 wins). It needs the k2xx `vl06o` TSV and relabel's `combined` (use the `yellow` column
+   for the exclusion list) re-read from the same run's output folder; follow the relabel pattern (`relabel.rs`,
+   `relabel_runner.rs`, `adapters.rs`, `dispatch::resolve_relabel`, `abc_menu.rs`, `tests/relabel_*.rs`, `tests/fixtures/relabel/`).
+3. When live-verified: bump the version, tag `v<version>` (annotated), `git push origin dev`, push the tag, and update `public`
+   (plain `git push origin dev:public` works while `public` is an ancestor of `dev`; `sync_public.*` force-pushes, only when asked).
+
+**Working mode used so far:** the main session coordinates and commits; one subagent per report, built sequentially because the
+reports edit the same shared files (`dispatch.rs`, `registry.rs`, `adapters.rs`, `abc_menu.rs`, the docs). The agents ran the four CI
+commands before each commit and did not push. IDE "unresolved import / unlinked file" diagnostics for `abc::k2xx*`/`relabel*` are
+stale rust-analyzer artefacts (forced 32-bit target); `cargo` is the truth.
+
+## RESUME HERE (state as of 2026-11-10; the HANDOFF section above supersedes the status lines below)
 
 **Handoff summary (released as v0.7.0, branch `dev` = `public`, tag `v0.7.0`).**
 

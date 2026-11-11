@@ -10,11 +10,11 @@
 //! (material, plant) only, never by material alone; without a plant column nothing is
 //! de-duplicated.
 //!
-//! Control ids come from the VBA (`mm60_export`): `btn%_MS_MATNR_%_APP_%-VALU_PUSH`,
-//! `btn%_MS_WERKS_%_APP_%-VALU_PUSH`, execute `btn[8]`, layout button `btn[33]` (the layout
-//! grid flow was recorded live), spreadsheet export `menu[0]/menu[3]/menu[1]`. UNVERIFIED live: the local-file export entry
-//! `menu[0]/menu[3]/menu[2]` (derived as the sibling of the spreadsheet entry; a dialog not
-//! titled "save list in file" is rejected) and the selection-screen marker used after execute.
+//! Run live by the owner (2026-11-11): the whole flow works, including the local-file export
+//! (`menu[0]/menu[3]/menu[2]`; a dialog not titled "save list in file" is rejected) and the
+//! no-data detection after execute. Control ids: `btn%_MS_MATNR_%_APP_%-VALU_PUSH`,
+//! `btn%_MS_WERKS_%_APP_%-VALU_PUSH`, execute `btn[8]`, layout button `btn[33]` + grid (both
+//! recorded live), spreadsheet export `menu[0]/menu[3]/menu[1]` (VBA).
 #![allow(dead_code)]
 
 use crate::abc::raw::decode_export;

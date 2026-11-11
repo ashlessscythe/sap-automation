@@ -72,6 +72,13 @@ are synthetic; tests `relabel_golden`, `relabel_runner`.
 
 **Resume from `docs/private/abc_headless_plan.md` ("RESUME HERE")**; the spec is `docs/private/abc_headless_migration_spec.md`.
 
+## MM60 (LX03 material list)
+
+`sap_automation --tcode mm60 --layout <L> [--variant <V>] [--export-type 1] [--lx03-file <slug|path>] [--rname-dir <D>]` has been **run live by the owner** (2026-11-11). Standalone tcode (`src/mm60.rs` + `mm60_module.rs`): it pastes the
+`Material` column of the newest LX03 export (`.txt`/`.xlsx`, columns by header name; default dir = the LX03 export dir) into `MS_MATNR`, **clears** the plant selection, runs, picks the layout (grid flow, matched by `TEXT` then `VARIANT`),
+and exports; no join, formulas or formatting (a future program does that). Dedupe only by (material, plant). Layout/variant/export type apply to MM60 only; omit export type for the Excel `.xlsx` export. Fixtures: `tests/fixtures/mm60/`
+(anonymised, byte-exact), test `mm60_golden`. Prompts (e.g. "enter another layout name") only when `utils::cli_overrides::can_prompt()`: never in unattended runs (`--tcode`/loop/sequence/`--rname`), where a missing layout is an error.
+
 ## Data hygiene (no site data in the repo)
 
 - **No real SAP data, names, plants, variants or layouts are committed.** Site-specific names come from the git-ignored `config.toml`

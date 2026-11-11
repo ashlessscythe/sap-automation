@@ -5,3 +5,6 @@
 config.toml
 config.toml.bk
 .vscode/settings.json
+
+# local data bundles
+resources/*.zip

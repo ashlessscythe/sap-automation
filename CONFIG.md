@@ -158,8 +158,8 @@ ignore_display_error = true     # treat "no display authorization" as harmless (
 ### ABC Headless Section (`[abc.k2xx]`)
 
 Optional, same rules as the other `[abc.<report>]` sections (CLI flag > `[abc.k2xx]` > `[global]` > default; wrong or empty
-values fall back). Used only by `--rname=k2xx` (and the ABC Headless > k2xx menu entry). **Not verified on live SAP yet**: the
-names below are the ones of the macro; the ZVT11 Closed step and its control ids come from the spec only. The run also writes
+values fall back). Used only by `--rname=k2xx` (and the ABC Headless > k2xx menu entry). Verified on live SAP (2026-11-11); the
+names below are the ones of the macro. The run also writes
 a pivot (`plant`, sum of `total`), so the `vl06o_layout` must contain the plant column (the `pallets` layout does); there is no
 key to switch the pivot off.
 
@@ -181,7 +181,7 @@ ignore_display_error = true     # treat "no display authorization" as harmless
 ### ABC Headless Section (`[abc.relabel]`)
 
 Optional, same rules as the other `[abc.<report>]` sections (CLI flag > `[abc.relabel]` > `[global]` > default; wrong or empty
-values fall back). Used only by `--rname=relabel` (and the ABC Headless > relabel menu entry). **Not verified on live SAP yet**:
+values fall back). Used only by `--rname=relabel` (and the ABC Headless > relabel menu entry). Verified on live SAP (2026-11-11);
 the names are the ones of the macro. `relabel` reads the `VL06O` table written by `k2xx` for the same run date and day from
 `<reports_dir>\K2XX\<today>\k2xx\`, so `reports_dir` must be the same as for the `k2xx` run. The History call (ZMDESNR by serial)
 uses the same variant and layout as the call by deliveries.

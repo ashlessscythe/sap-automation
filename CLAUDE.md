@@ -39,9 +39,9 @@ Dependency pins matter: `aes = "=0.9.2"` is pinned because newer needs rustc 1.8
 
 ## ABC headless work
 
-`mustgo`, `xdock`, `toyota` and `misc` are runnable and **have been run live by the owner**: `sap_automation --rname=<mustgo|xdock|toyota|misc> --run-date=<DATE|A..B|WKnn>`
+`mustgo`, `xdock`, `toyota`, `misc`, `k2xx` and `relabel` are runnable and **have been run live by the owner** (k2xx and relabel confirmed working 2026-11-11): `sap_automation --rname=<mustgo|xdock|toyota|misc> --run-date=<DATE|A..B|WKnn>`
 (also TUI > ABC Headless; optional `--date-range-buffer=<n>`). Code is unit/golden tested offline (`mustgo` reproduces spec 9.3,
-`xdock` spec 9.6 with documented differences to the xlsx). `k2xx` (v0.8.0) is coded and golden-tested offline against the owner's **real exports and macro xlsx** of 2026-11-05 (`tests/fixtures/k2xx/real/`; VL06O/ZMDETPC merge, VT11 and ZVT11 equal the macro sheets) but has not run live (the ZVT11 Closed step, `zvt11::run_closed_export_outcome`, has never touched SAP; its control ids are spec-only). Owner decision: `k2xx` also writes a plant pivot of `total` (departs from spec 7.0 item 1). New reports (`k2xx`, `relabel`, `repack`) have not run live yet: the
+`xdock` spec 9.6 with documented differences to the xlsx). `k2xx` (v0.8.0) is golden-tested offline against the owner's **real exports and macro xlsx** of 2026-11-05 (`tests/fixtures/k2xx/real/`; VL06O/ZMDETPC merge, VT11 and ZVT11 equal the macro sheets) and has run live. Owner decision: `k2xx` also writes a plant pivot of `total` (departs from spec 7.0 item 1). `repack` is not built yet. The
 "Live verification checklist" sections in `docs/abc_headless_plan.md` list the SAP control ids that come from the spec only.
 Exports are read as UTF-8, else Windows-1252 (`raw::decode_export`). Owner decisions and live findings: "RESUME HERE" in the plan.
 

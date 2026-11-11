@@ -24,8 +24,10 @@
 //! * vl06o: `delivery`, `plant` (the pivot rows; the `pallets` layout also has `shipto_party`,
 //!   `name_of_the_shipto_party`, `deliv_datefromto`, `total_gds_mvt_stat`,
 //!   `external_delivery_id`, `number_of_packages`)
-//! * zvt11: none by name (the table is written as exported and the header titles of the real
-//!   text export are unknown); it must have at least two columns and one row
+//! * zvt11: `delivery_number`, `shipment_number` (checks that layout `add_del` was applied; the
+//!   table is written as exported, all 7 columns; real titles: `Date`, `Trailer Nu`, `Shipment`,
+//!   `Delivery N`, `Plnt`, `Ship To/From Name`, `Shipment E`); an empty list does not stop the run (header-only
+//!   output, warning); a non-empty one gets `date` = `shipment_end_date` on every row (spec 7.0 item 30)
 //! * zmdetpc: `delivery`, `pallet`, `child`
 #![allow(dead_code)]
 
@@ -38,7 +40,7 @@ use super::registry::K2XX;
 use super::run::RunDate;
 use super::runner::{export_date_label, OutputSpec, StepOutput};
 use super::table::Table;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use chrono::NaiveDate;
 use std::path::PathBuf;
 
@@ -171,16 +173,28 @@ pub fn run_k2xx(
     };
     log(rep, &format!("{} deliveries", deliveries.len()));
 
-    // row 55: ZVT11 Closed (written as exported)
+    // row 55: ZVT11 Closed. Owner decision: an empty list does NOT stop the run (the output
+    // is then header-only and a warning is logged); a non-empty list must have the `add_del`
+    // key columns and gets spec 7.0 item 30 (`date` = `shipment_end_date` on every row).
     let (from, to) = k2xx::zvt11_window(date, sel.zvt11_days);
-    let zvt11 = take(
-        rep,
-        "zvt11",
-        steps.zvt11_closed(&deliveries, from, to, &sel.zvt11_variant, &sel.zvt11_layout),
-        &[],
-    )?;
-    if zvt11.is_empty_import() || zvt11.nrows() == 0 {
-        return Err(no_data("zvt11", "empty list"));
+    let zv_out = steps
+        .zvt11_closed(&deliveries, from, to, &sel.zvt11_variant, &sel.zvt11_layout)
+        .with_context(|| format!("{rep} step 'zvt11' failed"))?;
+    let mut zvt11 = match zv_out {
+        StepOutput::Table(t) if !t.is_empty_import() && t.nrows() > 0 => t,
+        StepOutput::Table(_) | StepOutput::NoData(_) => {
+            log(
+                rep,
+                "WARNING: ZVT11 Closed returned no data; continuing, the ZVT11 output is header-only",
+            );
+            k2xx::empty_zvt11()
+        }
+    };
+    if zvt11.nrows() > 0 {
+        for c in ["delivery_number", "shipment_number"] {
+            stage(rep, "zvt11 columns", zvt11.col(c))?;
+        }
+        stage(rep, "zvt11 date", k2xx::apply_zvt11_end_date(&mut zvt11))?;
     }
 
     // row 56: ZMDETPC + merge

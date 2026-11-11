@@ -1,13 +1,10 @@
-//! `k2xx` stages on the SYNTHETIC stand-in exports (tests/fixtures/k2xx/synthetic/, derived from
-//! the real xdock/mustgo exports, see the README there), loaded through the production loader
-//! `abc::raw`, compared with expected tables that were computed from the spec text (5.5 / 9.5)
-//! by a one-off script, independently of the code under test.
-//!
-//! No real k2xx export and no macro xlsx were available: these tests pin the rules of spec 9.5,
-//! they do not prove equality with the macro output.
+//! `k2xx` stages on the REAL SAP text exports of 2026-11-05 (tests/fixtures/k2xx/real/, byte-exact),
+//! loaded through the production loader `abc::raw`, compared with the macro output
+//! `11-05-2026_K2XX.xlsx` converted to TSV (`expected_real_*.tsv`; the pivot is not part of the
+//! macro workbook and was computed from the sheet `K2XX_VL06O`). See the README there.
 mod common;
 
-use common::{assert_tables_equal, load_fixture, load_real_in, load_synthetic_in};
+use common::{assert_tables_equal, load_fixture, load_real_in};
 use sap_automation::abc::inv_runner::shipment_list;
 use sap_automation::abc::k2xx;
 use sap_automation::abc::table::Table;
@@ -15,20 +12,20 @@ use std::collections::BTreeSet;
 
 const RUN_DATE: &str = "2026-11-05";
 
-/// Deliveries of the stand-in data without a ZMDETPC row (`8012734818` is the one of spec 9.5).
-const NO_ZMDETPC: [&str; 3] = ["85650310", "85655488", "8012734818"];
+/// Deliveries of the real run without a ZMDETPC row (`8012734818` is the one of spec 9.5).
+const NO_ZMDETPC: [&str; 1] = ["8012734818"];
 
 fn vt11() -> Table {
-    load_synthetic_in("k2xx", "vt11_inv", "raw_vt11.txt")
+    load_real_in("k2xx", "vt11_inv", "raw_vt11.txt")
 }
 fn vl06o_raw() -> Table {
-    load_synthetic_in("k2xx", "vl06o", "raw_vl06o.txt")
+    load_real_in("k2xx", "vl06o", "raw_vl06o.txt")
 }
 fn zvt11() -> Table {
-    load_synthetic_in("k2xx", "zvt11", "raw_zvt11.txt")
+    load_real_in("k2xx", "zvt11", "raw_zvt11.txt")
 }
 fn zmdetpc() -> Table {
-    load_synthetic_in("k2xx", "zmdetpc", "raw_zmdetpc.txt")
+    load_real_in("k2xx", "zmdetpc", "raw_zmdetpc.txt")
 }
 
 fn merged() -> Table {
@@ -45,9 +42,9 @@ fn col(t: &Table, name: &str) -> Vec<String> {
 #[test]
 fn loader_shapes() {
     let vt = vt11();
-    assert_eq!((vt.nrows(), vt.headers.len()), (54, 13));
+    assert_eq!((vt.nrows(), vt.headers.len()), (53, 13));
     assert!(col(&vt, "transportplanningpt").iter().all(|v| v == "TPDC"));
-    assert_eq!(shipment_list(&vt).unwrap().len(), 54);
+    assert_eq!(shipment_list(&vt).unwrap().len(), 53);
 
     // layout `pallets` (spec 3.3): 8 columns in this order
     let vl = vl06o_raw();
@@ -64,7 +61,7 @@ fn loader_shapes() {
             "number_of_packages"
         ]
     );
-    assert_eq!(vl.nrows(), 834);
+    assert_eq!(vl.nrows(), 840);
     assert_eq!(
         col(&vl, "delivery").iter().collect::<BTreeSet<_>>().len(),
         107
@@ -84,33 +81,17 @@ fn loader_shapes() {
             "shipment_end_date"
         ]
     );
-    assert_eq!(zv.nrows(), 108);
+    assert_eq!(zv.nrows(), 409);
 
     let zm = zmdetpc();
     assert_eq!(zm.headers, ["delivery", "pallet", "child"]);
-    assert_eq!(zm.nrows(), 104);
-}
-
-/// The VT11 stand-in is the TPDC part of the real xdock export: same rows, same order.
-#[test]
-fn vt11_stand_in_is_the_tpdc_part_of_the_real_xdock_export() {
-    let real = load_real_in("xdock", "vt11_inv", "raw_vt11.txt");
-    let c = real.col("transportplanningpt").unwrap();
-    let rows: Vec<Vec<String>> = real
-        .rows
-        .iter()
-        .filter(|r| r[c] == "TPDC")
-        .cloned()
-        .collect();
-    let vt = vt11();
-    assert_eq!(vt.headers, real.headers);
-    assert_eq!(vt.rows, rows);
+    assert_eq!(zm.nrows(), 106);
 }
 
 #[test]
 fn merged_vl06o_equals_the_expected_table() {
     let m = merged();
-    assert_tables_equal(&load_fixture("k2xx", "expected_vl06o.tsv"), &m);
+    assert_tables_equal(&load_fixture("k2xx", "expected_real_vl06o.tsv"), &m);
 }
 
 #[test]
@@ -147,7 +128,7 @@ fn merged_vl06o_follows_spec_9_5() {
         }
     }
     assert_eq!(blank, NO_ZMDETPC);
-    assert_eq!(k2xx::total_sum(&m).unwrap(), 1144.0);
+    assert_eq!(k2xx::total_sum(&m).unwrap(), 1148.0);
 }
 
 /// The dedup keeps the FIRST row of a delivery: `85650066` has two plants in the item rows.
@@ -171,10 +152,13 @@ fn dedup_keeps_the_first_row() {
     assert_eq!(row[m.col("plant").unwrap()], plants[0]);
 }
 
-/// `zvt11` is written as exported: the loaded table equals the expected one cell by cell.
+/// `zvt11` is written as exported except `date` (spec 7.0 item 30, owner decision: `date` =
+/// `shipment_end_date`): expected = the macro sheet with item 30 applied.
 #[test]
-fn zvt11_is_passed_through() {
-    assert_tables_equal(&load_fixture("k2xx", "expected_zvt11.tsv"), &zvt11());
+fn zvt11_is_passed_through_with_item_30() {
+    let mut z = zvt11();
+    k2xx::apply_zvt11_end_date(&mut z).unwrap();
+    assert_tables_equal(&load_fixture("k2xx", "expected_real_zvt11.tsv"), &z);
 }
 
 /// Unlike xdock/toyota: no `number_of_packages` fallback and no `0 -> 1`.
@@ -202,13 +186,13 @@ fn differs_from_the_inv_merge_only_where_the_rules_say() {
 }
 
 /// Pivot (owner decision of 2026-11-10, overrides spec 7.0 item 1): plant rows, sum of `total`
-/// over the merged table. `expected_pivot.tsv` was computed by a one-off script straight from
+/// over the merged table. `expected_real_pivot.tsv` was computed by a one-off script straight from
 /// the raw stand-in exports (first row per delivery, pallet + child of its ZMDETPC row),
 /// independently of the code under test.
 #[test]
 fn pivot_equals_the_expected_table() {
     let p = k2xx::pivot_plant_total(&merged()).unwrap();
-    let x = load_fixture("k2xx", "expected_pivot.tsv");
+    let x = load_fixture("k2xx", "expected_real_pivot.tsv");
     assert_eq!(x.headers, ["plant", "total"]);
     assert_eq!(x.nrows(), 12);
     assert_tables_equal(&x, &p);
@@ -221,7 +205,7 @@ fn pivot_equals_the_expected_table() {
         .iter()
         .map(|v| v.parse::<u64>().unwrap())
         .sum();
-    assert_eq!(sum, 1144);
+    assert_eq!(sum, 1148);
     // the deliveries without a ZMDETPC row (blank total) add nothing to their plants
     let row = |plant: &str| p.rows.iter().find(|r| r[0] == plant).unwrap()[1].clone();
     assert_eq!(

@@ -21,3 +21,5 @@ tests/fixtures/mustgo/real/** -text
 tests/fixtures/xdock/real/** -text
 tests/fixtures/toyota/real/** -text
 tests/fixtures/misc/real/** -text
+tests/fixtures/k2xx/real/** -text
+tests/fixtures/relabel/real/** -text

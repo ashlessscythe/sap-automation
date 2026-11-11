@@ -1,10 +1,10 @@
-//! `run_k2xx` against a fake SAP seam serving the SYNTHETIC stand-in exports
-//! (tests/fixtures/k2xx/synthetic/, see the README there).
+//! `run_k2xx` against a fake SAP seam serving the REAL exports of 2026-11-05
+//! (tests/fixtures/k2xx/real/, see the README there).
 mod common;
 
 use anyhow::{anyhow, Result};
 use chrono::NaiveDate;
-use common::{assert_tables_equal, load_fixture, load_synthetic_in};
+use common::{assert_tables_equal, load_fixture, load_real_in};
 use sap_automation::abc::k2xx_runner::*;
 use sap_automation::abc::raw::RawOptions;
 use sap_automation::abc::run::RunDate;
@@ -47,7 +47,7 @@ impl Fake {
                 Ov::Table(t) => Ok(StepOutput::Table(t)),
             };
         }
-        Ok(StepOutput::Table(load_synthetic_in("k2xx", tcode, file)))
+        Ok(StepOutput::Table(load_real_in("k2xx", tcode, file)))
     }
 }
 
@@ -151,8 +151,8 @@ fn full_run_on_the_stand_in_fixtures() {
         f.vt11_args,
         vec![("VT11_K2XX_VARIANT".to_string(), "scorecard".to_string(), true)]
     );
-    assert_eq!(f.ships.len(), 54);
-    assert_eq!(f.ships.iter().collect::<HashSet<_>>().len(), 54);
+    assert_eq!(f.ships.len(), 53);
+    assert_eq!(f.ships.iter().collect::<HashSet<_>>().len(), 53);
     assert_eq!(f.vl_layout, "pallets");
     // ZVT11 Closed and ZMDETPC get the same 107 distinct deliveries
     assert_eq!(f.zv_dels.len(), 107);
@@ -165,13 +165,13 @@ fn full_run_on_the_stand_in_fixtures() {
     assert_eq!(f.zm_variant, "ZMDETPC_VARIANT");
 
     assert_eq!(s.export_date, "2026-11-05");
-    assert_eq!((s.shipments, s.deliveries), (54, 107));
+    assert_eq!((s.shipments, s.deliveries), (53, 107));
     assert_eq!(
         (s.zvt11_rows, s.zmdetpc_rows, s.without_zmdetpc),
-        (108, 104, 3)
+        (409, 106, 1)
     );
     assert_eq!((s.vl06o_rows, s.pivot_rows), (107, 12));
-    assert_eq!(s.total, "1144");
+    assert_eq!(s.total, "1148");
 
     // outputs: <reports_dir>\K2XX\<today>\k2xx\<date>_K2XX_<TABLE>.tsv, macro sheet order, then
     // the pivot (owner decision, not a sheet of the macro workbook)
@@ -184,19 +184,19 @@ fn full_run_on_the_stand_in_fixtures() {
     assert!(s.outputs.iter().all(|p| p.is_file()));
     assert_eq!(files_under(&out.reports_dir), 4);
     assert_tables_equal(
-        &load_fixture("k2xx", "expected_zvt11.tsv"),
-        &read(&s.outputs[0], "expected_zvt11.tsv"),
+        &load_fixture("k2xx", "expected_real_zvt11.tsv"),
+        &read(&s.outputs[0], "expected_real_zvt11.tsv"),
     );
     let vt = read(&s.outputs[1], "vt11");
-    assert_eq!((vt.nrows(), vt.headers.len()), (54, 13));
+    assert_eq!((vt.nrows(), vt.headers.len()), (53, 13));
     assert_tables_equal(
-        &load_fixture("k2xx", "expected_vl06o.tsv"),
-        &read(&s.outputs[2], "expected_vl06o.tsv"),
+        &load_fixture("k2xx", "expected_real_vl06o.tsv"),
+        &read(&s.outputs[2], "expected_real_vl06o.tsv"),
     );
     // pivot: plant / sum of total of the vl06o output, long form, no grand-total row
-    let pivot = read(&s.outputs[3], "expected_pivot.tsv");
+    let pivot = read(&s.outputs[3], "expected_real_pivot.tsv");
     assert_eq!(pivot.headers, ["plant", "total"]);
-    assert_tables_equal(&load_fixture("k2xx", "expected_pivot.tsv"), &pivot);
+    assert_tables_equal(&load_fixture("k2xx", "expected_real_pivot.tsv"), &pivot);
     assert_eq!(pivot.rows[0], ["PL33", "32"]);
     let _ = std::fs::remove_dir_all(&out.reports_dir);
 }
@@ -214,7 +214,7 @@ fn pivot_path(out: &OutputSpec) -> PathBuf {
 #[test]
 fn pivot_is_written_only_after_the_last_step_succeeds() {
     // a ZMDETPC table without `child` passes the SAP call but fails the column check
-    let mut bad = load_synthetic_in("k2xx", "zmdetpc", "raw_zmdetpc.txt");
+    let mut bad = load_real_in("k2xx", "zmdetpc", "raw_zmdetpc.txt");
     bad.headers[2] = "something_else".into();
     for (tag, ov) in [
         ("piv_nd", Ov::NoData),
@@ -246,7 +246,7 @@ fn pivot_is_written_only_after_the_last_step_succeeds() {
 #[test]
 fn pivot_puts_a_blank_plant_last() {
     let out = temp_out("piv_blank");
-    let mut vl = load_synthetic_in("k2xx", "vl06o", "raw_vl06o.txt");
+    let mut vl = load_real_in("k2xx", "vl06o", "raw_vl06o.txt");
     let (dc, pc) = (vl.col("delivery").unwrap(), vl.col("plant").unwrap());
     // 85626834 (PL50, total 2) and 8012734818 (PL63, no ZMDETPC row) lose their plant
     for r in vl.rows.iter_mut() {
@@ -267,7 +267,7 @@ fn pivot_puts_a_blank_plant_last() {
         (row("PL50"), row("PL63")),
         ("92".to_string(), "2".to_string())
     );
-    assert_eq!(s.total, "1144");
+    assert_eq!(s.total, "1148");
     let _ = std::fs::remove_dir_all(&out.reports_dir);
 }
 
@@ -330,7 +330,6 @@ fn no_data_stops_the_run_at_each_step() {
     for (step, calls) in [
         ("vt11", vec!["vt11"]),
         ("vl06o", vec!["vt11", "vl06o"]),
-        ("zvt11", vec!["vt11", "vl06o", "zvt11"]),
         ("zmdetpc", vec!["vt11", "vl06o", "zvt11", "zmdetpc"]),
     ] {
         let (e, f) = run_fail(&format!("nd_{step}"), vec![(step, Ov::NoData)]);
@@ -343,7 +342,7 @@ fn no_data_stops_the_run_at_each_step() {
 #[test]
 fn empty_lists_stop_the_run() {
     let empty = |tcode: &str, file: &str| {
-        let mut t = load_synthetic_in("k2xx", tcode, file);
+        let mut t = load_real_in("k2xx", tcode, file);
         t.rows.clear();
         t.visible.clear();
         t
@@ -361,19 +360,7 @@ fn empty_lists_stop_the_run() {
     );
     assert_eq!(e.downcast_ref::<NoDataError>().unwrap().step, "vl06o");
     assert_eq!(f.calls, vec!["vt11", "vl06o"], "ZVT11 is skipped");
-
-    // an empty ZVT11 list stops the run before ZMDETPC
-    let (e, f) = run_fail(
-        "nozv",
-        vec![("zvt11", Ov::Table(empty("zvt11", "raw_zvt11.txt")))],
-    );
-    assert_eq!(e.downcast_ref::<NoDataError>().unwrap().step, "zvt11");
-    assert_eq!(f.calls, vec!["vt11", "vl06o", "zvt11"]);
-    let (e, _) = run_fail(
-        "nozv2",
-        vec![("zvt11", Ov::Table(Table::new("z", Vec::new(), Vec::new())))],
-    );
-    assert_eq!(e.downcast_ref::<NoDataError>().unwrap().step, "zvt11");
+    // an empty ZVT11 list does NOT stop the run: see `empty_zvt11_does_not_stop_the_run`
 }
 
 #[test]
@@ -383,19 +370,19 @@ fn errors_and_missing_columns() {
     assert!(e.downcast_ref::<NoDataError>().is_none());
     assert_eq!(f.calls.last(), Some(&"zvt11"));
 
-    let mut z = load_synthetic_in("k2xx", "zmdetpc", "raw_zmdetpc.txt");
+    let mut z = load_real_in("k2xx", "zmdetpc", "raw_zmdetpc.txt");
     z.headers[1] = "something_else".into();
     let (e, _) = run_fail("cols", vec![("zmdetpc", Ov::Table(z))]);
     let m = format!("{e:#}");
     assert!(m.contains("missing column") && m.contains("pallet"), "{m}");
 
-    let mut vl = load_synthetic_in("k2xx", "vl06o", "raw_vl06o.txt");
+    let mut vl = load_real_in("k2xx", "vl06o", "raw_vl06o.txt");
     vl.headers[0] = "something_else".into();
     let (e, _) = run_fail("cols2", vec![("vl06o", Ov::Table(vl))]);
     assert!(format!("{e:#}").contains("delivery"), "{e:#}");
 
     // the pivot needs `plant`: a VL06O list without it stops the run before ZVT11
-    let mut vl = load_synthetic_in("k2xx", "vl06o", "raw_vl06o.txt");
+    let mut vl = load_real_in("k2xx", "vl06o", "raw_vl06o.txt");
     let pc = vl.col("plant").unwrap();
     vl.headers[pc] = "something_else".into();
     let (e, f) = run_fail("cols3", vec![("vl06o", Ov::Table(vl))]);
@@ -404,27 +391,35 @@ fn errors_and_missing_columns() {
     assert_eq!(f.calls, vec!["vt11", "vl06o"]);
 }
 
-/// The ZVT11 table is written as exported, whatever its header titles are (the titles of the
-/// real text export are unknown), and VL06O only needs `delivery` and `plant`.
+/// ZVT11 is written as exported, but its `delivery_number` / `shipment_number` columns must be
+/// there (a wrong layout stops the run, nothing is written); VL06O only needs `delivery` and
+/// `plant`, extra columns are not checked.
 #[test]
-fn zvt11_headers_and_extra_vl06o_columns_are_not_checked() {
+fn zvt11_needs_its_key_columns_and_extra_vl06o_columns_are_not_checked() {
     let out = temp_out("anyhdr");
-    let mut zv = load_synthetic_in("k2xx", "zvt11", "raw_zvt11.txt");
-    zv.headers = (0..zv.headers.len()).map(|i| format!("c{i}")).collect();
-    let mut vl = load_synthetic_in("k2xx", "vl06o", "raw_vl06o.txt");
+    let mut zv = load_real_in("k2xx", "zvt11", "raw_zvt11.txt");
+    let dc = zv.col("delivery_number").unwrap();
+    zv.headers[dc] = "c3".into();
+    let mut f = Fake {
+        over: vec![("zvt11", Ov::Table(zv))],
+        ..Fake::default()
+    };
+    assert!(run_k2xx(&mut f, &day(), &K2xxSelection::default(), &out).is_err());
+    assert_eq!(files_under(&out.reports_dir), 0);
+    let mut vl = load_real_in("k2xx", "vl06o", "raw_vl06o.txt");
     let pk = vl.col("number_of_packages").unwrap();
     vl.headers[pk] = "nopk_renamed".into();
     let mut f = Fake {
-        over: vec![("zvt11", Ov::Table(zv)), ("vl06o", Ov::Table(vl))],
+        over: vec![("vl06o", Ov::Table(vl))],
         ..Fake::default()
     };
     let s = run_k2xx(&mut f, &day(), &K2xxSelection::default(), &out).unwrap();
-    assert_eq!(read(&s.outputs[0], "zvt11").headers[0], "c0");
-    assert_eq!(s.total, "1144");
+    assert_eq!(read(&s.outputs[0], "zvt11").headers[0], "date");
+    assert_eq!(s.total, "1148");
     let _ = std::fs::remove_dir_all(&out.reports_dir);
 }
 
-/// The production file loader (`outcome_to_output`) reads each stand-in export.
+/// The production file loader (`outcome_to_output`) reads each real export.
 #[test]
 fn outcome_adapter_loads_the_files() {
     for (tc, file) in [
@@ -438,7 +433,7 @@ fn outcome_adapter_loads_the_files() {
             "tests",
             "fixtures",
             "k2xx",
-            "synthetic",
+            "real",
             file,
         ]
         .iter()
@@ -447,7 +442,49 @@ fn outcome_adapter_loads_the_files() {
         let StepOutput::Table(t) = out else {
             panic!("expected a table")
         };
-        assert_eq!(t.headers, load_synthetic_in("k2xx", tc, file).headers);
+        assert_eq!(t.headers, load_real_in("k2xx", tc, file).headers);
         assert!(t.nrows() > 0);
+    }
+}
+
+/// Owner decision: an empty ZVT11 list does not stop k2xx. The ZVT11 output is header-only
+/// (the 7 `add_del` columns), the other outputs and the summary are unchanged.
+#[test]
+fn empty_zvt11_does_not_stop_the_run() {
+    let ok_empty = {
+        let mut t = load_real_in("k2xx", "zvt11", "raw_zvt11.txt");
+        t.rows.clear();
+        t
+    };
+    for (tag, ov) in [
+        ("zv_nodata", Ov::NoData),
+        ("zv_empty", Ov::Table(ok_empty)),
+        (
+            "zv_notitles",
+            Ov::Table(Table::new("z", Vec::new(), Vec::new())),
+        ),
+    ] {
+        let out = temp_out(tag);
+        let mut f = Fake {
+            over: vec![("zvt11", ov)],
+            ..Fake::default()
+        };
+        let s = run_k2xx(&mut f, &day(), &K2xxSelection::default(), &out).unwrap();
+        assert_eq!(f.calls, vec!["vt11", "vl06o", "zvt11", "zmdetpc"], "{tag}");
+        assert_eq!(s.zvt11_rows, 0, "{tag}");
+        assert_eq!(s.outputs.len(), 4, "{tag}");
+        let zv = read(&s.outputs[0], "zvt11");
+        assert_eq!(
+            zv.headers,
+            sap_automation::abc::k2xx::ZVT11_HEADERS,
+            "{tag}"
+        );
+        assert_eq!(zv.nrows(), 0, "{tag}");
+        assert_tables_equal(
+            &load_fixture("k2xx", "expected_real_vl06o.tsv"),
+            &read(&s.outputs[2], "vl06o"),
+        );
+        assert_eq!(s.total, "1148");
+        let _ = std::fs::remove_dir_all(&out.reports_dir);
     }
 }

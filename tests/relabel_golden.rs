@@ -264,11 +264,13 @@ fn no_history_means_no_yellow_and_more_fours() {
 fn pivot_equals_the_expected_table() {
     let s = stages();
     let p = pivot_customer_plant(&s.combined.table).unwrap();
-    assert_eq!(p.headers, ["customer", "plant", "_of_labels"]);
+    assert_eq!(p.headers[0], "customer");
+    assert_eq!(p.headers.last().unwrap(), "Grand Total");
+    assert_eq!(p.rows.last().unwrap()[0], "Grand Total");
     assert_tables_equal(&load_fixture("relabel", "expected_pivot.tsv"), &p);
     assert_eq!(pivot_total(&p).unwrap(), i64::from(s.combined.label_total));
-    // `(blank)` customer last, plants ascending within a customer
-    assert_eq!(p.rows.last().unwrap()[0], "(blank)");
+    // `(blank)` customer sorts last, just above the Grand Total row
+    assert_eq!(p.rows[p.nrows() - 2][0], "(blank)");
     assert!(col(&p, "customer").iter().all(|c| c != "AL55"));
 }
 

@@ -10,7 +10,7 @@
 //! 2. ZMDESNR by deliveries (variant `relabel_k2xx`, layout `site_relabel`) -> `sn_del`;
 //! 3. if block B4 has serials: ZMDESNR by serial / History for them (same variant and layout);
 //! 4. the pure stages (AL55 as an effective plant, blocks B1-B7, `_of_labels`, `export_date`,
-//!    pivot customer x plant) and the save step.
+//!    pivot customer x plant, cross-tab like the macro) and the save step.
 //!
 //! The run date must be a single date (spec 7.0 item 16: the window is `D`..`D+1`). Error
 //! semantics are those of the other reports: the first no-data / error / empty list stops the
@@ -20,8 +20,9 @@
 //! `<reports_dir>\K2XX\<today>\relabel\<date>_RELABEL_{COMBINED,SN_DEL,SNR_ORIG,PIVOT}.tsv`.
 //! `COMBINED` has the columns of the export plus `_of_labels`, `export_date`, `yellow`;
 //! `SN_DEL` and `SNR_ORIG` are the export as loaded (the macro's two sheets; the temporary AL55
-//! marks and the extra last row of the macro sheet are not reproduced); `PIVOT` is the long table
-//! `customer`, `plant`, `_of_labels`. `save full_label` (A!62) is not implemented (it was not
+//! marks and the extra last row of the macro sheet are not reproduced); `PIVOT` is the macro cross-tab
+//! (header `customer`, one column per plant, `Grand Total`; one row per customer, then a
+//! `Grand Total` row; blank cells where a customer has no rows). `save full_label` (A!62) is not implemented (it was not
 //! ticked in the verified run).
 //!
 //! Canonical columns each step must deliver (a missing one stops the run naming it):

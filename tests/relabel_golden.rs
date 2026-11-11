@@ -98,7 +98,10 @@ fn alias_plant_is_an_effective_plant_only() {
         .iter()
         .filter(|p| **p == RelabelRules::default().alias_plant)
         .count();
-    assert_eq!(n, 6, "GM, REDACTED, GENERAL (any case) on PL55; not REDACTED");
+    assert_eq!(
+        n, 6,
+        "ALIAS_A, ALIAS_B, ALIAS_C (any case) on PL55; not XALIAS_A"
+    );
     // the marks never reach a table: the plant column of F and of combined is untouched
     assert!(!col(&s.f, "plant").contains(&RelabelRules::default().alias_plant));
     assert!(!col(&s.combined.table, "plant").contains(&RelabelRules::default().alias_plant));

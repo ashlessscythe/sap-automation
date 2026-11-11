@@ -18,6 +18,7 @@
 //! vt11_variant = "VT11_K2XX_VARIANT"
 //! vt11_layout = "VT11_LAYOUT"
 //! monday_include_sunday = true    # a Monday run date makes VT11 start on the Sunday
+//! vl06o_variant = ""              # optional; empty = no variant
 //! vl06o_layout = "VL06O_K2XX_LAYOUT"
 //! zvt11_variant = "ZVT11_K2XX_VARIANT"
 //! zvt11_layout = "ZVT11_K2XX_LAYOUT"
@@ -243,6 +244,7 @@ pub fn resolve_k2xx(input: &ResolveInput) -> ResolvedK2xx {
         vt11_layout: s(&input.section, "vt11_layout").unwrap_or(d.vt11_layout),
         monday_include_sunday: b(&input.section, "monday_include_sunday")
             .unwrap_or(d.monday_include_sunday),
+        vl06o_variant: s(&input.section, "vl06o_variant").unwrap_or(d.vl06o_variant),
         vl06o_layout: s(&input.section, "vl06o_layout").unwrap_or(d.vl06o_layout),
         zvt11_variant: s(&input.section, "zvt11_variant").unwrap_or(d.zvt11_variant),
         zvt11_layout: s(&input.section, "zvt11_layout").unwrap_or(d.zvt11_layout),

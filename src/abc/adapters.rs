@@ -511,8 +511,20 @@ impl K2xxSteps for RealSapSteps<'_> {
         finish_step(&self.cfg, "vt11_inv", outcome)
     }
 
-    fn vl06o_by_shipments(&mut self, shipments: &[String], layout: &str) -> Result<StepOutput> {
-        InvSteps::vl06o_by_shipments(self, shipments, layout)
+    fn vl06o_by_shipments(
+        &mut self,
+        shipments: &[String],
+        variant: &str,
+        layout: &str,
+    ) -> Result<StepOutput> {
+        let (target, today) = self.target("VL06O");
+        let params = VL06OParams {
+            sap_variant_name: Some(variant.to_string()).filter(|v| !v.trim().is_empty()),
+            ..inv_vl06o_params(&self.cfg, shipments, layout, target, today)
+        };
+        let outcome = crate::vl06o::run_export_outcome(self.session, &params)
+            .map_err(|e| anyhow!("vl06o: SAP step failed: {e}"))?;
+        finish_step(&self.cfg, "vl06o", outcome)
     }
 
     fn zvt11_closed(

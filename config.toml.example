@@ -127,6 +127,7 @@ ship_point_marker = "PLACEHOLDER_SP"   # shipping points containing this text ar
 [abc.k2xx]
 vt11_variant = "VT11_K2XX_VARIANT"
 vt11_layout = "VT11_LAYOUT"
+vl06o_variant = ""                 # optional; empty = no variant
 vl06o_layout = "VL06O_K2XX_LAYOUT"
 zvt11_variant = "ZVT11_K2XX_VARIANT"
 zvt11_layout = "ZVT11_K2XX_LAYOUT"

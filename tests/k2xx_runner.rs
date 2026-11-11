@@ -28,6 +28,7 @@ struct Fake {
     vt11_args: Vec<(String, String, bool)>,
     ships: Vec<String>,
     vl_layout: String,
+    vl_variant: String,
     zv_dels: Vec<String>,
     zv_window: Option<(NaiveDate, NaiveDate)>,
     zv_args: (String, String),
@@ -64,8 +65,14 @@ impl K2xxSteps for Fake {
             .push((variant.into(), layout.into(), monday_include_sunday));
         self.serve("vt11", "vt11_inv", "raw_vt11.txt")
     }
-    fn vl06o_by_shipments(&mut self, s: &[String], layout: &str) -> Result<StepOutput> {
+    fn vl06o_by_shipments(
+        &mut self,
+        s: &[String],
+        variant: &str,
+        layout: &str,
+    ) -> Result<StepOutput> {
         self.ships = s.to_vec();
+        self.vl_variant = variant.into();
         self.vl_layout = layout.into();
         self.serve("vl06o", "vl06o", "raw_vl06o.txt")
     }
@@ -289,6 +296,7 @@ fn selection_is_passed_through() {
         vt11_variant: "V".into(),
         vt11_layout: "L".into(),
         monday_include_sunday: false,
+        vl06o_variant: "VV".into(),
         vl06o_layout: "P".into(),
         zvt11_variant: "ZV".into(),
         zvt11_layout: "ZL".into(),
@@ -298,6 +306,7 @@ fn selection_is_passed_through() {
     run_k2xx(&mut f, &day(), &sel, &out).unwrap();
     assert_eq!(f.vt11_args, vec![("V".into(), "L".into(), false)]);
     assert_eq!(f.vl_layout, "P");
+    assert_eq!(f.vl_variant, "VV");
     assert_eq!(f.zv_args, ("ZV".to_string(), "ZL".to_string()));
     assert_eq!(f.zv_window, Some((ymd(2026, 10, 26), ymd(2026, 11, 15))));
     assert_eq!(f.zm_variant, "ZM");

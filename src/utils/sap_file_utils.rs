@@ -20,15 +20,18 @@ use windows::Win32::UI::WindowsAndMessaging::{
 /// (`{rname_dir}\{tcode}`).
 pub fn resolve_export_dir(reports_dir: &str, rname_dir: Option<&str>, tcode: &str) -> String {
     let r = rname_dir.map(str::trim).filter(|r| !r.is_empty());
+    // Rust needs single backslashes; doubled ones (from config) are collapsed everywhere.
+    let reports_dir = collapse_backslashes(reports_dir);
+    let reports_dir = reports_dir.as_str();
     let Some(r) = r else {
-        return format!("{reports_dir}\\\\{tcode}");
+        return format!("{}\\{tcode}", reports_dir.trim_end_matches('\\'));
     };
     let rp = Path::new(r);
     let base = if rp.is_absolute() {
         rp.to_path_buf()
     } else {
         // Reports dir may carry doubled backslashes from config; normalise for joining.
-        let mut p = std::path::PathBuf::from(reports_dir.replace("\\\\", "\\"));
+        let mut p = std::path::PathBuf::from(reports_dir);
         for c in rp.components() {
             if !matches!(c, std::path::Component::CurDir) {
                 p.push(c.as_os_str());
@@ -36,7 +39,30 @@ pub fn resolve_export_dir(reports_dir: &str, rname_dir: Option<&str>, tcode: &st
         }
         p
     };
-    base.join(tcode).to_string_lossy().into_owned()
+    collapse_backslashes(&base.join(tcode).to_string_lossy())
+}
+
+/// Collapse runs of backslashes to one, keeping a leading `\\` (UNC share).
+pub fn collapse_backslashes(p: &str) -> String {
+    let (head, rest) = match p.strip_prefix("\\\\") {
+        Some(r) if !r.starts_with('\\') => ("\\\\", r),
+        _ => ("", p),
+    };
+    let mut out = String::with_capacity(p.len());
+    out.push_str(head);
+    let mut prev = false;
+    for c in rest.chars() {
+        if c == '\\' {
+            if !prev {
+                out.push(c);
+            }
+            prev = true;
+        } else {
+            out.push(c);
+            prev = false;
+        }
+    }
+    out
 }
 
 /// Gets a file path for a specific tcode
@@ -385,7 +411,11 @@ mod export_dir_tests {
     #[test]
     fn legacy_without_rname_dir() {
         let legacy = resolve_export_dir(r"C:\Reports", None, "VT11");
-        assert!(legacy.ends_with("VT11") && legacy.starts_with(r"C:\Reports"));
+        assert_eq!(legacy, r"C:\Reports\VT11");
+        assert_eq!(
+            resolve_export_dir(r"C:\\temp\\reports", None, "VT11"),
+            r"C:\temp\reports\VT11"
+        );
         assert_eq!(
             resolve_export_dir(r"C:\Reports", Some("  "), "VT11"),
             legacy

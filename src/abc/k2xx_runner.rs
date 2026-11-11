@@ -51,6 +51,8 @@ pub struct K2xxSelection {
     pub vt11_layout: String,
     /// Spec 5.5 row 52 `arg:monday_include_sunday`: a Monday run date starts on the Sunday.
     pub monday_include_sunday: bool,
+    /// VL06O variant; empty = none (legacy behaviour).
+    pub vl06o_variant: String,
     pub vl06o_layout: String,
     pub zvt11_variant: String,
     pub zvt11_layout: String,
@@ -66,6 +68,7 @@ impl Default for K2xxSelection {
             vt11_variant: "VT11_K2XX_VARIANT".to_string(),
             vt11_layout: "VT11_LAYOUT".to_string(),
             monday_include_sunday: true,
+            vl06o_variant: String::new(),
             vl06o_layout: "VL06O_K2XX_LAYOUT".to_string(),
             zvt11_variant: "ZVT11_K2XX_VARIANT".to_string(),
             zvt11_layout: "ZVT11_K2XX_LAYOUT".to_string(),
@@ -86,8 +89,14 @@ pub trait K2xxSteps {
         layout: &str,
         monday_include_sunday: bool,
     ) -> Result<StepOutput>;
-    /// VL06O (item view) for the shipments with `layout` (`pallets`).
-    fn vl06o_by_shipments(&mut self, shipments: &[String], layout: &str) -> Result<StepOutput>;
+    /// VL06O (item view) for the shipments with `variant` (empty = none) and `layout`
+    /// (`pallets`).
+    fn vl06o_by_shipments(
+        &mut self,
+        shipments: &[String],
+        variant: &str,
+        layout: &str,
+    ) -> Result<StepOutput>;
     /// ZVT11 Closed for the deliveries, selection dates `from`..`to`, with `variant` and
     /// `layout`.
     fn zvt11_closed(
@@ -158,7 +167,7 @@ pub fn run_k2xx(
     let mut vl06o = take(
         rep,
         "vl06o",
-        steps.vl06o_by_shipments(&shipments, &sel.vl06o_layout),
+        steps.vl06o_by_shipments(&shipments, &sel.vl06o_variant, &sel.vl06o_layout),
         &["delivery", "plant"],
     )?;
     let export_date = export_date_label(date);

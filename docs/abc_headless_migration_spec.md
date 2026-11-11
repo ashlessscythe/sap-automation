@@ -672,7 +672,7 @@ are implemented in code but no row on `ACTIVE` uses them. Their IDs are in secti
 
 | Item | Decision |
 |---|---|
-| 1 | **Reproduce as-is.** k2xx, rma, add_del and nc_masterpack produce **no pivot**. |
+| 1 | **Reproduce as-is.** k2xx, rma, add_del and nc_masterpack produce **no pivot**. **Owner override (2026-11-10, v0.8.0): the headless `k2xx` does write a pivot** (rows `plant`, sum `total`, INV conventions); rma, add_del and nc_masterpack still produce none. |
 | 2 | Resolve dates with `get_json_date` semantics (single date, `range` by week or start/end, `diff`; section 1.1). The column value must come from the resolved date object, not the raw `E4` text. **Still open:** the exact value written for a multi-day range (proposal: per-day `date1` in loop mode, otherwise the `WK_<n>` label). |
 | 11 | File name `<date>_<name>_<table>.tsv`, same folder layout as today. Pivots are emitted as **long-form group-by** tables (one row per group: key columns plus the sum/count). |
 | 12, 14 | Owner will supply sample exports (text with tabs and Excel) for ZMDETPC, VT22 and ZMDESNR/VT11. Until then the ZMDETPC `total` columns and VT22 positional deletes stay unspecified. |

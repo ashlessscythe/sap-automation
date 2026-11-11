@@ -391,14 +391,14 @@ fn errors_and_missing_columns() {
     assert_eq!(f.calls, vec!["vt11", "vl06o"]);
 }
 
-/// ZVT11 is written as exported, but its `delivery_number` / `shipment_number` columns must be
+/// ZVT11 is written as exported, but its `delivery` / `shipment_number` columns must be
 /// there (a wrong layout stops the run, nothing is written); VL06O only needs `delivery` and
 /// `plant`, extra columns are not checked.
 #[test]
 fn zvt11_needs_its_key_columns_and_extra_vl06o_columns_are_not_checked() {
     let out = temp_out("anyhdr");
     let mut zv = load_real_in("k2xx", "zvt11", "raw_zvt11.txt");
-    let dc = zv.col("delivery_number").unwrap();
+    let dc = zv.col("delivery").unwrap();
     zv.headers[dc] = "c3".into();
     let mut f = Fake {
         over: vec![("zvt11", Ov::Table(zv))],

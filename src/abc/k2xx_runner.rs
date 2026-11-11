@@ -24,7 +24,7 @@
 //! * vl06o: `delivery`, `plant` (the pivot rows; the `pallets` layout also has `shipto_party`,
 //!   `name_of_the_shipto_party`, `deliv_datefromto`, `total_gds_mvt_stat`,
 //!   `external_delivery_id`, `number_of_packages`)
-//! * zvt11: `delivery_number`, `shipment_number` (checks that layout `add_del` was applied; the
+//! * zvt11: `delivery`, `shipment_number` (checks that layout `add_del` was applied; the
 //!   table is written as exported, all 7 columns; real titles: `Date`, `Trailer Nu`, `Shipment`,
 //!   `Delivery N`, `Plnt`, `Ship To/From Name`, `Shipment E`); an empty list does not stop the run (header-only
 //!   output, warning); a non-empty one gets `date` = `shipment_end_date` on every row (spec 7.0 item 30)
@@ -191,7 +191,7 @@ pub fn run_k2xx(
         }
     };
     if zvt11.nrows() > 0 {
-        for c in ["delivery_number", "shipment_number"] {
+        for c in ["delivery", "shipment_number"] {
             stage(rep, "zvt11 columns", zvt11.col(c))?;
         }
         stage(rep, "zvt11 date", k2xx::apply_zvt11_end_date(&mut zvt11))?;

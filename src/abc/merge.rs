@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 
 use super::registry::{self, ReportDef};
 use super::run::RunDate;
-use super::table::Table;
+use super::table::{ConcatMode, Table};
 use super::xlsx_out;
 
 /// What a merge produced.
@@ -31,12 +31,20 @@ pub struct MergeOutcome {
     pub tables: Vec<(String, usize)>,
 }
 
+/// `pivot` tables are wide cross-tabs whose columns (plants) depend on the day's data, so
+/// their columns are unioned across days (blank where a day had none); every other table needs
+/// identical headers on all days.
+pub fn is_pivot_table(name: &str) -> bool {
+    name == "pivot"
+}
+
 /// Merge the per-day outputs of `def` for `days` into one workbook at
 /// `registry::merged_path(reports_dir, def, today, range)`.
 ///
 /// - A day with none of the report's table files is recorded in `days_missing` and skipped.
 /// - A day with some but not all table files is an error naming the day and the missing tables.
-/// - A table whose columns differ between days is an error naming the table and the days.
+/// - A table whose columns differ between days is an error naming the table and the days
+///   (except `pivot` tables, see `is_pivot_table`: unioned, blanks for missing columns).
 /// - No day with output at all: error "nothing to merge", nothing is written.
 /// - Nothing is written on any error.
 pub fn merge_report(
@@ -97,8 +105,13 @@ pub fn merge_report(
 
     let mut merged: Vec<Table> = Vec::with_capacity(names.len());
     for (i, parts) in per_table.iter().enumerate() {
+        let mode = if is_pivot_table(names[i]) {
+            ConcatMode::Union
+        } else {
+            ConcatMode::Strict
+        };
         merged.push(
-            Table::concat(parts)
+            Table::concat_with(parts, mode)
                 .with_context(|| format!("merge {}: table {}", def.name, names[i]))?,
         );
     }

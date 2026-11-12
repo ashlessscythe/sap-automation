@@ -188,6 +188,9 @@ submenu asks for both (y/N).
 * **Failures:** a day with no data (`NO DATA`) is logged and skipped (the rest of that day's chain is not run); any other error stops
   the whole iteration, **no merge** is written and the per-day files already written stay. A summary lists the days done, skipped
   and failed. If every day was skipped there is nothing to merge (no merge, no error).
+* **Pivot sheets** are wide cross-tabs whose plant columns depend on the day, so they are unioned across days (blank where a plant
+  had no data); every other table must have identical headers on all days. If a merge fails the full summary is still printed,
+  reports that merged keep their workbooks, and the process exits non-zero ("N merge(s) failed").
 * `--output-format=xlsx` (default `tsv`) on a single run also writes `<DATE>_<RNAME>.xlsx` with every output table as a sheet.
 * **Not related** to `--run-loop`, `--run-sequence` or `--iterations`, which repeat the config-driven TCode loop/sequence; `--loop`
   and `--merge` only apply together with `--rname` and cannot be combined with those flags.

@@ -60,6 +60,17 @@ pub struct IterationSummary {
     pub merged: Option<Vec<(String, Result<MergeOutcome>)>>,
 }
 
+impl IterationSummary {
+    /// Number of reports whose merge failed.
+    pub fn merge_failures(&self) -> usize {
+        self.merged
+            .iter()
+            .flatten()
+            .filter(|(_, r)| r.is_err())
+            .count()
+    }
+}
+
 /// Real implementation over a live session.
 pub struct RealDayRunner<'a> {
     pub session: &'a GuiSession,
@@ -94,8 +105,33 @@ pub fn run_iteration(
     run_iteration_with(&mut RealDayRunner { session }, rname, range, opts, today)
 }
 
-/// The iteration over any [`DayRunner`], with an explicit `today`.
+/// The iteration over any [`DayRunner`], with an explicit `today`. Prints the summary and
+/// returns an error (after the summary) when a requested merge failed, wholly or for any report.
 pub fn run_iteration_with(
+    runner: &mut dyn DayRunner,
+    rname: &str,
+    range: &RunDate,
+    opts: IterOpts,
+    today: NaiveDate,
+) -> Result<IterationSummary> {
+    let summary = iterate_core(runner, rname, range, opts, today)?;
+    print_summary(&summary, summary_total(range), None);
+    let failed = summary.merge_failures();
+    if failed > 0 {
+        return Err(anyhow!(
+            "{failed} merge(s) failed (see the summary above; reports that merged keep their workbooks)"
+        ));
+    }
+    Ok(summary)
+}
+
+fn summary_total(range: &RunDate) -> usize {
+    range.days().len()
+}
+
+/// The iteration without the final summary / merge-failure verdict. A merge that errors as a
+/// whole is recorded as one failed entry named `rname`.
+fn iterate_core(
     runner: &mut dyn DayRunner,
     rname: &str,
     range: &RunDate,
@@ -157,10 +193,12 @@ pub fn run_iteration_with(
             touched.extend(summary.skipped.iter().map(|(d, _, _)| *d));
             touched.sort();
             touched.dedup();
-            summary.merged = Some(runner.merge(rname, today, range, &touched)?);
+            summary.merged = Some(match runner.merge(rname, today, range, &touched) {
+                Ok(v) => v,
+                Err(e) => vec![(rname.to_string(), Err(e))],
+            });
         }
     }
-    print_summary(&summary, total, None);
     Ok(summary)
 }
 
@@ -413,10 +451,41 @@ mod tests {
             fail_merge_of: Some("k2xx".into()),
             ..Fake::default()
         };
-        let s = go(&mut f, "repack", true).unwrap();
+        // the verdict is an Err, but the summary keeps the good workbooks
+        let e = go(&mut f, "repack", true).unwrap_err();
+        assert!(e.to_string().contains("1 merge(s) failed"), "{e:#}");
+        let s = iterate_core(&mut f, "repack", &week(), IterOpts { merge: true }, today()).unwrap();
         let lines = summary_lines(&s, 7, None).join("\n");
         assert!(lines.contains("merge k2xx FAILED") && lines.contains("merged repack"));
+        assert!(lines.contains("merged relabel"));
         assert_eq!(merged_paths(&s).len(), 2);
+        assert_eq!(s.merge_failures(), 1);
+    }
+
+    #[test]
+    fn whole_merge_error_is_a_failure_too() {
+        struct Broken(Fake);
+        impl DayRunner for Broken {
+            fn run(&mut self, r: &str, d: NaiveDate, t: NaiveDate) -> Result<()> {
+                self.0.run(r, d, t)
+            }
+            fn merge(
+                &mut self,
+                _: &str,
+                _: NaiveDate,
+                _: &RunDate,
+                _: &[NaiveDate],
+            ) -> Result<Vec<(String, Result<MergeOutcome>)>> {
+                Err(anyhow!("disk gone"))
+            }
+        }
+        let mut b = Broken(Fake::default());
+        let e = run_iteration_with(&mut b, "xdock", &week(), IterOpts { merge: true }, today())
+            .unwrap_err();
+        assert!(e.to_string().contains("1 merge(s) failed"));
+        let s = iterate_core(&mut b, "xdock", &week(), IterOpts { merge: true }, today()).unwrap();
+        assert_eq!(s.done.len(), 7);
+        assert!(summary_lines(&s, 7, None).join("\n").contains("disk gone"));
     }
 
     #[test]

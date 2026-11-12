@@ -70,6 +70,15 @@ pub enum ColPos {
     After(String),
 }
 
+/// How `Table::concat_with` treats differing columns.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConcatMode {
+    /// Identical column sets required (order may differ).
+    Strict,
+    /// Union of the columns, blanks where an input lacks one.
+    Union,
+}
+
 impl Table {
     /// Build from already-clean headers and rows (all rows visible). Rows are padded or
     /// truncated to the header width.
@@ -196,6 +205,55 @@ impl Table {
     /// is an error naming the column and the day. Hidden rows are dropped first (selection
     /// materialised); a header-only table contributes no rows. Empty input is an error.
     pub fn concat(tables: &[(String, Table)]) -> Result<Table> {
+        Self::concat_with(tables, ConcatMode::Strict)
+    }
+
+    /// Like [`Table::concat`] but tolerant of different columns per input (wide cross-tabs
+    /// whose columns depend on the day's data): columns are matched by name
+    /// (case-insensitive); the result has the first table's columns in order, then every new
+    /// column in order of first appearance; cells of a column an input lacks are empty strings.
+    /// `run_date` is prepended as in `concat`. Empty input is an error.
+    pub fn concat_union(tables: &[(String, Table)]) -> Result<Table> {
+        Self::concat_with(tables, ConcatMode::Union)
+    }
+
+    /// `concat` / `concat_union` selected by `mode`.
+    pub fn concat_with(tables: &[(String, Table)], mode: ConcatMode) -> Result<Table> {
+        if mode == ConcatMode::Union {
+            let (_, first) = tables
+                .first()
+                .ok_or_else(|| anyhow!("concat: no tables to combine"))?;
+            let mut cols: Vec<String> = first.headers.clone();
+            for (_, t) in tables {
+                for h in &t.headers {
+                    if !cols.iter().any(|c| c.eq_ignore_ascii_case(h)) {
+                        cols.push(h.clone());
+                    }
+                }
+            }
+            let mut headers = vec!["run_date".to_string()];
+            headers.extend(cols.iter().cloned());
+            let mut rows: Vec<Vec<String>> = Vec::new();
+            for (label, t) in tables {
+                let map: Vec<Option<usize>> = cols
+                    .iter()
+                    .map(|c| t.headers.iter().position(|x| x.eq_ignore_ascii_case(c)))
+                    .collect();
+                for (i, r) in t.rows.iter().enumerate() {
+                    if !t.visible[i] {
+                        continue;
+                    }
+                    let mut row = Vec::with_capacity(headers.len());
+                    row.push(label.clone());
+                    row.extend(
+                        map.iter()
+                            .map(|m| m.map(|c| r[c].clone()).unwrap_or_default()),
+                    );
+                    rows.push(row);
+                }
+            }
+            return Ok(Table::new(&first.name, headers, rows));
+        }
         let (first_label, first) = tables
             .first()
             .ok_or_else(|| anyhow!("concat: no tables to combine"))?;
@@ -434,6 +492,38 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(e.contains("'b'") && e.contains("d2"), "{e}");
+    }
+
+    #[test]
+    fn concat_union_adds_columns_in_order_with_blanks() {
+        let a = Table::new("t", s(&["cust", "p1", "p2"]), vec![s(&["A", "1", "2"])]);
+        let b = Table::new(
+            "t",
+            s(&["cust", "P2", "p3"]),
+            vec![s(&["B", "5", "6"]), s(&["C", "7", "8"])],
+        );
+        let c = Table::new("t", s(&["cust", "p4", "p3"]), vec![s(&["D", "9", "10"])]);
+        let u = Table::concat_union(&[
+            ("2026-11-01".into(), a),
+            ("2026-11-02".into(), b),
+            ("2026-11-03".into(), c),
+        ])
+        .unwrap();
+        assert_eq!(u.headers, s(&["run_date", "cust", "p1", "p2", "p3", "p4"]));
+        assert_eq!(
+            u.rows,
+            vec![
+                s(&["2026-11-01", "A", "1", "2", "", ""]),
+                s(&["2026-11-02", "B", "", "5", "6", ""]),
+                s(&["2026-11-02", "C", "", "7", "8", ""]),
+                s(&["2026-11-03", "D", "", "", "10", "9"]),
+            ]
+        );
+        assert!(Table::concat_union(&[]).is_err());
+        // strict stays strict
+        let a = Table::new("t", s(&["a", "b"]), vec![]);
+        let b = Table::new("t", s(&["a"]), vec![]);
+        assert!(Table::concat(&[("d1".into(), a), ("d2".into(), b)]).is_err());
     }
 
     #[test]

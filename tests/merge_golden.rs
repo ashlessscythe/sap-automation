@@ -259,3 +259,58 @@ fn chain_reports_failures_without_aborting_the_others() {
     assert!(res[2].1.is_ok());
     assert!(merge_chain(tmp.path(), "nope", today(), &range(), &week()).is_err());
 }
+
+/// Wide cross-tab pivot with `plants` as columns (synthetic, tiny).
+fn wide_pivot(plants: &[&str], cust: &str, n: u32) -> Table {
+    let mut headers = vec!["customer".to_string()];
+    headers.extend(plants.iter().map(|p| p.to_string()));
+    let mut row = vec![cust.to_string()];
+    row.extend(plants.iter().map(|_| n.to_string()));
+    Table::new("pivot", headers, vec![row])
+}
+
+#[test]
+fn wide_pivot_columns_are_unioned_across_days() {
+    let tmp = tempfile::tempdir().unwrap();
+    let def = registry::find_report("relabel").unwrap();
+    put_report(tmp.path(), "relabel", 10, 5);
+    put_report(tmp.path(), "relabel", 11, 5);
+    let r = RunDate {
+        date1: d(10),
+        date2: Some(d(11)),
+    };
+    put(
+        tmp.path(),
+        "relabel",
+        10,
+        "pivot",
+        &wide_pivot(&["P1", "P2"], "C1", 4),
+        5,
+    );
+    put(
+        tmp.path(),
+        "relabel",
+        11,
+        "pivot",
+        &wide_pivot(&["P2", "P3"], "C2", 7),
+        5,
+    );
+    let out = merge_report(tmp.path(), def, today(), &r, &r.days()).unwrap();
+    let rows = sheet_rows(&out.path, "pivot");
+    assert_eq!(rows[0], ["run_date", "customer", "P1", "P2", "P3"]);
+    assert_eq!(rows[1], ["2026-11-10", "C1", "4", "4", ""]);
+    assert_eq!(rows[2], ["2026-11-11", "C2", "", "7", "7"]);
+
+    // a non-pivot table with a header mismatch still fails, nothing is written
+    let _ = std::fs::remove_file(&out.path);
+    let mut bad = source("relabel", "combined");
+    bad.headers[1] = "renamed_column".into();
+    put(tmp.path(), "relabel", 11, "combined", &bad, 5);
+    let e = merge_report(tmp.path(), def, today(), &r, &r.days()).unwrap_err();
+    let msg = format!("{e:#}");
+    assert!(
+        msg.contains("combined") && msg.contains("2026-11-11"),
+        "{msg}"
+    );
+    assert!(!out.path.exists());
+}

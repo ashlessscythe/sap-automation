@@ -98,6 +98,7 @@ unrelated to `--run-loop`/`--run-sequence`/`--iterations`. Modules (registered i
 ISO `yyyy-mm-dd`; per-day FILE names stay `MM-DD-YYYY`), `xlsx_out.rs` (`rust_xlsxwriter`, pinned; one sheet per table). Registry:
 `chain`, `tables`, `workbook_path`, `merged_path` (`<DATE>_<RNAME>_MERGED.xlsx`). Tests: `merge_golden` (anonymised real fixtures as two days),
 `iterate` unit tests (skip / stop / chain order), clap tests in `cli.rs`.
+Tables named `pivot` (`merge::is_pivot_table`) are wide cross-tabs with day-dependent plant columns: merged with `Table::concat_union` (first table's columns, then new ones, blanks); all other tables keep the strict `Table::concat`. A failed merge (any report, or the whole merge) makes `run_iteration_with` print the full summary and then return `Err` ("N merge(s) failed"), so the process exits non-zero; good workbooks stay.
 
 ## MM60 (LX03 material list)
 

@@ -5,6 +5,7 @@ pub mod inv;
 pub mod inv_runner;
 pub mod k2xx;
 pub mod k2xx_runner;
+pub mod merge;
 pub mod mustgo;
 pub mod ops;
 pub mod raw;

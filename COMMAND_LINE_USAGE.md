@@ -214,6 +214,22 @@ may still have output); if no day finished there is no merge and no error. Merge
 (`WK_<n>` for a week), sheets = all output tables, columns matched by header name, a `run_date` column first (ISO `yyyy-mm-dd`). Per-day
 file names keep `MM-DD-YYYY`. The summary lists days done / skipped / failed.
 
+**`weekly_pivot` sheet.** Every merged workbook gets one more computed sheet after the report's own sheets (plain values, not a native
+PivotTable; the other sheets stay as they are). Rows = one per day (`export_date` if the source table has it, else the ISO `run_date`; ascending
+when ISO, otherwise first-appearance order), columns = plants A-Z (case-insensitive, a blank plant is `(blank)` and last), no customer
+dimension, plus a `Total` column and a `Total` row. Empty combinations are `0`. The measure is the one the report's own pivot uses:
+
+| rName | Source table | Plant column | Measure |
+|---|---|---|---|
+| xdock, toyota, k2xx | `vl06o` | `plant` | sum of `total` |
+| misc | `vl06o` | `shipping_pointreceiving_pt` | sum of `number_of_packages` |
+| relabel | `combined` | `plant` | sum of `_of_labels` |
+| repack | `snr_repack` | `plant` | count of non-blank `lm_serial_number` |
+| mustgo | `snr_copy` | `plant` | count of non-blank `lm_serial_number` |
+
+If the source table is missing a column or has no rows the sheet is skipped with a note in the summary; the merge itself still succeeds. The
+wide `pivot` sheets (customer x plant for relabel/repack) are unioned across days: a plant with no data on a day is blank.
+
 The run needs a logged-in SAP GUI session (checked unless `--skip-sap-check`), asks nothing, and prints the step row counts
 and the output paths. The flow of `mustgo` is VT11 -> VL06O -> ZMDESNR (by deliveries) -> LT23 -> ZMDESNR (by deliveries +
 TOs); the flow of `xdock` is VT11 (variant `VT11_XDOCK_VARIANT`, layout `VT11_LAYOUT`) -> VL06O for all shipments (layout `VL06O_XDOCK_LAYOUT`, one

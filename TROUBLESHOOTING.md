@@ -189,6 +189,29 @@ match close_excel_windows(Some(file_name)) {
 }
 ```
 
+### 7. Per-day Iteration, Merge and Offline Runs (`--loop`, `--merge`, `--no-sap`, ...)
+
+**Symptoms and what they mean:**
+
+| Message / symptom | Meaning and fix |
+|---|---|
+| `--loop needs a range or week` | `--loop` was given with a single date. Use `A..B` or `WKnn` (weeks run Sunday-Saturday, Excel WEEKNUM). |
+| `<day> ... NO DATA ... skipped` | That day had no data. It is skipped (the rest of its chain too) and the iteration continues. It is not an error. |
+| `iteration of '<r>' stopped at <day>, report '<x>'` | A hard error on one day stops the whole iteration; no merge runs. Per-day files already written stay. Fix the cause, then re-run with `--skip-existing` to run only the missing days. |
+| `merge <report> FAILED: ... column '<c>' of <day> is missing on <day>` | A source table has different headers on different days (a real mismatch). Pivot sheets are exempt (they are unioned across days). Check that the days were produced by the same version/layout. |
+| `merge <report> FAILED: ... nothing to merge` | No day has any output for that report (e.g. a prerequisite never ran). |
+| `N merge(s) failed` and a non-zero exit | At least one report's merge failed. Reports that did merge keep their workbook; see the summary above the error. |
+| merged workbook is missing days | Days with no output are listed as "missing" in the summary. The merge looks in the `<today>` folder of the run: when re-merging on another day pass `--output-date=<the original folder date>`. |
+| `--no-sap` error listing day / report / tables | An offline run found incomplete outputs. A report counts as complete only when all its output tables exist for that day. Nothing can be generated without SAP: re-run those days online (e.g. `--skip-existing`). With `--with-prereqs` the prerequisite reports must be on disk too. |
+| `weekly_pivot` sheet missing | Its source table lacked a column or had no rows; the summary prints a note. The merge itself still succeeded. |
+| `Run k2xx first` / `Run relabel first` on a single run | relabel and repack read the k2xx / relabel output of the same run. Run the prerequisites first or add `--with-prereqs`. |
+| `--loop`/`--merge` seem to do nothing like `--run-loop` | They are unrelated flags: `--run-loop` / `--run-sequence` / `--iterations` drive the config loop and sequence; `--loop` / `--merge` expand a `--rname` date range into per-day runs. |
+
+**Tips:**
+
+- `--no-sap` never connects to SAP, so it works with SAP GUI closed; `--output-format=xlsx` is not supported with it.
+- The date folder in the output path is the day of the run, not the report date. Use `--output-date` to reuse a past run's folder.
+
 ## Advanced Troubleshooting
 
 ### Memory Issues

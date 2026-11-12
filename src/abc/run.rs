@@ -12,6 +12,26 @@ pub struct RunDate {
 }
 
 impl RunDate {
+    /// A single-day run date.
+    pub fn single(date: NaiveDate) -> Self {
+        RunDate {
+            date1: date,
+            date2: None,
+        }
+    }
+
+    /// Every day of the run date, inclusive and ascending; a single date gives one day.
+    pub fn days(&self) -> Vec<NaiveDate> {
+        let (start, end) = self.as_range();
+        let mut out = Vec::new();
+        let mut day = start;
+        while day <= end {
+            out.push(day);
+            day += Duration::days(1);
+        }
+        out
+    }
+
     /// `(start, end)` for tools that always want both; a single date is `(d, d)`.
     pub fn as_range(&self) -> (NaiveDate, NaiveDate) {
         (self.date1, self.date2.unwrap_or(self.date1))
@@ -139,6 +159,29 @@ mod tests {
         assert!(!parse_run_date("2026-11-01..2026-11-01", 2026)
             .unwrap()
             .is_week());
+    }
+
+    #[test]
+    fn days_expansion() {
+        let wk = parse_run_date("WK45/2026", 2026).unwrap();
+        let days = wk.days();
+        assert_eq!(days.len(), 7);
+        assert_eq!(days[0], d(2026, 11, 1));
+        assert_eq!(days[6], d(2026, 11, 7));
+        assert_eq!(RunDate::single(d(2026, 11, 5)).days(), vec![d(2026, 11, 5)]);
+        let range = parse_run_date("2026-10-30..2026-11-02", 2026).unwrap();
+        assert_eq!(
+            range.days(),
+            vec![
+                d(2026, 10, 30),
+                d(2026, 10, 31),
+                d(2026, 11, 1),
+                d(2026, 11, 2)
+            ]
+        );
+        let same = parse_run_date("2026-11-01..2026-11-01", 2026).unwrap();
+        assert_eq!(same.days(), vec![d(2026, 11, 1)]);
+        assert_eq!(RunDate::single(d(2026, 11, 5)).date2, None);
     }
 
     #[test]

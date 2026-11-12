@@ -221,9 +221,97 @@ pub fn output_path(
         ))
 }
 
+/// Reports that must run (same day) before `rname`, in run order. Unknown rName: none.
+pub fn prerequisites(rname: &str) -> &'static [&'static str] {
+    match rname.trim().to_ascii_lowercase().as_str() {
+        "relabel" => &["k2xx"],
+        "repack" => &["k2xx", "relabel"],
+        _ => &[],
+    }
+}
+
+/// Prerequisites in order followed by `rname` itself (canonical registry name when known).
+pub fn chain(rname: &str) -> Vec<&'static str> {
+    let mut out: Vec<&'static str> = prerequisites(rname).to_vec();
+    if let Some(def) = find_report(rname) {
+        out.push(def.name);
+    }
+    out
+}
+
+/// Output table names of `rname` (including the pivot). Unknown rName: none.
+pub fn tables(rname: &str) -> &'static [&'static str] {
+    find_report(rname).map_or(&[], |def| def.output_tables)
+}
+
+/// Merged workbook: `<reports_dir>\<folder>\<today yyyy-mm-dd>\<rName>\<label>_<RNAME>_MERGED.xlsx`
+/// (`label` = `date_label`, i.e. `WK_<n>` for a week).
+pub fn merged_path(
+    reports_dir: &Path,
+    def: &ReportDef,
+    today: NaiveDate,
+    run_date: &RunDate,
+) -> PathBuf {
+    reports_dir
+        .join(def.folder)
+        .join(today.format("%Y-%m-%d").to_string())
+        .join(def.name)
+        .join(format!(
+            "{}_{}_MERGED.xlsx",
+            date_label(run_date),
+            def.name.to_ascii_uppercase()
+        ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn prerequisites_and_chain() {
+        assert!(prerequisites("mustgo").is_empty());
+        assert!(prerequisites("xdock").is_empty());
+        assert_eq!(prerequisites("relabel"), ["k2xx"]);
+        assert_eq!(prerequisites("RePack"), ["k2xx", "relabel"]);
+        assert_eq!(chain("xdock"), ["xdock"]);
+        assert_eq!(chain("k2xx"), ["k2xx"]);
+        assert_eq!(chain("relabel"), ["k2xx", "relabel"]);
+        assert_eq!(chain("repack"), ["k2xx", "relabel", "repack"]);
+        for n in report_names() {
+            assert_eq!(*chain(n).last().unwrap(), n);
+        }
+        assert!(chain("nope").is_empty());
+    }
+
+    #[test]
+    fn tables_per_report() {
+        assert_eq!(tables("mustgo"), ["lt23", "snr_copy", "pivot"]);
+        assert_eq!(tables("toyota"), ["vt11", "vl06o", "pivot", "trailers"]);
+        assert_eq!(tables("Repack"), ["snr_repack", "repack_sn", "pivot"]);
+        assert!(tables("nope").is_empty());
+        for n in report_names() {
+            assert!(tables(n).contains(&"pivot"));
+        }
+    }
+
+    #[test]
+    fn merged_paths() {
+        let week = RunDate {
+            date1: d(2026, 11, 1),
+            date2: Some(d(2026, 11, 7)),
+        };
+        let p = merged_path(Path::new("r"), &XDOCK, d(2026, 11, 10), &week);
+        assert_eq!(
+            p,
+            Path::new("r")
+                .join("INV")
+                .join("2026-11-10")
+                .join("xdock")
+                .join("WK_45_XDOCK_MERGED.xlsx")
+        );
+        let p = merged_path(Path::new("r"), &REPACK, d(2026, 11, 10), &week);
+        assert!(p.ends_with(Path::new("K2XX/2026-11-10/repack/WK_45_REPACK_MERGED.xlsx")));
+    }
 
     fn d(y: i32, m: u32, day: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(y, m, day).unwrap()

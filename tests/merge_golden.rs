@@ -53,6 +53,9 @@ fn source(rname: &str, table: &str) -> Table {
         ("k2xx", "vt11") => fixture("k2xx", "expected_real_vt11.tsv"),
         ("k2xx", "vl06o") => fixture("k2xx", "expected_real_vl06o.tsv"),
         ("k2xx", "pivot") => fixture("k2xx", "expected_real_pivot.tsv"),
+        ("toyota", "vl06o") => fixture("toyota", "expected_vl06o.tsv"),
+        ("misc", "vl06o") => fixture("misc", "expected_vl06o.tsv"),
+        ("mustgo", "snr_copy") => fixture("mustgo", "expected_snr_copy.tsv"),
         ("relabel", "combined") => fixture("relabel", "expected_real_combined.tsv"),
         ("relabel", "sn_del") => fixture("relabel", "expected_sn_del.tsv"),
         ("relabel", "pivot") => fixture("relabel", "expected_real_pivot.tsv"),
@@ -126,9 +129,13 @@ fn xdock_two_days_with_gaps() {
             ("vt11".to_string(), 91 + 40),
             ("vl06o".to_string(), 140),
             ("pivot".to_string(), np.min(100) + np.min(40)),
+            ("weekly_pivot".to_string(), 3), // two days + Total
         ]
     );
-    assert_eq!(sheet_names(&out.path), ["vt11", "vl06o", "pivot"]);
+    assert_eq!(
+        sheet_names(&out.path),
+        ["vt11", "vl06o", "pivot", "weekly_pivot"]
+    );
 
     // pivot sheet: each day's pivot rows tagged with the right run_date
     let rows = sheet_rows(&out.path, "pivot");
@@ -228,7 +235,12 @@ fn repack_chain_one_workbook_per_report() {
         let o = r.as_ref().unwrap();
         assert_eq!(o.report, *name);
         assert_eq!(o.days_merged, vec![d(2), d(3)]);
-        assert_eq!(sheet_names(&o.path), registry::tables(name));
+        let mut expect: Vec<String> = registry::tables(name)
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        expect.push("weekly_pivot".into());
+        assert_eq!(sheet_names(&o.path), expect);
         assert!(o
             .path
             .to_string_lossy()
@@ -313,4 +325,158 @@ fn wide_pivot_columns_are_unioned_across_days() {
         "{msg}"
     );
     assert!(!out.path.exists());
+}
+
+fn num(s: &str) -> f64 {
+    s.trim().replace(',', "").parse().unwrap_or(0.0)
+}
+
+fn col_sum(t: &Table, col: &str) -> f64 {
+    let c = t.col(col).unwrap();
+    t.rows.iter().map(|r| num(&r[c])).sum()
+}
+
+#[test]
+fn xdock_weekly_pivot_totals_match_source_and_day_pivots() {
+    let tmp = tempfile::tempdir().unwrap();
+    let def = registry::find_report("xdock").unwrap();
+    // days given out of order on disk (4 before 2 is irrelevant: rows follow the ISO sort)
+    put_report(tmp.path(), "xdock", 4, 1000);
+    put_report(tmp.path(), "xdock", 2, 1000);
+    let out = merge_report(tmp.path(), def, today(), &range(), &week()).unwrap();
+    assert_eq!(sheet_names(&out.path).last().unwrap(), "weekly_pivot");
+    let rows = sheet_rows(&out.path, "weekly_pivot");
+    let hdr = &rows[0];
+    assert_eq!(hdr[0], "run_date");
+    assert_eq!(hdr.last().unwrap(), "Total");
+    let plants = &hdr[1..hdr.len() - 1];
+    // A-Z, the "(blank)" column last
+    let mut sorted = plants.to_vec();
+    sorted.sort_by_key(|p| (p == "(blank)", p.to_lowercase()));
+    assert_eq!(plants, sorted.as_slice());
+    assert_eq!(rows.len(), 4);
+    assert_eq!(rows[1][0], "2026-11-02");
+    assert_eq!(rows[2][0], "2026-11-04");
+    assert_eq!(rows[3][0], "Total");
+    let vl = source("xdock", "vl06o");
+    let src_total = col_sum(&vl, "total");
+    let grand = num(rows[3].last().unwrap());
+    assert_eq!(grand, 2.0 * src_total);
+    // equals the sum of the per-day pivots (without their own Grand Total rows)
+    let pv = source("xdock", "pivot");
+    let day_pivot: f64 = pv
+        .rows
+        .iter()
+        .filter(|r| r[0] != "Grand Total")
+        .map(|r| num(&r[1]))
+        .sum();
+    assert_eq!(grand, 2.0 * day_pivot);
+    // per plant column = sum of `total` of that plant over both days
+    let pc = vl.col("plant").unwrap();
+    let tc = vl.col("total").unwrap();
+    for (j, p) in plants.iter().enumerate() {
+        let want: f64 = vl
+            .rows
+            .iter()
+            .filter(|r| r[pc].trim() == p || (p == "(blank)" && r[pc].trim().is_empty()))
+            .map(|r| num(&r[tc]))
+            .sum();
+        assert_eq!(num(&rows[3][1 + j]), 2.0 * want, "plant {p}");
+        assert_eq!(num(&rows[1][1 + j]), want, "plant {p} day 1");
+    }
+}
+
+#[test]
+fn weekly_pivot_for_every_rname_with_fixtures() {
+    let tmp = tempfile::tempdir().unwrap();
+    for (rname, table, plant, measure) in [
+        ("mustgo", "snr_copy", "plant", None),
+        ("toyota", "vl06o", "plant", Some("total")),
+        (
+            "misc",
+            "vl06o",
+            "shipping_pointreceiving_pt",
+            Some("number_of_packages"),
+        ),
+        ("k2xx", "vl06o", "plant", Some("total")),
+        ("relabel", "combined", "plant", Some("_of_labels")),
+        ("repack", "snr_repack", "plant", None),
+    ] {
+        put_report(tmp.path(), rname, 2, 1000);
+        put_report(tmp.path(), rname, 3, 1000);
+        let def = registry::find_report(rname).unwrap();
+        let out = merge_report(tmp.path(), def, today(), &range(), &week()).unwrap();
+        assert_eq!(out.tables.last().unwrap().0, "weekly_pivot", "{rname}");
+        assert!(
+            out.notes.iter().any(|n| n.starts_with("weekly_pivot:")),
+            "{rname}"
+        );
+        assert_eq!(sheet_names(&out.path).last().unwrap(), "weekly_pivot");
+        let rows = sheet_rows(&out.path, "weekly_pivot");
+        let src = source(rname, table);
+        let want = match measure {
+            Some(c) => col_sum(&src, c),
+            None => {
+                let c = src.col("lm_serial_number").unwrap();
+                src.rows.iter().filter(|r| !r[c].trim().is_empty()).count() as f64
+            }
+        };
+        let datecol = if src.headers.iter().any(|h| h == "export_date") {
+            "export_date"
+        } else {
+            "run_date"
+        };
+        assert_eq!(rows[0][0], datecol, "{rname}");
+        assert_eq!(rows[0].last().unwrap(), "Total");
+        assert_eq!(rows.last().unwrap()[0], "Total");
+        // export_date of the fixtures is one fixed date, so one day row for those
+        let ndays = if datecol == "export_date" { 1 } else { 2 };
+        assert_eq!(rows.len(), 1 + ndays + 1, "{rname}");
+        assert_eq!(
+            num(rows.last().unwrap().last().unwrap()),
+            2.0 * want,
+            "{rname}"
+        );
+        let pc = src.col(plant).unwrap();
+        let mut names: Vec<String> = src
+            .rows
+            .iter()
+            .map(|r| r[pc].trim().to_string())
+            .filter(|p| !p.is_empty())
+            .collect();
+        names.sort_by_key(|p| p.to_lowercase());
+        names.dedup();
+        assert_eq!(rows[0][1..1 + names.len()], names[..], "{rname}");
+    }
+}
+
+#[test]
+fn weekly_pivot_skipped_with_note_when_source_is_not_usable() {
+    let tmp = tempfile::tempdir().unwrap();
+    let def = registry::find_report("xdock").unwrap();
+    // synthetic a/b tables: no plant / total columns
+    for t in registry::tables("xdock") {
+        let syn = source("none", t);
+        put(tmp.path(), "xdock", 2, t, &syn, 3);
+    }
+    let out = merge_report(tmp.path(), def, today(), &range(), &week()).unwrap();
+    assert_eq!(sheet_names(&out.path), ["vt11", "vl06o", "pivot"]);
+    assert!(
+        out.notes
+            .iter()
+            .any(|n| n.starts_with("weekly_pivot skipped")),
+        "{:?}",
+        out.notes
+    );
+    // header-only source: skipped too, merge still fine
+    put(
+        tmp.path(),
+        "xdock",
+        2,
+        "vl06o",
+        &source("xdock", "vl06o"),
+        0,
+    );
+    let out = merge_report(tmp.path(), def, today(), &range(), &week()).unwrap();
+    assert!(out.notes.iter().any(|n| n.contains("skipped")));
 }

@@ -54,7 +54,7 @@ fn key_cmp(a: &str, b: &str) -> Ordering {
     }
 }
 
-fn parse_num(s: &str) -> Option<f64> {
+pub fn parse_num(s: &str) -> Option<f64> {
     let t = s.trim().replace(',', "");
     if t.is_empty() {
         None
@@ -63,7 +63,7 @@ fn parse_num(s: &str) -> Option<f64> {
     }
 }
 
-fn fmt_num(v: f64) -> String {
+pub fn fmt_num(v: f64) -> String {
     if v.fract() == 0.0 && v.abs() < 1e15 {
         format!("{}", v as i64)
     } else {

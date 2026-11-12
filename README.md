@@ -185,6 +185,12 @@ submenu asks for both (y/N).
   the per-day files in `<reports_dir>\<K2XX|INV>\<today>\<rName>\` (`<DATE>` is `WK_<n>` for a week). Its sheets are **all output
   tables** of the report (including the pivot), the per-day tables concatenated with a leading `run_date` column (ISO
   `yyyy-mm-dd`). The per-day TSV files keep their `MM-DD-YYYY` names; TSV stays the canonical output.
+* **`weekly_pivot` sheet:** every merged workbook gets one extra computed sheet **after** the report's own sheets (plain values, not a native
+  PivotTable): rows = one per day (`export_date` if the source table has it, else the ISO `run_date`; ascending when ISO, otherwise first-appearance
+  order), columns = the plants A-Z (case-insensitive; a blank plant is `(blank)`, last), cells = the same measure as the report's per-day pivot
+  (`total` summed over `vl06o` for xdock/toyota/k2xx, `number_of_packages` for misc, `_of_labels` over `combined` for relabel, row count over
+  `snr_repack` / `snr_copy` for repack / mustgo; relabel and repack drop the customer dimension here), `0` for empty combinations, plus a `Total`
+  column and row. If the source table is empty or lacks a column the sheet is skipped with a note and the merge still succeeds.
 * **Failures:** a day with no data (`NO DATA`) is logged and skipped (the rest of that day's chain is not run); any other error stops
   the whole iteration, **no merge** is written and the per-day files already written stay. A summary lists the days done, skipped
   and failed. If every day was skipped there is nothing to merge (no merge, no error).

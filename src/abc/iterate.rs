@@ -233,6 +233,9 @@ pub fn summary_lines(
                     v.push(format!("  merged {name}: {}", o.path.display()));
                     let t: Vec<String> = o.tables.iter().map(|(n, c)| format!("{n} {c}")).collect();
                     v.push(format!("    rows: {}", t.join(", ")));
+                    for n in &o.notes {
+                        v.push(format!("    {n}"));
+                    }
                     if !o.days_missing.is_empty() {
                         let d: Vec<String> = o.days_missing.iter().map(|d| d.to_string()).collect();
                         v.push(format!("    days without output: {}", d.join(", ")));
@@ -333,6 +336,7 @@ mod tests {
                             days_merged: days.to_vec(),
                             days_missing: vec![],
                             tables: vec![("pivot".into(), 3)],
+                            notes: vec![],
                         })
                     };
                     (r.to_string(), res)

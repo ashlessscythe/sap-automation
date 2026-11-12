@@ -3,7 +3,8 @@
 //! Per day the runner writes `<DATE>_<RNAME>_<table>.tsv` files (see `registry::output_path`).
 //! `merge_report` reads those back (plain UTF-8, as the runners write them), concatenates each
 //! table across the days (a `run_date` column is prepended, see `Table::concat`) and writes ONE
-//! workbook (`registry::merged_path`) with one sheet per table, in `registry::tables` order.
+//! workbook (`registry::merged_path`) with one sheet per table, in `registry::tables` order, plus
+//! the computed `weekly_pivot` sheet last (see `weekly_pivot`; skipped with a note if not buildable).
 #![allow(dead_code)]
 
 use anyhow::{anyhow, Context, Result};
@@ -13,6 +14,7 @@ use std::path::{Path, PathBuf};
 use super::registry::{self, ReportDef};
 use super::run::RunDate;
 use super::table::{ConcatMode, Table};
+use super::weekly_pivot;
 use super::xlsx_out;
 
 /// What a merge produced.
@@ -29,6 +31,8 @@ pub struct MergeOutcome {
     /// Sheets written, in order, with their row counts (header excluded, `run_date` included
     /// as a column, so the count is the sum over the days).
     pub tables: Vec<(String, usize)>,
+    /// Remarks, e.g. the size of the `weekly_pivot` sheet or why it was skipped.
+    pub notes: Vec<String>,
 }
 
 /// `pivot` tables are wide cross-tabs whose columns (plants) depend on the day's data, so
@@ -115,7 +119,44 @@ pub fn merge_report(
                 .with_context(|| format!("merge {}: table {}", def.name, names[i]))?,
         );
     }
-    let sheets: Vec<(&str, &Table)> = names.iter().copied().zip(merged.iter()).collect();
+    // extra computed sheet after the report's own: never fails the merge
+    let mut notes = Vec::new();
+    let weekly = match weekly_pivot::weekly_pivot_spec(def.name) {
+        None => {
+            notes.push(format!("{}: no weekly pivot defined", weekly_pivot::SHEET));
+            None
+        }
+        Some(spec) => match names.iter().position(|n| *n == spec.source_table) {
+            None => {
+                notes.push(format!(
+                    "{} skipped: no table '{}'",
+                    weekly_pivot::SHEET,
+                    spec.source_table
+                ));
+                None
+            }
+            Some(i) => match weekly_pivot::build(&merged[i], &spec) {
+                Ok(t) => {
+                    notes.push(format!(
+                        "{}: {} rows x {} columns (source '{}')",
+                        weekly_pivot::SHEET,
+                        t.nrows(),
+                        t.headers.len(),
+                        spec.source_table
+                    ));
+                    Some(t)
+                }
+                Err(e) => {
+                    notes.push(format!("{} skipped: {e:#}", weekly_pivot::SHEET));
+                    None
+                }
+            },
+        },
+    };
+    let mut sheets: Vec<(&str, &Table)> = names.iter().copied().zip(merged.iter()).collect();
+    if let Some(w) = &weekly {
+        sheets.push((weekly_pivot::SHEET, w));
+    }
     let path = registry::merged_path(reports_dir, def, today, range);
     xlsx_out::write_workbook(&path, &sheets)?;
     Ok(MergeOutcome {
@@ -123,11 +164,11 @@ pub fn merge_report(
         path,
         days_merged,
         days_missing,
-        tables: names
+        tables: sheets
             .iter()
-            .zip(&merged)
             .map(|(n, t)| (n.to_string(), t.nrows()))
             .collect(),
+        notes,
     })
 }
 

@@ -100,6 +100,8 @@ ISO `yyyy-mm-dd`; per-day FILE names stay `MM-DD-YYYY`), `xlsx_out.rs` (`rust_xl
 `iterate` unit tests (skip / stop / chain order), clap tests in `cli.rs`.
 Tables named `pivot` (`merge::is_pivot_table`) are wide cross-tabs with day-dependent plant columns: merged with `Table::concat_union` (first table's columns, then new ones, blanks); all other tables keep the strict `Table::concat`. A failed merge (any report, or the whole merge) makes `run_iteration_with` print the full summary and then return `Err` ("N merge(s) failed"), so the process exits non-zero; good workbooks stay.
 
+Weekly pivot (phase 6, `abc/weekly_pivot.rs`, registered in `abc/mod.rs`): `merge_report` appends a computed `weekly_pivot` sheet LAST (`MergeOutcome.tables` lists it, `MergeOutcome.notes` carries its size or the skip reason; a missing/empty source or column never fails the merge). `weekly_pivot_spec(rname)` = source table, plant column, measure: xdock/toyota/k2xx `vl06o` / `plant` / sum `total`; misc `vl06o` / `shipping_pointreceiving_pt` / sum `number_of_packages`; relabel `combined` / `plant` / sum `_of_labels`; repack `snr_repack` / `plant` / count non-blank `lm_serial_number`; mustgo `snr_copy` / `plant` / same count. Rows = `export_date` else ISO `run_date` (ISO ascending, else first appearance), columns plants A-Z with `(blank)` last, `0` for empty cells, `Total` row/column. Tests: `weekly_pivot` unit tests, `merge_golden`.
+
 ## MM60 (LX03 material list)
 
 `sap_automation --tcode mm60 --layout <L> [--variant <V>] [--export-type 1] [--lx03-file <slug|path>] [--rname-dir <D>]` has been **run live by the owner** (2026-11-11). Standalone tcode (`src/mm60.rs` + `mm60_module.rs`): it pastes the

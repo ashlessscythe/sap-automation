@@ -18,4 +18,5 @@ pub mod repack_runner;
 pub mod run;
 pub mod runner;
 pub mod table;
+pub mod weekly_pivot;
 pub mod xlsx_out;

@@ -6,7 +6,9 @@ use sap_scripting::*;
 use windows::core::Result;
 // Import specific functions to avoid ambiguity
 use crate::utils::config_types::SapConfig;
-use crate::utils::sap_ctrl_utils::{hit_ctrl, paste_values_with_scroll};
+use crate::utils::sap_ctrl_utils::{
+    hit_ctrl, paste_values_with_scroll, paste_values_with_scroll_kind, PasteKind,
+};
 use crate::utils::sap_export_utils::{export_local_file, export_to_target, ExportTarget};
 use crate::utils::sap_tcode_utils::*;
 use crate::utils::sap_wnd_utils::*;
@@ -347,13 +349,14 @@ fn paste_transfer_orders(session: &GuiSession, params: &ZMDESNRParams) -> Result
     }
     let mut pasted = false;
     for prefix in ["txt", "ctxt"] {
-        if paste_values_with_scroll(
+        if paste_values_with_scroll_kind(
             session,
             1,
             MULTI_TABLE_ID,
             &params.transfer_numbers,
             7,
             prefix,
+            PasteKind::Numeric,
         )? {
             pasted = true;
             break;

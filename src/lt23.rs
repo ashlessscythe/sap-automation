@@ -21,7 +21,7 @@ use crate::utils::export_outcome::{classify_after_execute, ClassifyOptions, Expo
 use sap_scripting::*;
 use windows::core::Result;
 
-use crate::utils::sap_ctrl_utils::{exist_ctrl, paste_values_with_scroll};
+use crate::utils::sap_ctrl_utils::{exist_ctrl, paste_values_with_scroll_kind, PasteKind};
 use crate::utils::sap_export_utils::{export_to_target, ExportTarget};
 use crate::utils::sap_file_utils::{get_tcode_file_path, save_sap_file};
 use crate::utils::sap_tcode_utils::assert_tcode;
@@ -152,7 +152,15 @@ fn paste_transfer_orders(session: &GuiSession, tos: &[String]) -> Result<bool> {
     }
     let mut pasted = false;
     for prefix in ["ctxt", "txt"] {
-        if paste_values_with_scroll(session, 1, MULTI_TABLE_ID, tos, 7, prefix)? {
+        if paste_values_with_scroll_kind(
+            session,
+            1,
+            MULTI_TABLE_ID,
+            tos,
+            7,
+            prefix,
+            PasteKind::Numeric,
+        )? {
             pasted = true;
             break;
         }

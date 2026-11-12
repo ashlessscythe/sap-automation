@@ -37,6 +37,16 @@ Dependency pins matter: `aes = "=0.9.2"` is pinned because newer needs rustc 1.8
 
 **SAP abstraction.** `utils/sap_interfaces.rs` defines `SapSession` / `SapComponent` traits; `sap_real_impl.rs` wraps the COM objects, `sap_mock_impl.rs` is a recording mock (`MockSapSession`, `MockEvent`, `create_test_session`) used by tests. Note that most tcode flows take the concrete `&GuiSession` from `sap_scripting` directly, so only code written against the traits is mock-testable. The rest of `utils/` is shared SAP helpers: `sap_wnd_utils` (popups), `sap_ctrl_utils` (controls), `sap_tcode_utils`, layout/variant selection (`choose_layout`, `select_layout_utils`, `setup_layout*`), export + Excel post-processing (`sap_export_utils`, `excel_*` via calamine), `sap_crypto_utils` (AES-GCM credential storage), `keep_awake` (Windows power API).
 
+**Multi-selection paste.** Every multi-value field goes through `utils::sap_ctrl_utils::paste_values_with_scroll[_kind]` (the popup
+table is the generic `SAPLALDB:3010/tblSAPLALDBSINGLE`, the same for every tcode). Default = type the values row by row with
+Page Down. `--use-clipboard` (`CliOverrides.use_clipboard`, read through `cli_overrides::use_clipboard()`, default off, accepts
+bare / `true` / `1`) first puts the values on the Windows clipboard (`clipboard-win`) and sends **VKey 24** (Shift+F12, upload from
+clipboard) to the popup window, then verifies row 0, the row count and the last entry (table scrolled via the table's own
+`VerticalScrollbar` property: `GuiScrollbar` has no `Type`, so wrap it with `get_idispatch()`, never `downcast`); on any failure it
+clears (VKey 16) and falls back to the row-by-row entry. `PasteKind::Numeric` (TOs in `lt23`/`zmdesnr`) strips non-digits, only
+when the flag is on, to keep the legacy path unchanged. Confirmed working live on MM60. Closing the popup with `close()` raises a
+"save changes?" popup; the paste paths confirm with VKey 8 instead.
+
 ## ABC headless work
 
 `mustgo`, `xdock`, `toyota`, `misc`, `k2xx`, `relabel` and `repack` are runnable and **have been run live by the owner** (k2xx and relabel confirmed working 2026-11-11, repack 2026-11-11 after): `sap_automation --rname=<mustgo|xdock|toyota|misc> --run-date=<DATE|A..B|WKnn>`

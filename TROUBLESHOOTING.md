@@ -95,6 +95,22 @@ if let Ok(btn) = session.find_by_id("wnd[0]/usr/btnBUTTON6".to_string()) {
 }
 ```
 
+#### Multi-selection paste (`--use-clipboard`)
+
+`--use-clipboard` (off by default) fills the multi-selection popups (delivery, shipment, TO, material numbers, ...)
+through SAP's "upload from clipboard" (Shift+F12) instead of entering rows with Page Down. The paste is verified
+(first entry, row count, last entry after scrolling to the end of the table); if the check fails the popup is cleared
+and the old row-by-row entry runs, so a run never continues with a half-filled list.
+
+- Log shows `Clipboard paste check failed: ...`: it names the part that failed (row 0, row count or last row). Without
+  the flag the legacy entry is used, so the flag can always be dropped.
+- Log shows `a popup opened above the multi-selection`: SAP raised a window on the upload; report its title.
+- `could not write the clipboard` / `clipboard content changed`: another program holds or overwrote the clipboard
+  while the run was pasting. Do not copy anything during a run with the flag on.
+- If SAP GUI shows a security prompt for clipboard access, allow it (or tick "remember"), otherwise the paste cannot
+  be verified and the fallback runs.
+- Transfer order numbers (LT23, ZMDESNR) are reduced to digits when the flag is on; other values are only trimmed.
+
 ### 4. Configuration Issues
 
 **Symptoms:**

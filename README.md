@@ -107,6 +107,10 @@ The application also supports command-line operation for automation scenarios. T
 ./sap_automation.exe --rname=relabel --run-date=2026-11-05   # run k2xx for the same date first
 ./sap_automation.exe --rname=repack --run-date=2026-11-05    # run k2xx, then relabel for the same date first
 
+# Fill multi-selection popups (deliveries, shipments, TOs, ...) from the clipboard instead of Page Down (off by default)
+./sap_automation.exe --rname=mustgo --run-date=2026-11-05 --use-clipboard
+./sap_automation.exe --tcode mm60 --layout <L> --use-clipboard
+
 # Sequence (uses [sequence] from config.toml)
 ./sap_automation.exe run-sequence
 ./sap_automation.exe --run-sequence

@@ -169,6 +169,19 @@ pub struct Cli {
     #[arg(long, value_name = "BOOL")]
     pub pre_export_back: Option<bool>,
 
+    /// Fill multi-selection popups (delivery / shipment / TO / material numbers, ...) from the
+    /// Windows clipboard (SAP "upload from clipboard", Shift+F12) instead of entering the values
+    /// row by row with Page Down. Bare flag, `true`, `1`, `yes` or `on` enables it; default off.
+    /// The paste is verified and falls back to the row-by-row entry if it did not take.
+    #[arg(
+        long,
+        value_name = "BOOL",
+        num_args = 0..=1,
+        default_missing_value = "true",
+        value_parser = clap::builder::BoolishValueParser::new()
+    )]
+    pub use_clipboard: Option<bool>,
+
     /// ZMDESNR ONLY: which results tab to select (e.g. 2, 7). Overrides
     /// `[tcode.ZMDESNR].tab_number`. When neither this flag nor config sets a
     /// value, the in-code default is 2. The tab is selected only AFTER the
@@ -266,6 +279,7 @@ impl Cli {
             tab_number: self.tab_number,
             bin_filter: self.bin_filter.clone(),
             date_range_buffer: self.date_range_buffer,
+            use_clipboard: self.use_clipboard,
         })
     }
 }

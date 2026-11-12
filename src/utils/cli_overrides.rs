@@ -135,6 +135,11 @@ pub struct CliOverrides {
     /// `--date-range-buffer`: days added on each side of the run date range where a headless
     /// report sets a buffered date range (ZMDETPC today). `None` = config, else 3.
     pub date_range_buffer: Option<u32>,
+
+    /// `--use-clipboard`: fill multi-selection popups (deliveries, shipments, TOs, ...) from the
+    /// Windows clipboard (Shift+F12 "upload from clipboard") instead of typing row by row.
+    /// `None` = off (legacy behaviour).
+    pub use_clipboard: Option<bool>,
 }
 
 impl CliOverrides {
@@ -329,6 +334,9 @@ impl CliOverrides {
         if let Some(v) = &self.bin_filter {
             parts.push(format!("--bin-filter={v}"));
         }
+        if let Some(v) = self.use_clipboard {
+            parts.push(format!("--use-clipboard={v}"));
+        }
         if parts.is_empty() {
             None
         } else {
@@ -343,6 +351,11 @@ static CLI_OVERRIDES: OnceLock<CliOverrides> = OnceLock::new();
 /// silently ignored.
 pub fn set_cli_overrides(overrides: CliOverrides) {
     let _ = CLI_OVERRIDES.set(overrides);
+}
+
+/// Is `--use-clipboard` active? Off unless the flag was passed (true / 1 / yes / on).
+pub fn use_clipboard() -> bool {
+    cli_overrides().use_clipboard.unwrap_or(false)
 }
 
 /// Returns the active overrides, or an empty default when `main` hasn't

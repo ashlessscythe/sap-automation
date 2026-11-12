@@ -99,6 +99,7 @@ Two hard rules enforced before any SAP connection is attempted:
 | Flag | TCode scope | Notes |
 | --- | --- | --- |
 | `--pre-export-back=<bool>` | ZEXSNR **only** | Send vkey 3 (back) after export but before layout selection. Overrides `[tcode.ZEXSNR].pre_export_back`. Pass `=false` to disable a config-on value from the CLI. Rejected with `--tcode!=ZEXSNR`. |
+| `--use-clipboard[=<bool>]` | all tcodes | Fill multi-selection popups (deliveries, shipments, TOs, materials, ...) from the Windows clipboard (Shift+F12, "upload from clipboard") instead of entering rows with Page Down. Bare flag, `true`, `1`, `yes` or `on` enables; default off. The paste is verified (first and last entry, row count) and falls back to row-by-row entry if it did not take. TO numbers are reduced to digits. |
 | `--tab-number=<N>` | ZEXSNR **only** | Which results tab to select. Resolution order: **CLI override → `[tcode.ZEXSNR].tab_number` → in-code default `2`** (so a brand-new install with no config still works). Rejected with `--tcode!=ZEXSNR`. **Note:** SAP GUI requires plant (`WERKS`) to be valid before tab switching, so the report flow always selects the variant first (which fills `WERKS`) and only then switches to this tab. |
 | `--bin-filter=<BIN>` | ZMDESNR **only** | Storage bin filter (e.g. `64EP*`). Sets `LGPLA-LOW` and **skips delivery paste**. Overrides `[tcode.ZMDESNR].bin_filter`. Rejected with `--tcode!=ZMDESNR`. In PowerShell, quote wildcards: `--bin-filter="64EP*"`. |
 
@@ -160,7 +161,7 @@ The file extension drives the parser:
 | `--date-range-buffer=<DAYS>` | Days added before the start and after the end of the run date range of every tcode that sets one (VT11, ZMDETPC). **Omitted**: ZMDETPC gets **3** days each side when the run is a week (`WKnn`, or the exact Sunday..Saturday range), everything else gets **0**, so a single date or other range is not widened. An explicit value (also `0`) applies to every such tcode and to single dates too. Overrides `[abc.<report>] date_range_buffer`. |
 
 `--rname` and `--run-date` require each other. Allowed with them: `--skip-sap-check`, `--keep-awake`, `--reports-dir`,
-`--date-format`, `--timezone`, `--ignore-display-error`, `--date-range-buffer`. Defaults for variants, layouts, warehouse and clean-up come from the
+`--date-format`, `--timezone`, `--ignore-display-error`, `--date-range-buffer`, `--use-clipboard`. Defaults for variants, layouts, warehouse and clean-up come from the
 optional `[abc.mustgo]` / `[abc.xdock]` / `[abc.toyota]` / `[abc.misc]` / `[abc.k2xx]` / `[abc.relabel]` / `[abc.repack]` section (see [CONFIG.md](CONFIG.md)); there are no per-tcode flags for a report.
 
 ```bash

@@ -39,7 +39,7 @@ Dependency pins matter: `aes = "=0.9.2"` is pinned because newer needs rustc 1.8
 
 ## ABC headless work
 
-`mustgo`, `xdock`, `toyota`, `misc`, `k2xx` and `relabel` are runnable and **have been run live by the owner** (k2xx and relabel confirmed working 2026-11-11); `repack` is built and golden-tested offline but **not run live yet**: `sap_automation --rname=<mustgo|xdock|toyota|misc> --run-date=<DATE|A..B|WKnn>`
+`mustgo`, `xdock`, `toyota`, `misc`, `k2xx`, `relabel` and `repack` are runnable and **have been run live by the owner** (k2xx and relabel confirmed working 2026-11-11, repack 2026-11-11 after): `sap_automation --rname=<mustgo|xdock|toyota|misc> --run-date=<DATE|A..B|WKnn>`
 (also TUI > ABC Headless; optional `--date-range-buffer=<n>`). Code is unit/golden tested offline (`mustgo` reproduces spec 9.3,
 `xdock` spec 9.6 with documented differences to the xlsx). `k2xx` (v0.8.0) is golden-tested offline against the owner's **real exports and macro xlsx** of 2026-11-05 (`tests/fixtures/k2xx/real/`; VL06O/ZMDETPC merge, VT11 and ZVT11 equal the macro sheets) and has run live. Owner decision: `k2xx` also writes a plant pivot of `total` (departs from spec 7.0 item 1). `repack` (built 2026-11-11) is golden-tested offline against the owner's **real exports and macro xlsx** of 2026-11-05 (`tests/fixtures/repack/real/`, 280 rows equal). The
 "Live verification checklist" sections in `docs/private/abc_headless_plan.md` list the SAP control ids that come from the spec only.
@@ -74,7 +74,7 @@ are synthetic plus `real/` (byte-exact, anonymised); tests `relabel_golden`, `re
 re-reads the k2xx `vl06o` TSV (deliveries) **and** relabel's `combined` TSV (`yellow = 1` rows = the parent exclusion list, only sent with at least two) of the same run and stops with "Run k2xx first" / "Run relabel first" if missing/empty. Flow: ZMDESNR by deliveries excluding parents
 -> blocks R1 (non-label plant, no parent, net weight < 50), History rows (ZMDESNR by serial / History for R2 = the same with > 50; keep `history_warehouse` + `UNP`), R3 (`PAL`), KC*/SC* container deletion from those, R4 (label plant, no pallet, not `KC*`) -> `export_date` -> pivot count by customer x plant;
 outputs `snr_repack`, `repack_sn`, `pivot`. Block order, no sorting, no alias marks or extra row (decisions 33-35). Fixtures `tests/fixtures/repack/` (`real/` byte-exact, anonymised; `expected_real_*` from the macro xlsx; stand-in `k2xx_vl06o_stand_in.tsv` and `relabel_combined_stand_in.tsv`; `synthetic/` edge cases),
-tests `repack_real`, `repack_golden`, `repack_runner`. The parent-exclusion typing in `zmdesnr.rs` is one serial per visible row (no scroll paste): unverified live.
+tests `repack_real`, `repack_golden`, `repack_runner`. The parent-exclusion typing in `zmdesnr.rs` is one serial per visible row (no scroll paste); worked live with the real yellow serials.
 
 **Resume from `docs/private/abc_headless_plan.md` ("RESUME HERE")**; the spec is `docs/private/abc_headless_migration_spec.md`.
 

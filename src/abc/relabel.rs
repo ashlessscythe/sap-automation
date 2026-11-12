@@ -333,11 +333,14 @@ pub const PIVOT_TOTAL_LABEL: &str = "Grand Total";
 /// `Grand Total`; one row per customer, then a `Grand Total` row. Customers and plants ascending
 /// (case-insensitive), a blank one is `(blank)` and sorts last; a cell without rows is blank.
 pub fn pivot_customer_plant(combined: &Table) -> Result<Table> {
-    let (c, p, l) = (
-        combined.col("customer")?,
-        combined.col("plant")?,
-        combined.col(COL_LABELS)?,
-    );
+    let l = combined.col(COL_LABELS)?;
+    pivot_cross(combined, |r| r[l].trim().parse::<i64>().unwrap_or(0))
+}
+
+/// The cross-tab of [`pivot_customer_plant`] with a caller-chosen value per row (`repack` counts
+/// rows instead of summing `_of_labels`). `table` needs the columns `customer` and `plant`.
+pub fn pivot_cross(table: &Table, value: impl Fn(&[String]) -> i64) -> Result<Table> {
+    let (c, p) = (table.col("customer")?, table.col("plant")?);
     type Key = (bool, String);
     let key = |v: &str| -> (Key, String) {
         let v = v.trim();
@@ -350,11 +353,11 @@ pub fn pivot_customer_plant(combined: &Table) -> Result<Table> {
     let mut custs: BTreeMap<Key, String> = BTreeMap::new();
     let mut plants: BTreeMap<Key, String> = BTreeMap::new();
     let mut cells: BTreeMap<(Key, Key), i64> = BTreeMap::new();
-    for r in &combined.rows {
+    for r in &table.rows {
         let ((kc, nc), (kp, np)) = (key(&r[c]), key(&r[p]));
         custs.entry(kc.clone()).or_insert(nc);
         plants.entry(kp.clone()).or_insert(np);
-        *cells.entry((kc, kp)).or_insert(0) += r[l].trim().parse::<i64>().unwrap_or(0);
+        *cells.entry((kc, kp)).or_insert(0) += value(r);
     }
     let mut headers = vec!["customer".to_string()];
     headers.extend(plants.values().cloned());

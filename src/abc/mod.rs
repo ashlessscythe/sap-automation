@@ -11,6 +11,7 @@ pub mod raw;
 pub mod registry;
 pub mod relabel;
 pub mod relabel_runner;
+pub mod repack;
 pub mod run;
 pub mod runner;
 pub mod table;

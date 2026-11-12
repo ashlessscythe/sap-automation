@@ -39,6 +39,35 @@ pub fn real_relabel_rules() -> sap_automation::abc::relabel::RelabelRules {
     }
 }
 
+/// Repack rules for the anonymised real fixtures: the default plant codes and warehouse, and as
+/// alias customer patterns the exact names listed in
+/// `tests/fixtures/repack/real/alias_customers.txt`.
+pub fn real_repack_rules() -> sap_automation::abc::repack::RepackRules {
+    let path: PathBuf = [
+        env!("CARGO_MANIFEST_DIR"),
+        "tests",
+        "fixtures",
+        "repack",
+        "real",
+        "alias_customers.txt",
+    ]
+    .iter()
+    .collect();
+    let text = std::fs::read_to_string(&path).expect("alias_customers.txt");
+    sap_automation::abc::repack::RepackRules {
+        plants: sap_automation::abc::relabel::RelabelRules {
+            alias_customers: text
+                .lines()
+                .map(str::trim)
+                .filter(|l| !l.is_empty())
+                .map(str::to_string)
+                .collect(),
+            ..Default::default()
+        },
+        ..Default::default()
+    }
+}
+
 /// Compare two tables row by row; `Err(report)` lists the first `max_rows` differing rows.
 pub fn diff_tables(expected: &Table, actual: &Table, max_rows: usize) -> Result<(), String> {
     let mut report = String::new();

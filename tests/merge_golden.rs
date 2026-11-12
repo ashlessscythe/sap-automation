@@ -480,3 +480,144 @@ fn weekly_pivot_skipped_with_note_when_source_is_not_usable() {
     let out = merge_report(tmp.path(), def, today(), &range(), &week()).unwrap();
     assert!(out.notes.iter().any(|n| n.contains("skipped")));
 }
+
+// ---- phase 7: reuse of per-day outputs (--no-sap / --skip-existing / --output-date) ----
+
+use sap_automation::abc::iterate::{run_iteration_with, DayRunner, IterOpts};
+use sap_automation::abc::merge::MergeOutcome;
+use sap_automation::abc::registry::Completeness;
+
+/// Disk-backed runner over a temp reports dir: the real completeness rule and the real merge,
+/// but `run` records the call (it must stay empty with --no-sap).
+struct DiskRunner<'a> {
+    dir: &'a Path,
+    ran: Vec<(String, NaiveDate)>,
+}
+
+impl DayRunner for DiskRunner<'_> {
+    fn run(&mut self, report: &str, date: &RunDate, _today: NaiveDate) -> anyhow::Result<()> {
+        self.ran.push((report.to_string(), date.date1));
+        Ok(())
+    }
+
+    fn complete(&mut self, report: &str, date: &RunDate, today: NaiveDate) -> Completeness {
+        let def = registry::find_report(report).unwrap();
+        registry::output_complete(self.dir, def, today, date)
+    }
+
+    fn merge(
+        &mut self,
+        rname: &str,
+        today: NaiveDate,
+        range: &RunDate,
+        days: &[NaiveDate],
+    ) -> anyhow::Result<Vec<(String, anyhow::Result<MergeOutcome>)>> {
+        merge_chain(self.dir, rname, today, range, days)
+    }
+}
+
+/// Files under an arbitrary date folder (not "today").
+fn put_under(dir: &Path, folder: NaiveDate, rname: &str, day: u32, keep: usize) {
+    let def = registry::find_report(rname).unwrap();
+    for t in registry::tables(rname) {
+        let mut tb = source(rname, t);
+        tb.rows.truncate(keep);
+        tb.visible.truncate(keep);
+        let p = output_path(dir, def, folder, &RunDate::single(d(day)), t);
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(p, tb.to_tsv()).unwrap();
+    }
+}
+
+#[test]
+fn output_complete_rule() {
+    let tmp = tempfile::tempdir().unwrap();
+    let def = registry::find_report("xdock").unwrap();
+    let one = RunDate::single(d(2));
+    assert_eq!(
+        registry::output_complete(tmp.path(), def, today(), &one),
+        Completeness::None
+    );
+    put_under(tmp.path(), today(), "xdock", 2, 5);
+    assert_eq!(
+        registry::output_complete(tmp.path(), def, today(), &one),
+        Completeness::Complete
+    );
+    // another date folder is a different run
+    let other = NaiveDate::from_ymd_opt(2026, 10, 1).unwrap();
+    assert_eq!(
+        registry::output_complete(tmp.path(), def, other, &one),
+        Completeness::None
+    );
+    // header-only file counts as present; a deleted one makes the set partial
+    let p = output_path(tmp.path(), def, today(), &one, "pivot");
+    std::fs::write(&p, "a\tb\n").unwrap();
+    assert!(registry::output_complete(tmp.path(), def, today(), &one).is_complete());
+    std::fs::remove_file(&p).unwrap();
+    assert_eq!(
+        registry::output_complete(tmp.path(), def, today(), &one),
+        Completeness::Missing(vec!["pivot".to_string()])
+    );
+}
+
+#[test]
+fn no_sap_remerge_under_an_arbitrary_output_date() {
+    let tmp = tempfile::tempdir().unwrap();
+    let folder = NaiveDate::from_ymd_opt(2026, 9, 30).unwrap();
+    for day in 1..=7 {
+        put_under(tmp.path(), folder, "xdock", day, 20 + day as usize);
+    }
+    let opts = IterOpts {
+        merge: true,
+        no_sap: true,
+        ..IterOpts::default()
+    };
+    let mut r = DiskRunner {
+        dir: tmp.path(),
+        ran: vec![],
+    };
+    let s = run_iteration_with(&mut r, "xdock", &range(), opts, folder).unwrap();
+    assert!(r.ran.is_empty(), "no SAP run with --no-sap");
+    assert_eq!(s.done.len(), 7);
+    let def = registry::find_report("xdock").unwrap();
+    let path = registry::merged_path(tmp.path(), def, folder, &range());
+    assert!(path.is_file());
+    assert!(path.to_string_lossy().contains("2026-09-30"));
+    let rows = sheet_rows(&path, "vl06o");
+    let want: usize = (1..=7).map(|n| (20 + n).min(140)).sum();
+    assert!(rows.len() > want / 2); // sanity: merged all days (header + rows)
+
+    // the real "today" folder has nothing: the same call there is an error, nothing merged
+    let mut r = DiskRunner {
+        dir: tmp.path(),
+        ran: vec![],
+    };
+    let e = run_iteration_with(&mut r, "xdock", &range(), opts, today()).unwrap_err();
+    assert!(format!("{e:#}").contains("no output files"), "{e:#}");
+    assert!(!registry::merged_path(tmp.path(), def, today(), &range()).exists());
+}
+
+#[test]
+fn skip_existing_resume_runs_only_the_missing_day() {
+    let tmp = tempfile::tempdir().unwrap();
+    for day in [1, 2, 3, 5, 6, 7] {
+        put_under(tmp.path(), today(), "xdock", day, 10);
+    }
+    // day 4 is partial (hard stop mid-report): one table only
+    let def = registry::find_report("xdock").unwrap();
+    let p = output_path(tmp.path(), def, today(), &RunDate::single(d(4)), "vt11");
+    std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+    std::fs::write(&p, "a\n").unwrap();
+    let opts = IterOpts {
+        skip_existing: true,
+        ..IterOpts::default()
+    };
+    let mut r = DiskRunner {
+        dir: tmp.path(),
+        ran: vec![],
+    };
+    let s = run_iteration_with(&mut r, "xdock", &range(), opts, today()).unwrap();
+    assert_eq!(r.ran, vec![("xdock".to_string(), d(4))]);
+    assert_eq!(s.existing.len(), 6);
+    assert_eq!(s.done.len(), 7);
+}

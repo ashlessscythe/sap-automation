@@ -397,14 +397,41 @@ pub fn run_rname_unattended(
         println!("CLI overrides applied (these win over config.toml): {line}");
     }
 
+    let opts = crate::abc::iterate::IterOpts::from_overrides();
     if cli_overrides().iterate_loop {
-        let opts = crate::abc::iterate::IterOpts {
-            merge: cli_overrides().merge,
-        };
         return crate::abc::iterate::run_iteration(session, rname, date, opts).map(|_| ());
     }
 
-    crate::abc::dispatch::run_report(session, rname, date).map(|_| ())
+    // single run: honours --skip-existing (a --no-sap run never reaches a session)
+    let today = crate::utils::cli_overrides::effective_today();
+    crate::abc::iterate::run_single_with(
+        &mut crate::abc::iterate::RealDayRunner { session },
+        rname,
+        date,
+        opts,
+        today,
+    )
+    .map(|_| ())
+}
+
+/// Entry of `--rname` in the binary: reuses existing outputs without touching SAP when the flags
+/// allow it (`--no-sap`, or `--skip-existing` with everything present); `live` (keep-awake, SAP
+/// connection and [`run_rname_unattended`]) is only called when SAP is really needed.
+pub fn run_rname_entry(
+    rname: &str,
+    date: &crate::abc::run::RunDate,
+    live: impl FnOnce() -> Result<()>,
+) -> Result<()> {
+    let o = cli_overrides();
+    crate::abc::iterate::run_rname_routed(
+        &mut crate::abc::iterate::OfflineDayRunner,
+        rname,
+        date,
+        o.iterate_loop,
+        crate::abc::iterate::IterOpts::from_overrides(),
+        crate::utils::cli_overrides::effective_today(),
+        live,
+    )
 }
 
 /// Initialize SAP connection for unattended execution

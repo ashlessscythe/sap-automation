@@ -221,6 +221,46 @@ pub fn output_path(
         ))
 }
 
+/// How much of a report's per-run output exists on disk.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Completeness {
+    /// Every table of `tables(rname)` is a file (header-only files count as present).
+    Complete,
+    /// Some but not all table files exist: the names of the missing tables.
+    Missing(Vec<String>),
+    /// None of the table files exist.
+    None,
+}
+
+impl Completeness {
+    pub fn is_complete(&self) -> bool {
+        matches!(self, Completeness::Complete)
+    }
+}
+
+/// Completeness of the output of `def` for `run_date` under the `folder_date` folder. The one
+/// rule shared by the merge, `--skip-existing` and `--no-sap`: ALL output tables must exist.
+pub fn output_complete(
+    reports_dir: &Path,
+    def: &ReportDef,
+    folder_date: NaiveDate,
+    run_date: &RunDate,
+) -> Completeness {
+    let names = tables(def.name);
+    let missing: Vec<String> = names
+        .iter()
+        .filter(|t| !output_path(reports_dir, def, folder_date, run_date, t).is_file())
+        .map(|t| t.to_string())
+        .collect();
+    if missing.is_empty() {
+        Completeness::Complete
+    } else if missing.len() == names.len() {
+        Completeness::None
+    } else {
+        Completeness::Missing(missing)
+    }
+}
+
 /// Reports that must run (same day) before `rname`, in run order. Unknown rName: none.
 pub fn prerequisites(rname: &str) -> &'static [&'static str] {
     match rname.trim().to_ascii_lowercase().as_str() {

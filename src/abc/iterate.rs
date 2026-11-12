@@ -10,8 +10,14 @@
 //! With `merge` and at least one finished day, the per-day outputs are merged afterwards
 //! (`merge::merge_chain`, one workbook per report of the chain).
 //!
-//! `today` (the date folder of the outputs) is captured ONCE by [`run_iteration`] and handed to
-//! every run and to the merge, so they agree even when the iteration crosses midnight. The
+//! Reusing outputs (phase 7): `skip_existing` skips a day+report whose output tables are ALL on
+//! disk (`registry::output_complete`, the rule the merge uses); `no_sap` never runs anything:
+//! every day+report of the chain must be complete (else one error listing what is missing,
+//! before anything is merged) and `--merge` then re-merges the existing files. SAP is not even
+//! connected in that mode (see [`run_rname_routed`]).
+//!
+//! `today` (the date folder of the outputs: `--output-date` or the real today) is captured ONCE
+//! by [`run_iteration`] and handed to every run and to the merge, so they agree even when the iteration crosses midnight. The
 //! SAP-touching calls sit behind [`DayRunner`]. Inside the loop `relabel` / `repack` read the
 //! k2xx / relabel TSVs of the same run date from the same `today` folder; the chain order
 //! guarantees the prerequisite wrote them first.
@@ -24,7 +30,7 @@ use std::path::PathBuf;
 
 use super::dispatch;
 use super::merge::{self, MergeOutcome};
-use super::registry;
+use super::registry::{self, Completeness};
 use super::run::RunDate;
 use super::runner::NoDataError;
 
@@ -33,12 +39,30 @@ use super::runner::NoDataError;
 pub struct IterOpts {
     /// Merge the per-day outputs into one workbook per report afterwards.
     pub merge: bool,
+    /// Resume: do not re-run a day+report whose output is complete.
+    pub skip_existing: bool,
+    /// Strict offline: never run, only verify (and merge) existing outputs.
+    pub no_sap: bool,
+}
+
+impl IterOpts {
+    /// The flags of the process-wide CLI overrides.
+    pub fn from_overrides() -> Self {
+        use crate::utils::cli_overrides as o;
+        IterOpts {
+            merge: o::merge(),
+            skip_existing: o::skip_existing(),
+            no_sap: o::no_sap(),
+        }
+    }
 }
 
 /// Seam over everything that touches SAP or the file system.
 pub trait DayRunner {
-    /// Run `report` for the single day `day`; outputs go under the `today` folder.
-    fn run(&mut self, report: &str, day: NaiveDate, today: NaiveDate) -> Result<()>;
+    /// Run `report` for `date` (one day inside an iteration); outputs go under the `today` folder.
+    fn run(&mut self, report: &str, date: &RunDate, today: NaiveDate) -> Result<()>;
+    /// How much of the output of `report` for `date` exists under the `today` folder.
+    fn complete(&mut self, report: &str, date: &RunDate, today: NaiveDate) -> Completeness;
     /// Merge the chain of `rname` over `days` (`range` names the workbook; `today` folder).
     fn merge(
         &mut self,
@@ -56,6 +80,9 @@ pub struct IterationSummary {
     pub done: Vec<NaiveDate>,
     /// Days skipped for no data: (day, report, message).
     pub skipped: Vec<(NaiveDate, String, String)>,
+    /// Day+report pairs not run because their output already existed (`--skip-existing`) or,
+    /// with `--no-sap`, was verified.
+    pub existing: Vec<(NaiveDate, String)>,
     /// Merge results, when a merge was requested and ran.
     pub merged: Option<Vec<(String, Result<MergeOutcome>)>>,
 }
@@ -76,9 +103,41 @@ pub struct RealDayRunner<'a> {
     pub session: &'a GuiSession,
 }
 
-impl DayRunner for RealDayRunner<'_> {
-    fn run(&mut self, report: &str, day: NaiveDate, today: NaiveDate) -> Result<()> {
-        dispatch::run_report_on(self.session, report, &RunDate::single(day), today).map(|_| ())
+/// The shared file-system check of [`DayRunner::complete`].
+fn real_complete(report: &str, date: &RunDate, today: NaiveDate) -> Completeness {
+    match registry::find_report(report) {
+        Some(def) => {
+            registry::output_complete(&dispatch::reports_dir_for(report), def, today, date)
+        }
+        None => Completeness::None,
+    }
+}
+
+/// The shared merge of the real runners.
+fn real_merge(
+    rname: &str,
+    today: NaiveDate,
+    range: &RunDate,
+    days: &[NaiveDate],
+) -> Result<Vec<(String, Result<MergeOutcome>)>> {
+    // the reports dir is the same for every report of the chain (CLI > [global] > default)
+    let dir = dispatch::reports_dir_for(rname);
+    merge::merge_chain(&dir, rname, today, range, days)
+}
+
+/// Runner for `--no-sap` (and fully-complete `--skip-existing`): file system only, it has no
+/// session, so a call of `run` is a bug and an error.
+pub struct OfflineDayRunner;
+
+impl DayRunner for OfflineDayRunner {
+    fn run(&mut self, report: &str, _date: &RunDate, _today: NaiveDate) -> Result<()> {
+        Err(anyhow!(
+            "internal error: '{report}' would need SAP, but this run is offline (no SAP session)"
+        ))
+    }
+
+    fn complete(&mut self, report: &str, date: &RunDate, today: NaiveDate) -> Completeness {
+        real_complete(report, date, today)
     }
 
     fn merge(
@@ -88,21 +147,149 @@ impl DayRunner for RealDayRunner<'_> {
         range: &RunDate,
         days: &[NaiveDate],
     ) -> Result<Vec<(String, Result<MergeOutcome>)>> {
-        // the reports dir is the same for every report of the chain (CLI > [global] > default)
-        let dir = dispatch::reports_dir_for(rname);
-        merge::merge_chain(&dir, rname, today, range, days)
+        real_merge(rname, today, range, days)
     }
 }
 
-/// Run the iteration on a live session (captures `today` once).
+impl DayRunner for RealDayRunner<'_> {
+    fn run(&mut self, report: &str, date: &RunDate, today: NaiveDate) -> Result<()> {
+        dispatch::run_report_on(self.session, report, date, today).map(|_| ())
+    }
+
+    fn complete(&mut self, report: &str, date: &RunDate, today: NaiveDate) -> Completeness {
+        real_complete(report, date, today)
+    }
+
+    fn merge(
+        &mut self,
+        rname: &str,
+        today: NaiveDate,
+        range: &RunDate,
+        days: &[NaiveDate],
+    ) -> Result<Vec<(String, Result<MergeOutcome>)>> {
+        real_merge(rname, today, range, days)
+    }
+}
+
+/// Run the iteration on a live session (captures `today` once: `--output-date` or the real today).
 pub fn run_iteration(
     session: &GuiSession,
     rname: &str,
     range: &RunDate,
     opts: IterOpts,
 ) -> Result<IterationSummary> {
-    let today = chrono::Local::now().date_naive();
+    let today = crate::utils::cli_overrides::effective_today();
     run_iteration_with(&mut RealDayRunner { session }, rname, range, opts, today)
+}
+
+/// What a single (non-loop) run did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SingleOutcome {
+    /// The report ran.
+    Ran,
+    /// `--skip-existing`: the output was complete, nothing ran.
+    Existing,
+    /// `--no-sap`: the output is complete, nothing ran.
+    Ready,
+}
+
+/// A single run of `rname` for `date` (`--rname` without `--loop`) with the reuse flags:
+/// `no_sap` only verifies (incomplete = error), `skip_existing` runs only when incomplete.
+/// Only the report itself is checked (a single run never auto-runs prerequisites either).
+pub fn run_single_with(
+    runner: &mut dyn DayRunner,
+    rname: &str,
+    date: &RunDate,
+    opts: IterOpts,
+    today: NaiveDate,
+) -> Result<SingleOutcome> {
+    if !(opts.no_sap || opts.skip_existing) {
+        runner.run(rname, date, today)?;
+        return Ok(SingleOutcome::Ran);
+    }
+    let label = registry::date_label(date);
+    let state = runner.complete(rname, date, today);
+    if opts.no_sap {
+        return match state {
+            Completeness::Complete => {
+                println!("{rname} {label}: output complete under {today}, ready (--no-sap).");
+                Ok(SingleOutcome::Ready)
+            }
+            other => Err(anyhow!(
+                "--no-sap: {rname} {label} is not complete under {today}: {}",
+                describe_incomplete(&other)
+            )),
+        };
+    }
+    if state.is_complete() {
+        println!("{rname} {label}: exists, skipped (--skip-existing).");
+        return Ok(SingleOutcome::Existing);
+    }
+    runner.run(rname, date, today)?;
+    Ok(SingleOutcome::Ran)
+}
+
+fn describe_incomplete(c: &Completeness) -> String {
+    match c {
+        Completeness::Complete => "complete".to_string(),
+        Completeness::None => "no output files".to_string(),
+        Completeness::Missing(t) => format!("missing table(s): {}", t.join(", ")),
+    }
+}
+
+/// Does this run have to connect to SAP at all? `--no-sap`: never. `--skip-existing`: only when
+/// some day+report (the chain for `looped`, else the report itself) is not complete. Otherwise yes.
+pub fn needs_sap(
+    runner: &mut dyn DayRunner,
+    rname: &str,
+    date: &RunDate,
+    looped: bool,
+    opts: IterOpts,
+    today: NaiveDate,
+) -> bool {
+    if opts.no_sap {
+        return false;
+    }
+    if !opts.skip_existing {
+        return true;
+    }
+    if looped {
+        let chain = registry::chain(rname);
+        date.days().iter().any(|&d| {
+            chain
+                .iter()
+                .any(|r| !runner.complete(r, &RunDate::single(d), today).is_complete())
+        })
+    } else {
+        !runner.complete(rname, date, today).is_complete()
+    }
+}
+
+/// Entry of an unattended `--rname` run: `live` (connect to SAP and run; supplied by the caller)
+/// is called ONLY when [`needs_sap`]; otherwise everything is handled on the file system through
+/// `offline` and SAP is never connected. `today` is the outputs' date folder.
+pub fn run_rname_routed(
+    offline: &mut dyn DayRunner,
+    rname: &str,
+    date: &RunDate,
+    looped: bool,
+    opts: IterOpts,
+    today: NaiveDate,
+    live: impl FnOnce() -> Result<()>,
+) -> Result<()> {
+    if needs_sap(offline, rname, date, looped, opts, today) {
+        return live();
+    }
+    if opts.no_sap {
+        println!("--no-sap: SAP is not touched; reusing the outputs under the {today} folder.");
+    } else {
+        println!("--skip-existing: every output exists; SAP is not touched.");
+    }
+    if looped {
+        run_iteration_with(offline, rname, date, opts, today).map(|_| ())
+    } else {
+        run_single_with(offline, rname, date, opts, today).map(|_| ())
+    }
 }
 
 /// The iteration over any [`DayRunner`], with an explicit `today`. Prints the summary and
@@ -148,6 +335,34 @@ fn iterate_core(
     }
     let total = days.len();
     let mut summary = IterationSummary::default();
+    if opts.no_sap {
+        // offline: everything must exist, checked up front so nothing is merged on a gap
+        let mut gaps = Vec::new();
+        for &day in &days {
+            for report in &chain {
+                match runner.complete(report, &RunDate::single(day), today) {
+                    Completeness::Complete => summary.existing.push((day, report.to_string())),
+                    other => {
+                        gaps.push(format!("  {day} {report}: {}", describe_incomplete(&other)))
+                    }
+                }
+            }
+        }
+        if !gaps.is_empty() {
+            return Err(anyhow!(
+                "--no-sap: the output of '{rname}' is not complete under {today}                  (nothing merged):
+{}",
+                gaps.join("
+")
+            ));
+        }
+        summary.done = days.clone();
+        println!(
+            "--no-sap: all {total} day(s) x {} report(s) complete under {today}{}",
+            chain.len(),
+            if opts.merge { ", merging" } else { "" }
+        );
+    }
     println!(
         "Iterating '{rname}' over {total} day(s) ({} .. {}), chain: {}{}",
         days[0],
@@ -156,12 +371,23 @@ fn iterate_core(
         if opts.merge { ", merge afterwards" } else { "" }
     );
 
-    for (i, &day) in days.iter().enumerate() {
+    // `--no-sap` has nothing to run (it was verified above)
+    let run_days: &[NaiveDate] = if opts.no_sap { &[] } else { &days };
+    for (i, &day) in run_days.iter().enumerate() {
         println!("=== Day {}/{total}: {day} ===", i + 1);
         let mut day_ok = true;
         for report in &chain {
             println!("--- {day}: {report} ---");
-            match runner.run(report, day, today) {
+            if opts.skip_existing
+                && runner
+                    .complete(report, &RunDate::single(day), today)
+                    .is_complete()
+            {
+                println!("{day}: {report} exists, skipped");
+                summary.existing.push((day, report.to_string()));
+                continue;
+            }
+            match runner.run(report, &RunDate::single(day), today) {
                 Ok(()) => {}
                 Err(e) if e.downcast_ref::<NoDataError>().is_some() => {
                     let msg = dispatch::describe_error(&e);
@@ -214,6 +440,14 @@ pub fn summary_lines(
         s.skipped.len(),
         usize::from(failed.is_some())
     )];
+    if !s.existing.is_empty() {
+        let e: Vec<String> = s.existing.iter().map(|(d, r)| format!("{r}@{d}")).collect();
+        v.push(format!(
+            "  existing (not re-run): {} report run(s): {}",
+            e.len(),
+            e.join(", ")
+        ));
+    }
     if !s.done.is_empty() {
         let d: Vec<String> = s.done.iter().map(|d| d.to_string()).collect();
         v.push(format!("  done: {}", d.join(", ")));
@@ -284,7 +518,16 @@ mod tests {
     }
 
     fn go(f: &mut Fake, rname: &str, merge: bool) -> Result<IterationSummary> {
-        run_iteration_with(f, rname, &week(), IterOpts { merge }, today())
+        run_iteration_with(
+            f,
+            rname,
+            &week(),
+            IterOpts {
+                merge,
+                ..IterOpts::default()
+            },
+            today(),
+        )
     }
 
     #[derive(Default)]
@@ -295,10 +538,27 @@ mod tests {
         hard: Option<(String, u32)>,
         merges: Vec<(String, Vec<NaiveDate>)>,
         fail_merge_of: Option<String>,
+        /// (report, day-of-month) -> state; absent = Complete when `all_complete`, else None
+        states: Vec<(String, u32, Completeness)>,
+        all_complete: bool,
     }
 
     impl DayRunner for Fake {
-        fn run(&mut self, report: &str, day: NaiveDate, today: NaiveDate) -> Result<()> {
+        fn complete(&mut self, report: &str, date: &RunDate, _today: NaiveDate) -> Completeness {
+            let n = date.date1.format("%d").to_string().parse::<u32>().unwrap();
+            self.states
+                .iter()
+                .find(|(r, d, _)| r == report && *d == n)
+                .map(|(_, _, c)| c.clone())
+                .unwrap_or(if self.all_complete {
+                    Completeness::Complete
+                } else {
+                    Completeness::None
+                })
+        }
+
+        fn run(&mut self, report: &str, date: &RunDate, today: NaiveDate) -> Result<()> {
+            let day = date.date1;
             self.calls.push((report.to_string(), day));
             self.todays.push(today);
             let n = day.format("%d").to_string().parse::<u32>().unwrap();
@@ -458,7 +718,17 @@ mod tests {
         // the verdict is an Err, but the summary keeps the good workbooks
         let e = go(&mut f, "repack", true).unwrap_err();
         assert!(e.to_string().contains("1 merge(s) failed"), "{e:#}");
-        let s = iterate_core(&mut f, "repack", &week(), IterOpts { merge: true }, today()).unwrap();
+        let s = iterate_core(
+            &mut f,
+            "repack",
+            &week(),
+            IterOpts {
+                merge: true,
+                ..IterOpts::default()
+            },
+            today(),
+        )
+        .unwrap();
         let lines = summary_lines(&s, 7, None).join("\n");
         assert!(lines.contains("merge k2xx FAILED") && lines.contains("merged repack"));
         assert!(lines.contains("merged relabel"));
@@ -470,8 +740,11 @@ mod tests {
     fn whole_merge_error_is_a_failure_too() {
         struct Broken(Fake);
         impl DayRunner for Broken {
-            fn run(&mut self, r: &str, d: NaiveDate, t: NaiveDate) -> Result<()> {
+            fn run(&mut self, r: &str, d: &RunDate, t: NaiveDate) -> Result<()> {
                 self.0.run(r, d, t)
+            }
+            fn complete(&mut self, r: &str, d: &RunDate, t: NaiveDate) -> Completeness {
+                self.0.complete(r, d, t)
             }
             fn merge(
                 &mut self,
@@ -484,10 +757,29 @@ mod tests {
             }
         }
         let mut b = Broken(Fake::default());
-        let e = run_iteration_with(&mut b, "xdock", &week(), IterOpts { merge: true }, today())
-            .unwrap_err();
+        let e = run_iteration_with(
+            &mut b,
+            "xdock",
+            &week(),
+            IterOpts {
+                merge: true,
+                ..IterOpts::default()
+            },
+            today(),
+        )
+        .unwrap_err();
         assert!(e.to_string().contains("1 merge(s) failed"));
-        let s = iterate_core(&mut b, "xdock", &week(), IterOpts { merge: true }, today()).unwrap();
+        let s = iterate_core(
+            &mut b,
+            "xdock",
+            &week(),
+            IterOpts {
+                merge: true,
+                ..IterOpts::default()
+            },
+            today(),
+        )
+        .unwrap();
         assert_eq!(s.done.len(), 7);
         assert!(summary_lines(&s, 7, None).join("\n").contains("disk gone"));
     }
@@ -508,10 +800,269 @@ mod tests {
         let s = IterationSummary {
             done: vec![d(1)],
             skipped: vec![(d(2), "xdock".into(), "NO DATA".into())],
+            existing: vec![],
             merged: None,
         };
         let l = summary_lines(&s, 7, Some((d(3), "xdock")));
         assert!(l[0].contains("1 of 7") && l[0].contains("1 skipped") && l[0].contains("1 failed"));
         assert!(l.iter().any(|x| x.contains("failed: 2026-11-03")));
+    }
+
+    fn opts(merge: bool, skip_existing: bool, no_sap: bool) -> IterOpts {
+        IterOpts {
+            merge,
+            skip_existing,
+            no_sap,
+        }
+    }
+
+    fn missing(t: &[&str]) -> Completeness {
+        Completeness::Missing(t.iter().map(|x| x.to_string()).collect())
+    }
+
+    #[test]
+    fn skip_existing_skips_complete_and_runs_the_rest() {
+        let mut f = Fake {
+            states: vec![
+                ("xdock".into(), 1, Completeness::Complete),
+                ("xdock".into(), 2, Completeness::Complete),
+                ("xdock".into(), 3, missing(&["pivot"])), // partial = incomplete
+            ],
+            ..Fake::default()
+        };
+        let s =
+            run_iteration_with(&mut f, "xdock", &week(), opts(true, true, false), today()).unwrap();
+        assert_eq!(
+            names(&f),
+            ["xdock@03", "xdock@04", "xdock@05", "xdock@06", "xdock@07"]
+        );
+        assert_eq!(s.existing.len(), 2);
+        // skipped-existing days count as done and are merged
+        assert_eq!(s.done, week().days());
+        assert_eq!(f.merges[0].1, week().days());
+        assert!(summary_lines(&s, 7, None)
+            .join("\n")
+            .contains("existing (not re-run): 2"));
+    }
+
+    #[test]
+    fn skip_existing_applies_per_report_of_the_chain() {
+        let mut f = Fake {
+            states: vec![
+                ("k2xx".into(), 1, Completeness::Complete),
+                ("relabel".into(), 1, Completeness::Complete),
+            ],
+            ..Fake::default()
+        };
+        run_iteration_with(&mut f, "repack", &week(), opts(false, true, false), today()).unwrap();
+        assert!(!names(&f).contains(&"k2xx@01".to_string()));
+        assert!(!names(&f).contains(&"relabel@01".to_string()));
+        assert!(names(&f).contains(&"repack@01".to_string()));
+        assert_eq!(f.calls.len(), 19);
+    }
+
+    #[test]
+    fn no_sap_never_runs_and_only_merges() {
+        let mut f = Fake {
+            all_complete: true,
+            ..Fake::default()
+        };
+        let s = run_iteration_with(&mut f, "repack", &week(), opts(true, false, true), today())
+            .unwrap();
+        assert!(f.calls.is_empty(), "SAP steps must not run");
+        assert_eq!(s.done, week().days());
+        assert_eq!(f.merges.len(), 1);
+        assert_eq!(merged_paths(&s).len(), 3);
+        // without --merge: verify only
+        let mut f = Fake {
+            all_complete: true,
+            ..Fake::default()
+        };
+        let s = run_iteration_with(&mut f, "xdock", &week(), opts(false, false, true), today())
+            .unwrap();
+        assert!(f.calls.is_empty() && f.merges.is_empty() && s.merged.is_none());
+    }
+
+    #[test]
+    fn no_sap_lists_every_gap_and_merges_nothing() {
+        let mut f = Fake {
+            all_complete: true,
+            states: vec![
+                ("xdock".into(), 3, Completeness::None),
+                ("xdock".into(), 5, missing(&["pivot", "vt11"])),
+            ],
+            ..Fake::default()
+        };
+        let e = run_iteration_with(&mut f, "xdock", &week(), opts(true, false, true), today())
+            .unwrap_err();
+        let m = format!("{e:#}");
+        assert!(m.contains("2026-11-03 xdock: no output files"), "{m}");
+        assert!(
+            m.contains("2026-11-05 xdock: missing table(s): pivot, vt11"),
+            "{m}"
+        );
+        assert!(f.calls.is_empty() && f.merges.is_empty());
+    }
+
+    #[test]
+    fn no_sap_requires_prerequisite_outputs() {
+        // repack complete everywhere, but day 2 has no k2xx output
+        let mut f = Fake {
+            all_complete: true,
+            states: vec![("k2xx".into(), 2, Completeness::None)],
+            ..Fake::default()
+        };
+        let e = run_iteration_with(&mut f, "repack", &week(), opts(true, false, true), today())
+            .unwrap_err();
+        assert!(format!("{e:#}").contains("2026-11-02 k2xx"), "{e:#}");
+        assert!(f.merges.is_empty() && f.calls.is_empty());
+    }
+
+    #[test]
+    fn output_date_reaches_every_run_and_the_merge() {
+        let od = NaiveDate::from_ymd_opt(2026, 10, 1).unwrap();
+        let mut f = Fake::default();
+        run_iteration_with(&mut f, "xdock", &week(), opts(true, false, false), od).unwrap();
+        assert_eq!(f.todays.len(), 8);
+        assert!(f.todays.iter().all(|t| *t == od));
+    }
+
+    #[test]
+    fn single_run_reuse_flags() {
+        let one = RunDate::single(d(5));
+        // plain: runs
+        let mut f = Fake::default();
+        assert_eq!(
+            run_single_with(&mut f, "xdock", &one, IterOpts::default(), today()).unwrap(),
+            SingleOutcome::Ran
+        );
+        // skip-existing: complete = skipped, incomplete = run
+        let mut f = Fake {
+            all_complete: true,
+            ..Fake::default()
+        };
+        let o = opts(false, true, false);
+        assert_eq!(
+            run_single_with(&mut f, "xdock", &one, o, today()).unwrap(),
+            SingleOutcome::Existing
+        );
+        assert!(f.calls.is_empty());
+        let mut f = Fake {
+            states: vec![("xdock".into(), 5, missing(&["pivot"]))],
+            all_complete: true,
+            ..Fake::default()
+        };
+        assert_eq!(
+            run_single_with(&mut f, "xdock", &one, o, today()).unwrap(),
+            SingleOutcome::Ran
+        );
+        // no-sap: ready or error, never runs
+        let o = opts(false, false, true);
+        let mut f = Fake {
+            all_complete: true,
+            ..Fake::default()
+        };
+        assert_eq!(
+            run_single_with(&mut f, "xdock", &one, o, today()).unwrap(),
+            SingleOutcome::Ready
+        );
+        let mut f = Fake::default();
+        let e = run_single_with(&mut f, "xdock", &one, o, today()).unwrap_err();
+        assert!(e.to_string().contains("no output files"), "{e}");
+        assert!(f.calls.is_empty());
+    }
+
+    #[test]
+    fn routing_never_connects_with_no_sap() {
+        let mut live_called = false;
+        let no_sap = opts(true, false, true);
+        let mut f = Fake {
+            all_complete: true,
+            ..Fake::default()
+        };
+        run_rname_routed(&mut f, "xdock", &week(), true, no_sap, today(), || {
+            live_called = true;
+            Ok(())
+        })
+        .unwrap();
+        assert!(!live_called, "no-sap must not create a SAP session");
+        assert!(f.calls.is_empty() && f.merges.len() == 1);
+
+        // incomplete + no-sap: still no session, an error
+        let mut f = Fake::default();
+        let r = run_rname_routed(&mut f, "xdock", &week(), true, no_sap, today(), || {
+            live_called = true;
+            Ok(())
+        });
+        assert!(r.is_err() && !live_called);
+
+        // single date, no-sap
+        let mut f = Fake {
+            all_complete: true,
+            ..Fake::default()
+        };
+        let one = RunDate::single(d(1));
+        let o = opts(false, false, true);
+        run_rname_routed(&mut f, "xdock", &one, false, o, today(), || {
+            live_called = true;
+            Ok(())
+        })
+        .unwrap();
+        assert!(!live_called);
+    }
+
+    #[test]
+    fn routing_connects_only_when_something_is_missing() {
+        let mut live = 0;
+        // legacy: always live
+        let mut f = Fake::default();
+        run_rname_routed(
+            &mut f,
+            "xdock",
+            &week(),
+            true,
+            IterOpts::default(),
+            today(),
+            || {
+                live += 1;
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert_eq!(live, 1);
+        // skip-existing with one gap: live
+        let mut f = Fake {
+            all_complete: true,
+            states: vec![("xdock".into(), 4, Completeness::None)],
+            ..Fake::default()
+        };
+        let o = opts(false, true, false);
+        run_rname_routed(&mut f, "xdock", &week(), true, o, today(), || {
+            live += 1;
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(live, 2);
+        // skip-existing, all complete: offline, no live
+        let mut f = Fake {
+            all_complete: true,
+            ..Fake::default()
+        };
+        let o = opts(true, true, false);
+        run_rname_routed(&mut f, "xdock", &week(), true, o, today(), || {
+            live += 1;
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(live, 2);
+        assert!(f.calls.is_empty() && f.merges.len() == 1);
+    }
+
+    #[test]
+    fn offline_runner_refuses_to_run() {
+        let e = OfflineDayRunner
+            .run("xdock", &RunDate::single(d(1)), today())
+            .unwrap_err();
+        assert!(e.to_string().contains("offline"));
     }
 }

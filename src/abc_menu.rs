@@ -134,7 +134,10 @@ fn run_report_interactive(session: &GuiSession, name: &str) {
         }
     }
     if iterate {
-        let opts = crate::abc::iterate::IterOpts { merge };
+        let opts = crate::abc::iterate::IterOpts {
+            merge,
+            ..Default::default()
+        };
         if let Err(e) = crate::abc::iterate::run_iteration(session, name, &date, opts) {
             eprintln!("{name} failed: {}", dispatch::describe_error(&e));
         }

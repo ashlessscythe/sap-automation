@@ -73,22 +73,19 @@ pub fn merge_report(
             .iter()
             .map(|t| registry::output_path(reports_dir, def, today, &single, t))
             .collect();
-        let missing: Vec<&str> = names
-            .iter()
-            .zip(&paths)
-            .filter(|(_, p)| !p.is_file())
-            .map(|(t, _)| *t)
-            .collect();
-        if missing.len() == names.len() {
-            days_missing.push(day);
-            continue;
-        }
-        if !missing.is_empty() {
-            return Err(anyhow!(
-                "merge {}: {label} has incomplete output, missing table(s): {}",
-                def.name,
-                missing.join(", ")
-            ));
+        match registry::output_complete(reports_dir, def, today, &single) {
+            registry::Completeness::None => {
+                days_missing.push(day);
+                continue;
+            }
+            registry::Completeness::Missing(missing) => {
+                return Err(anyhow!(
+                    "merge {}: {label} has incomplete output, missing table(s): {}",
+                    def.name,
+                    missing.join(", ")
+                ));
+            }
+            registry::Completeness::Complete => {}
         }
         for (i, p) in paths.iter().enumerate() {
             let text =

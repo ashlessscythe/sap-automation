@@ -201,7 +201,30 @@ submenu asks for both (y/N).
 * **Not related** to `--run-loop`, `--run-sequence` or `--iterations`, which repeat the config-driven TCode loop/sequence; `--loop`
   and `--merge` only apply together with `--rname` and cannot be combined with those flags.
 
-Not verified on a live system yet; see `docs/private/abc_iteration_plan.md`.
+#### Reusing existing outputs (`--no-sap`, `--skip-existing`, `--output-date`)
+
+Work on the per-day **TSV files** only (nothing is re-processed from raw exports). A day+report is **complete** when ALL of its output
+tables exist as files (header-only files count; a partial set is incomplete) - the same rule the merge uses.
+
+* `--output-date=YYYY-MM-DD`: the date folder (`<reports_dir>\<folder>\<DATE>\<rName>\...`) to read and write instead of today's. Applies
+  to single runs, `--loop`, `--merge`, `--skip-existing` and `--no-sap`; `relabel` / `repack` re-read the k2xx / relabel TSVs from the same folder.
+  Without it the real today is used (unchanged behaviour).
+* `--skip-existing` (resume): each complete day+report is logged "exists, skipped" and not run; incomplete ones run in SAP (and overwrite).
+  Skipped days still count as done and are merged. Also works for a single run. When everything is already complete SAP is not connected
+  at all. A `NO DATA` day writes no files, so it is tried again on every resume.
+* `--no-sap`: strict offline, no SAP session is created (SAP GUI may be closed). Needs `--rname`. Every day and every report of the chain
+  (prerequisites too) must be complete, else ONE error lists the missing day / report / tables and nothing is merged. With `--loop --merge` it
+  re-merges an exported week; with `--loop` alone, or a single date, it only verifies the files. Not with `--skip-existing`; with
+  `--output-format=xlsx` it is an error (the per-day workbook is not regenerated offline; `--merge` always writes its xlsx).
+* Unlike `--run-loop` / `--run-sequence` / `--iterations` (config-driven TCode repetition) these flags only reuse or redirect `--rname` outputs.
+* Not in the TUI.
+
+```
+./sap_automation.exe --rname=xdock --run-date=wk46 --loop --merge --no-sap --output-date=2026-11-12   # re-merge with SAP closed
+./sap_automation.exe --rname=xdock --run-date=wk46 --loop --merge --skip-existing --output-date=2026-11-12   # resume after a stop
+```
+
+Not verified on a live system yet (including the reuse flags); see `docs/private/abc_iteration_plan.md`.
 
 ## Sequence Menu Option IDs
 

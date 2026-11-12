@@ -562,7 +562,12 @@ pub fn misc_summary_lines(name: &str, s: &InvSummary) -> Vec<String> {
 /// written. Thin: attach/login checks are the caller's; everything else is tested through the
 /// pieces above.
 pub fn run_report(session: &GuiSession, name: &str, date: &RunDate) -> Result<Vec<PathBuf>> {
-    run_report_on(session, name, date, chrono::Local::now().date_naive())
+    run_report_on(
+        session,
+        name,
+        date,
+        crate::utils::cli_overrides::effective_today(),
+    )
 }
 
 /// Same as [`run_report`] with an explicit `today` (the date folder of the outputs). A per-day

@@ -254,21 +254,25 @@ fn run_unattended_rname(
     println!("SAP Automation - Unattended Report Mode");
     println!("=======================================");
 
-    if keep_awake {
-        match keep_awake::enable_keep_awake(true) {
-            Ok(_) => println!("Keep-awake enabled - system will stay awake during execution"),
-            Err(e) => eprintln!("Warning: Failed to enable keep-awake: {e}"),
+    // --no-sap (and --skip-existing with everything present) are handled without a session:
+    // the closure below (keep-awake + SAP connection) is only called when SAP is needed.
+    sap_automation::utils::unattended_runner::run_rname_entry(rname, date, || {
+        if keep_awake {
+            match keep_awake::enable_keep_awake(true) {
+                Ok(_) => println!("Keep-awake enabled - system will stay awake during execution"),
+                Err(e) => eprintln!("Warning: Failed to enable keep-awake: {e}"),
+            }
         }
-    }
 
-    let (_com_instance, _wrapper, _engine, _connection, session) = init_sap_connection()?;
+        let (_com_instance, _wrapper, _engine, _connection, session) = init_sap_connection()?;
 
-    sap_automation::utils::unattended_runner::run_rname_unattended(
-        &session,
-        rname,
-        date,
-        skip_sap_check,
-    )?;
+        sap_automation::utils::unattended_runner::run_rname_unattended(
+            &session,
+            rname,
+            date,
+            skip_sap_check,
+        )
+    })?;
 
     println!("Unattended report execution completed successfully.");
     Ok(())

@@ -162,13 +162,17 @@ The file extension drives the parser:
 
 | `--loop` | With `--rname`: one run **per day** of the `--run-date` range or week (7 days for `WKnn`) instead of one run over the range. Per day the prerequisite reports run first (`k2xx` -> `relabel` -> `repack`). A day with no data is skipped; any other error stops the iteration with no merge. Needs a range or week. Not `--run-loop`. |
 | `--merge` | With `--loop` (required): after the per-day runs write one `<DATE>_<RNAME>_MERGED.xlsx` per report of the chain, with every output table as a sheet and a leading `run_date` column (ISO `yyyy-mm-dd`). Not `--iterations`. |
+| `--no-sap` | With `--rname`: strict offline, SAP is never touched (no session; SAP GUI may be closed). Every day and report of the chain (prerequisites too) must have ALL its output TSVs, else an error lists the missing day/report/tables and nothing is merged. With `--loop --merge` re-merges an exported week; with `--loop` alone or a single date only verifies. Conflicts with `--skip-existing`; an error with `--output-format=xlsx`. |
+| `--skip-existing` | With `--rname`: resume. A day+report whose output tables are all present is logged "exists, skipped" and not run; the rest runs in SAP. Skipped days count as done and are merged. Works with `--loop` and for a single run. Conflicts with `--no-sap`. |
+| `--output-date=<YYYY-MM-DD>` | With `--rname`: the output date folder to read/write instead of today (runs, `--loop`, `--merge`, `--skip-existing`, `--no-sap`; relabel/repack read the k2xx/relabel TSVs of that folder). |
 | `--output-format=<tsv\|xlsx>` | Output of a report run. `tsv` (default); `xlsx` additionally writes `<DATE>_<RNAME>.xlsx` (every output table a sheet) next to the TSV files. |
 
 `--loop` / `--merge` are unrelated to `--run-loop`, `--run-sequence` and `--iterations` (the config-driven TCode loop/sequence) and conflict with
-`--run-loop` / `--run-sequence`.
+`--run-loop` / `--run-sequence`. `--no-sap` / `--skip-existing` / `--output-date` only reuse or redirect the `--rname` TSV outputs; they are
+likewise unrelated to those (config-driven) loops and are not in the TUI.
 
 `--rname` and `--run-date` require each other. Allowed with them: `--skip-sap-check`, `--keep-awake`, `--reports-dir`,
-`--date-format`, `--timezone`, `--ignore-display-error`, `--date-range-buffer`, `--use-clipboard`, `--output-format`, `--loop`, `--merge`. Defaults for variants, layouts, warehouse and clean-up come from the
+`--date-format`, `--timezone`, `--ignore-display-error`, `--date-range-buffer`, `--use-clipboard`, `--output-format`, `--loop`, `--merge`, `--no-sap`, `--skip-existing`, `--output-date`. Defaults for variants, layouts, warehouse and clean-up come from the
 optional `[abc.mustgo]` / `[abc.xdock]` / `[abc.toyota]` / `[abc.misc]` / `[abc.k2xx]` / `[abc.relabel]` / `[abc.repack]` section (see [CONFIG.md](CONFIG.md)); there are no per-tcode flags for a report.
 
 ```bash
@@ -187,6 +191,8 @@ optional `[abc.mustgo]` / `[abc.xdock]` / `[abc.toyota]` / `[abc.misc]` / `[abc.
 ./sap_automation.exe --rname=xdock --run-date=wk40 --loop                        # 7 separate per-day runs
 ./sap_automation.exe --rname=xdock --run-date=wk40 --loop --merge                # ... plus WK_40_XDOCK_MERGED.xlsx
 ./sap_automation.exe --rname=repack --run-date=wk40 --loop --merge               # per day k2xx, relabel, repack; 3 merged files
+./sap_automation.exe --rname=xdock --run-date=wk46 --loop --merge --no-sap --output-date=2026-11-12        # re-merge, SAP closed
+./sap_automation.exe --rname=xdock --run-date=wk46 --loop --merge --skip-existing --output-date=2026-11-12 # resume after a stop
 ```
 
 **Per-day iteration (`--loop`, `--merge`).** Each day is a single-date run of the whole chain (`k2xx` -> `relabel` -> `repack` for repack; a

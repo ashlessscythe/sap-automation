@@ -160,6 +160,17 @@ pub struct CliOverrides {
 
     /// `--merge` (needs `--loop`): merge the per-day outputs into one xlsx per report.
     pub merge: bool,
+
+    /// `--no-sap` (needs `--rname`): strict offline, SAP is never touched; the per-day TSVs of
+    /// the report chain must already exist (re-merge / verify an exported week).
+    pub no_sap: bool,
+
+    /// `--skip-existing` (needs `--rname`): resume; a day+report whose output tables are all
+    /// present is not run again.
+    pub skip_existing: bool,
+
+    /// `--output-date`: the date folder of the outputs instead of the real today.
+    pub output_date: Option<NaiveDate>,
 }
 
 impl CliOverrides {
@@ -366,6 +377,15 @@ impl CliOverrides {
         if self.merge {
             parts.push("--merge".to_string());
         }
+        if self.no_sap {
+            parts.push("--no-sap".to_string());
+        }
+        if self.skip_existing {
+            parts.push("--skip-existing".to_string());
+        }
+        if let Some(d) = self.output_date {
+            parts.push(format!("--output-date={}", d.format("%Y-%m-%d")));
+        }
         if parts.is_empty() {
             None
         } else {
@@ -395,6 +415,26 @@ pub fn iterate_loop() -> bool {
 /// Is `--merge` (merge the per-day outputs of `--loop`) active?
 pub fn merge() -> bool {
     cli_overrides().merge
+}
+
+/// Is `--no-sap` (strict offline, never touch SAP) active?
+pub fn no_sap() -> bool {
+    cli_overrides().no_sap
+}
+
+/// Is `--skip-existing` (resume: skip complete day+report outputs) active?
+pub fn skip_existing() -> bool {
+    cli_overrides().skip_existing
+}
+
+/// `--output-date`, when given.
+pub fn output_date() -> Option<NaiveDate> {
+    cli_overrides().output_date
+}
+
+/// The date folder of the outputs: `--output-date`, else the real today. Capture it once per run.
+pub fn effective_today() -> NaiveDate {
+    output_date().unwrap_or_else(|| chrono::Local::now().date_naive())
 }
 
 /// Active `--output-format` (tsv unless the flag was passed).

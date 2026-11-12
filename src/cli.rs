@@ -55,6 +55,29 @@ pub struct Cli {
     #[arg(long = "merge", requires = "iterate_loop")]
     pub merge: bool,
 
+    /// STRICT OFFLINE for `--rname`: SAP is never touched (no session is created, SAP GUI may be
+    /// closed). The final TSVs of the report and its prerequisites must already exist for every
+    /// day (all output tables), else it is an error listing what is missing. With `--loop
+    /// --merge` it re-merges an exported week; with `--loop` alone or a single date it only
+    /// verifies the files. Use `--output-date` for the date folder. Not combinable with
+    /// `--skip-existing` or `--output-format=xlsx`.
+    #[arg(long = "no-sap", requires = "rname", conflicts_with = "skip_existing")]
+    pub no_sap: bool,
+
+    /// RESUME for `--rname`: a day+report whose output tables are ALL present is not run again
+    /// ("exists, skipped"); SAP only runs for what is missing or incomplete (e.g. after a hard
+    /// error stop). Skipped days still count for the summary and `--merge`. Works with `--loop`
+    /// and for a single run. Not combinable with `--no-sap`.
+    #[arg(long = "skip-existing", requires = "rname")]
+    pub skip_existing: bool,
+
+    /// Date folder of the outputs (`<reports_dir>\<folder>\<DATE>\<rName>\...`) to read and
+    /// write instead of today's, `YYYY-MM-DD`. For `--rname` runs, `--loop`, `--merge`,
+    /// `--skip-existing` and `--no-sap` (relabel / repack re-read the k2xx / relabel TSVs of this
+    /// folder too).
+    #[arg(long, value_name = "YYYY-MM-DD", requires = "rname")]
+    pub output_date: Option<String>,
+
     /// Override target TCode (case-insensitive: vt11, VL06O, y_dn3_47000149, ...).
     /// On its own runs the TCode auto-flow once. With --run-loop, drives the loop.
     #[arg(long)]
@@ -265,6 +288,8 @@ impl Cli {
         let vt11_closed_date = parse_run_date_opt("--vt11-closed-date", &self.vt11_closed_date)?;
         let vt11_created_date = parse_run_date_opt("--vt11-created-date", &self.vt11_created_date)?;
 
+        let output_date = parse_iso_date_opt("--output-date", self.output_date.as_deref())?;
+
         let (rname, run_date) = parse_rname_opts(self.rname.as_deref(), self.run_date.as_deref())?;
 
         Ok(CliOverrides {
@@ -305,6 +330,9 @@ impl Cli {
             output_format: self.output_format,
             iterate_loop: self.iterate_loop,
             merge: self.merge,
+            no_sap: self.no_sap,
+            skip_existing: self.skip_existing,
+            output_date,
         })
     }
 }
@@ -332,6 +360,11 @@ impl Cli {
         if o.rname_dir.is_some() {
             return Err(anyhow!(
                 "--rname-dir can't be used with --rname (outputs go under the reports dir)"
+            ));
+        }
+        if o.no_sap && o.output_format == Some(OutputFormat::Xlsx) {
+            return Err(anyhow!(
+                "--no-sap with --output-format=xlsx needs SAP-free regeneration of the per-day                  workbooks, which is not supported yet (--merge always writes its merged xlsx)"
             ));
         }
         if o.iterate_loop {
@@ -521,6 +554,65 @@ mod rname_tests {
             "--loop"
         ])
         .is_err());
+    }
+
+    #[test]
+    fn offline_resume_and_output_date_flags() {
+        let o = ov(&[
+            "--rname=xdock",
+            "--run-date=WK45/2026",
+            "--loop",
+            "--merge",
+            "--no-sap",
+            "--output-date=2026-11-12",
+        ])
+        .unwrap();
+        assert!(o.no_sap && !o.skip_existing && o.merge);
+        assert_eq!(
+            o.output_date,
+            Some(NaiveDate::from_ymd_opt(2026, 11, 12).unwrap())
+        );
+        let line = o.summary_line().unwrap();
+        assert!(line.contains("--no-sap") && line.contains("--output-date=2026-11-12"));
+        let o = ov(&["--rname=xdock", "--run-date=WK45/2026", "--skip-existing"]).unwrap();
+        assert!(o.skip_existing && !o.no_sap && o.output_date.is_none());
+        // single run
+        assert!(ov(&["--rname=xdock", "--run-date=2026-11-05", "--no-sap"]).is_ok());
+    }
+
+    #[test]
+    fn offline_resume_and_output_date_rules() {
+        fn with<'a>(extra: &[&'a str]) -> Vec<&'a str> {
+            let mut v = vec!["--rname=xdock", "--run-date=WK45"];
+            v.extend_from_slice(extra);
+            v
+        }
+        // conflict
+        assert!(parse(&with(&["--no-sap", "--skip-existing"])).is_err());
+        // bad date formats
+        for bad in [
+            "--output-date=12.11.2026",
+            "--output-date=2026-13-01",
+            "--output-date=",
+        ] {
+            assert!(ov(&with(&[bad])).is_err(), "{bad}");
+        }
+        let e = ov(&with(&["--output-date=nope"])).unwrap_err().to_string();
+        assert!(e.contains("--output-date"), "{e}");
+        // all three need --rname
+        assert!(parse(&["--no-sap"]).is_err());
+        assert!(parse(&["--skip-existing"]).is_err());
+        assert!(parse(&["--output-date=2026-11-12"]).is_err());
+        assert!(parse(&["--tcode=vt11", "--no-sap"]).is_err());
+        // xlsx cannot be regenerated offline
+        let e = ov(&with(&["--no-sap", "--output-format=xlsx"]))
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("--no-sap") && e.contains("not supported"), "{e}");
+        // existing flags unaffected
+        let o = ov(&with(&["--loop", "--merge", "--output-format=xlsx"])).unwrap();
+        assert!(!o.no_sap && !o.skip_existing && o.output_date.is_none());
+        assert!(!parse(&["--run-loop"]).unwrap().no_sap);
     }
 
     #[test]

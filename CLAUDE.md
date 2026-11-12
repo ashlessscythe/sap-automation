@@ -39,9 +39,9 @@ Dependency pins matter: `aes = "=0.9.2"` is pinned because newer needs rustc 1.8
 
 ## ABC headless work
 
-`mustgo`, `xdock`, `toyota`, `misc`, `k2xx` and `relabel` are runnable and **have been run live by the owner** (k2xx and relabel confirmed working 2026-11-11): `sap_automation --rname=<mustgo|xdock|toyota|misc> --run-date=<DATE|A..B|WKnn>`
+`mustgo`, `xdock`, `toyota`, `misc`, `k2xx` and `relabel` are runnable and **have been run live by the owner** (k2xx and relabel confirmed working 2026-11-11); `repack` is built and golden-tested offline but **not run live yet**: `sap_automation --rname=<mustgo|xdock|toyota|misc> --run-date=<DATE|A..B|WKnn>`
 (also TUI > ABC Headless; optional `--date-range-buffer=<n>`). Code is unit/golden tested offline (`mustgo` reproduces spec 9.3,
-`xdock` spec 9.6 with documented differences to the xlsx). `k2xx` (v0.8.0) is golden-tested offline against the owner's **real exports and macro xlsx** of 2026-11-05 (`tests/fixtures/k2xx/real/`; VL06O/ZMDETPC merge, VT11 and ZVT11 equal the macro sheets) and has run live. Owner decision: `k2xx` also writes a plant pivot of `total` (departs from spec 7.0 item 1). `repack` is not built yet. The
+`xdock` spec 9.6 with documented differences to the xlsx). `k2xx` (v0.8.0) is golden-tested offline against the owner's **real exports and macro xlsx** of 2026-11-05 (`tests/fixtures/k2xx/real/`; VL06O/ZMDETPC merge, VT11 and ZVT11 equal the macro sheets) and has run live. Owner decision: `k2xx` also writes a plant pivot of `total` (departs from spec 7.0 item 1). `repack` (built 2026-11-11) is golden-tested offline against the owner's **real exports and macro xlsx** of 2026-11-05 (`tests/fixtures/repack/real/`, 280 rows equal). The
 "Live verification checklist" sections in `docs/private/abc_headless_plan.md` list the SAP control ids that come from the spec only.
 Exports are read as UTF-8, else Windows-1252 (`raw::decode_export`). Owner decisions and live findings: "RESUME HERE" in the plan.
 
@@ -50,7 +50,7 @@ selection mask, filter/dedup/lookup/sort), `mustgo` (pure stages), `raw` (loader
 `*_ALIASES` map the short list titles to canonical names), `runner` (the `SapSteps` seam, `run_mustgo`, `NoDataError`),
 `adapters` (`RealSapSteps` + `MustgoSapConfig` over the tcode steps), `dispatch` (CLI > `[abc.<report>]` > `[global]` resolver,
 `run_report`), `inv` (pure stages of the INV reports: VL06O prepare, ZMDETPC merge, pivot, trailers, misc regex), `inv_runner`
-(`InvSteps` seam of its own, `run_xdock` / `run_toyota` over one shared flow; `MiscSteps` + `run_misc` without ZMDETPC). Also `src/lt23.rs` and `src/zmdetpc.rs` (new tcodes), `src/utils/export_outcome.rs` (`ExportOutcome`, outcome classifiers, paste-list
+(`InvSteps` seam of its own, `run_xdock` / `run_toyota` over one shared flow; `MiscSteps` + `run_misc` without ZMDETPC), `relabel` / `relabel_runner`, `repack` / `repack_runner` (see below). Also `src/lt23.rs` and `src/zmdetpc.rs` (new tcodes), `src/utils/export_outcome.rs` (`ExportOutcome`, outcome classifiers, paste-list
 helpers) and `src/abc_menu.rs` (TUI submenu).
 
 Rules: tcode steps expose `run_export_outcome` (the bool `run_export` wraps it) and are config-agnostic: everything comes in via
@@ -68,7 +68,13 @@ Fixtures: `tests/fixtures/mustgo/` holds xlsx-derived TSVs (approximate stand-in
 re-reads the k2xx `vl06o` TSV of the same run (owner decision) and stops with "Run k2xx first" if it is missing/empty. Spec 9.5 wins over 5.6; the
 macro's AL55 leaks, the extra `sn_del` row and `save full_label` are deliberately not reproduced; yellow is an explicit `yellow` column of `combined`.
 `ZMDESNRParams.history_serials` + `tab_number = Some(1)` is the by-serial/History flow (spec-only control ids). Fixtures `tests/fixtures/relabel/`
-are synthetic; tests `relabel_golden`, `relabel_runner`.
+are synthetic plus `real/` (byte-exact, anonymised); tests `relabel_golden`, `relabel_real`, `relabel_runner`.
+
+`repack` (`abc/repack.rs` pure stages, `repack_runner.rs`: `RepackSteps` seam, `run_repack`; `--rname=repack`, `[abc.repack]` with the relabel plant keys plus `history_warehouse`, single run date only)
+re-reads the k2xx `vl06o` TSV (deliveries) **and** relabel's `combined` TSV (`yellow = 1` rows = the parent exclusion list, only sent with at least two) of the same run and stops with "Run k2xx first" / "Run relabel first" if missing/empty. Flow: ZMDESNR by deliveries excluding parents
+-> blocks R1 (non-label plant, no parent, net weight < 50), History rows (ZMDESNR by serial / History for R2 = the same with > 50; keep `history_warehouse` + `UNP`), R3 (`PAL`), KC*/SC* container deletion from those, R4 (label plant, no pallet, not `KC*`) -> `export_date` -> pivot count by customer x plant;
+outputs `snr_repack`, `repack_sn`, `pivot`. Block order, no sorting, no alias marks or extra row (decisions 33-35). Fixtures `tests/fixtures/repack/` (`real/` byte-exact, anonymised; `expected_real_*` from the macro xlsx; stand-in `k2xx_vl06o_stand_in.tsv` and `relabel_combined_stand_in.tsv`; `synthetic/` edge cases),
+tests `repack_real`, `repack_golden`, `repack_runner`. The parent-exclusion typing in `zmdesnr.rs` is one serial per visible row (no scroll paste): unverified live.
 
 **Resume from `docs/private/abc_headless_plan.md` ("RESUME HERE")**; the spec is `docs/private/abc_headless_migration_spec.md`.
 

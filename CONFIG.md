@@ -200,6 +200,27 @@ alias_plant = "AL55"             # label_plant rows of an alias customer count a
 alias_customers = ["ALIAS_A*", "ALIAS_B*", "ALIAS_C*"]   # customer patterns (case-insensitive, `*` and `?` wildcards)
 ```
 
+### ABC Headless Section (`[abc.repack]`)
+
+Optional, same rules as the other `[abc.<report>]` sections. Used only by `--rname=repack` (and the ABC Headless > repack menu
+entry). `repack` reads the `VL06O` table written by `k2xx` and the `combined` table written by `relabel` for the same run date and
+day from `<reports_dir>\K2XX\<today>\k2xx\` and `...\relabel\`, so `reports_dir` must be the same as for those runs. The History
+call (ZMDESNR by serial) uses the same variant and layout as the call by deliveries. The plant keys are the same as in
+`[abc.relabel]` (the alias rule is the same), `history_warehouse` is the warehouse number of the History rows that are kept
+(status `UNP`). Not run against live SAP yet.
+
+```toml
+[abc.repack]
+zmdesnr_variant = "ZMDESNR_REPACK_VARIANT" # ZMDESNR variant of both calls
+zmdesnr_layout = "ZMDESNR_REPACK_LAYOUT"   # ZMDESNR layout of both calls (see the live verification checklist)
+delete_exports = true            # delete each temporary export after it was loaded
+ignore_display_error = true      # treat "no display authorization" as harmless
+label_plant = "PL55"             # plant of the rows of block R4
+alias_plant = "AL55"             # label_plant rows of an alias customer count as this plant while the blocks are built
+alias_customers = ["ALIAS_A*", "ALIAS_B*", "ALIAS_C*"]   # customer patterns (case-insensitive, `*` and `?` wildcards)
+history_warehouse = "WH01"       # keep History rows of this warehouse number (and status UNP)
+```
+
 **All site-specific names (variants, layouts, warehouse, plant codes, customer patterns) come from `config.toml`.** The built-in
 defaults are neutral placeholders (`VT11_XDOCK_VARIANT`, `PL55`, ...), so a run without the matching keys will fail in SAP or
 treat no row as special. `config.toml.example` lists every key; keep your real values in the git-ignored `config.toml`.

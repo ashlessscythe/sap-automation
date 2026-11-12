@@ -147,3 +147,11 @@ zmdesnr_layout = "ZMDESNR_RELABEL_LAYOUT"
 label_plant = "PL55"                # plant of the label rows
 alias_plant = "AL55"                # label_plant rows of an alias customer count as this plant
 alias_customers = ["ALIAS_A*", "ALIAS_B*", "ALIAS_C*"]
+
+[abc.repack]                        # needs the k2xx and relabel output of the same run
+zmdesnr_variant = "ZMDESNR_REPACK_VARIANT"
+zmdesnr_layout = "ZMDESNR_REPACK_LAYOUT"
+label_plant = "PL55"                # same keys as [abc.relabel]
+alias_plant = "AL55"
+alias_customers = ["ALIAS_A*", "ALIAS_B*", "ALIAS_C*"]
+history_warehouse = "WH01"          # History rows of this warehouse number (status UNP) are kept

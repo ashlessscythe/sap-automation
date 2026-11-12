@@ -16,3 +16,4 @@ pub mod repack_runner;
 pub mod run;
 pub mod runner;
 pub mod table;
+pub mod xlsx_out;

@@ -2,7 +2,7 @@ use anyhow::{anyhow, Result};
 use chrono::{Datelike, NaiveDate};
 use clap::{Parser, Subcommand};
 
-use crate::utils::cli_overrides::CliOverrides;
+use crate::utils::cli_overrides::{CliOverrides, OutputFormat};
 
 #[derive(Parser)]
 #[command(name = "sap_automation")]
@@ -182,6 +182,12 @@ pub struct Cli {
     )]
     pub use_clipboard: Option<bool>,
 
+    /// Output format of a headless `--rname` report run: `tsv` (default) writes the TSV
+    /// files only; `xlsx` writes the TSV files (always the canonical output) AND one
+    /// `<DATE>_<RNAME>.xlsx` workbook next to them with every output table as a sheet.
+    #[arg(long, value_enum, value_name = "FORMAT")]
+    pub output_format: Option<OutputFormat>,
+
     /// ZMDESNR ONLY: which results tab to select (e.g. 2, 7). Overrides
     /// `[tcode.ZMDESNR].tab_number`. When neither this flag nor config sets a
     /// value, the in-code default is 2. The tab is selected only AFTER the
@@ -280,6 +286,7 @@ impl Cli {
             bin_filter: self.bin_filter.clone(),
             date_range_buffer: self.date_range_buffer,
             use_clipboard: self.use_clipboard,
+            output_format: self.output_format,
         })
     }
 }

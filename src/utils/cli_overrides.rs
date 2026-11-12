@@ -13,6 +13,16 @@ use crate::abc::run::RunDate;
 use chrono::NaiveDate;
 use std::sync::OnceLock;
 
+/// `--output-format`: extra output next to the canonical TSV files of a headless report run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, clap::ValueEnum)]
+pub enum OutputFormat {
+    /// TSV files only (default, legacy behaviour).
+    #[default]
+    Tsv,
+    /// TSV files plus one `<DATE>_<RNAME>.xlsx` workbook with every output table as a sheet.
+    Xlsx,
+}
+
 static UNATTENDED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// Mark the process as an unattended run (`--tcode`, loop, sequence, `--rname`): no prompts.
@@ -140,6 +150,9 @@ pub struct CliOverrides {
     /// Windows clipboard (Shift+F12 "upload from clipboard") instead of typing row by row.
     /// `None` = off (legacy behaviour).
     pub use_clipboard: Option<bool>,
+
+    /// `--output-format`: `tsv` (default) or `xlsx` (TSV plus an xlsx workbook per report run).
+    pub output_format: Option<OutputFormat>,
 }
 
 impl CliOverrides {
@@ -337,6 +350,9 @@ impl CliOverrides {
         if let Some(v) = self.use_clipboard {
             parts.push(format!("--use-clipboard={v}"));
         }
+        if let Some(OutputFormat::Xlsx) = self.output_format {
+            parts.push("--output-format=xlsx".to_string());
+        }
         if parts.is_empty() {
             None
         } else {
@@ -356,6 +372,11 @@ pub fn set_cli_overrides(overrides: CliOverrides) {
 /// Is `--use-clipboard` active? Off unless the flag was passed (true / 1 / yes / on).
 pub fn use_clipboard() -> bool {
     cli_overrides().use_clipboard.unwrap_or(false)
+}
+
+/// Active `--output-format` (tsv unless the flag was passed).
+pub fn output_format() -> OutputFormat {
+    cli_overrides().output_format.unwrap_or_default()
 }
 
 /// Returns the active overrides, or an empty default when `main` hasn't

@@ -244,6 +244,25 @@ pub fn tables(rname: &str) -> &'static [&'static str] {
     find_report(rname).map_or(&[], |def| def.output_tables)
 }
 
+/// Single-run workbook (`--output-format=xlsx`):
+/// `<reports_dir>\<folder>\<today yyyy-mm-dd>\<rName>\<DATE>_<RNAME>.xlsx`.
+pub fn workbook_path(
+    reports_dir: &Path,
+    def: &ReportDef,
+    today: NaiveDate,
+    run_date: &RunDate,
+) -> PathBuf {
+    reports_dir
+        .join(def.folder)
+        .join(today.format("%Y-%m-%d").to_string())
+        .join(def.name)
+        .join(format!(
+            "{}_{}.xlsx",
+            date_label(run_date),
+            def.name.to_ascii_uppercase()
+        ))
+}
+
 /// Merged workbook: `<reports_dir>\<folder>\<today yyyy-mm-dd>\<rName>\<label>_<RNAME>_MERGED.xlsx`
 /// (`label` = `date_label`, i.e. `WK_<n>` for a week).
 pub fn merged_path(
@@ -292,6 +311,23 @@ mod tests {
         for n in report_names() {
             assert!(tables(n).contains(&"pivot"));
         }
+    }
+
+    #[test]
+    fn workbook_paths() {
+        let single = RunDate {
+            date1: d(2026, 11, 5),
+            date2: None,
+        };
+        let p = workbook_path(Path::new("r"), &XDOCK, d(2026, 11, 10), &single);
+        assert_eq!(
+            p,
+            Path::new("r")
+                .join("INV")
+                .join("2026-11-10")
+                .join("xdock")
+                .join("11-05-2026_XDOCK.xlsx")
+        );
     }
 
     #[test]

@@ -9,6 +9,7 @@ use super::ops::{self, FilterOpts, LookupSpec, Which};
 use super::registry::{self, MUSTGO};
 use super::run::RunDate;
 use super::table::{ColPos, Table};
+use super::xlsx_out;
 use crate::utils::export_outcome::paste_value_list;
 use anyhow::{anyhow, Context, Result};
 use chrono::NaiveDate;
@@ -216,6 +217,17 @@ pub fn write_outputs(
             return Err(anyhow!("write {}: {e}", path.display()));
         }
         paths.push(path);
+    }
+    let sheets = [("lt23", lt23), ("snr_copy", snr_copy), ("pivot", pivot)];
+    match xlsx_out::write_report_workbook(&MUSTGO, reports_dir, today, run_date, &sheets) {
+        Ok(Some(p)) => paths.push(p),
+        Ok(None) => {}
+        Err(e) => {
+            for done in &paths {
+                let _ = std::fs::remove_file(done);
+            }
+            return Err(e);
+        }
     }
     Ok(paths)
 }

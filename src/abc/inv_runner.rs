@@ -27,6 +27,7 @@ use super::registry::{self, ReportDef, MISC, TOYOTA, XDOCK};
 use super::run::RunDate;
 use super::runner::{export_date_label, NoDataError, OutputSpec, StepOutput};
 use super::table::Table;
+use super::xlsx_out;
 use crate::utils::export_outcome::paste_value_list;
 use anyhow::{anyhow, Context, Result};
 use std::path::PathBuf;
@@ -212,6 +213,16 @@ pub fn write_outputs(
             return Err(anyhow!("write {}: {e}", path.display()));
         }
         paths.push(path);
+    }
+    match xlsx_out::write_report_workbook(def, &out.reports_dir, out.today, run_date, tables) {
+        Ok(Some(p)) => paths.push(p),
+        Ok(None) => {}
+        Err(e) => {
+            for done in &paths {
+                let _ = std::fs::remove_file(done);
+            }
+            return Err(e);
+        }
     }
     Ok(paths)
 }

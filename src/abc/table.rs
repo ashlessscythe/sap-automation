@@ -190,6 +190,63 @@ impl Table {
         Ok(idx)
     }
 
+    /// Concatenate per-day tables into one, prepending a `run_date` column filled with the
+    /// label of each input. Columns are matched by name (case-insensitive), never by position:
+    /// a different order is reordered to the first table's order; a missing or extra column
+    /// is an error naming the column and the day. Hidden rows are dropped first (selection
+    /// materialised); a header-only table contributes no rows. Empty input is an error.
+    pub fn concat(tables: &[(String, Table)]) -> Result<Table> {
+        let (first_label, first) = tables
+            .first()
+            .ok_or_else(|| anyhow!("concat: no tables to combine"))?;
+        let name = first.name.clone();
+        let base = &first.headers;
+        let mut headers = vec!["run_date".to_string()];
+        headers.extend(base.iter().cloned());
+        let mut rows: Vec<Vec<String>> = Vec::new();
+        for (label, t) in tables {
+            let mut map = Vec::with_capacity(base.len());
+            for h in base {
+                let i = t
+                    .headers
+                    .iter()
+                    .position(|x| x.eq_ignore_ascii_case(h))
+                    .ok_or_else(|| {
+                        anyhow!(
+                            "concat '{name}': column '{h}' of {first_label} is missing on {label}"
+                        )
+                    })?;
+                map.push(i);
+            }
+            if let Some(extra) = t
+                .headers
+                .iter()
+                .find(|x| !base.iter().any(|h| h.eq_ignore_ascii_case(x)))
+            {
+                return Err(anyhow!(
+                    "concat '{name}': column '{extra}' on {label} does not exist on {first_label}"
+                ));
+            }
+            if t.headers.len() != base.len() {
+                return Err(anyhow!(
+                    "concat '{name}': {label} has {} columns, {first_label} has {} (duplicate column names?)",
+                    t.headers.len(),
+                    base.len()
+                ));
+            }
+            for (i, r) in t.rows.iter().enumerate() {
+                if !t.visible[i] {
+                    continue;
+                }
+                let mut row = Vec::with_capacity(headers.len());
+                row.push(label.clone());
+                row.extend(map.iter().map(|&c| r[c].clone()));
+                rows.push(row);
+            }
+        }
+        Ok(Table::new(&name, headers, rows))
+    }
+
     /// Serialise as TSV (header + all rows, hidden included). `\`, tab, CR and LF in cells
     /// are escaped as `\\`, `\t`, `\r`, `\n`.
     pub fn to_tsv(&self) -> String {
@@ -350,5 +407,44 @@ mod tests {
         let t = Table::new("t", s(&["a"]), vec![]);
         let e = t.col("nope").unwrap_err().to_string();
         assert!(e.contains("nope") && e.contains("a"));
+    }
+    #[test]
+    fn concat_prepends_run_date_and_reorders_by_name() {
+        let a = Table::new("t", s(&["a", "b"]), vec![s(&["1", "2"])]);
+        let mut b = Table::new("t", s(&["B", "a"]), vec![s(&["4", "3"]), s(&["6", "5"])]);
+        b.visible[1] = false;
+        let c = Table::concat(&[("2026-11-01".into(), a), ("2026-11-02".into(), b)]).unwrap();
+        assert_eq!(c.headers, s(&["run_date", "a", "b"]));
+        assert_eq!(
+            c.rows,
+            vec![s(&["2026-11-01", "1", "2"]), s(&["2026-11-02", "3", "4"])]
+        );
+        assert_eq!(c.visible, vec![true, true]);
+    }
+
+    #[test]
+    fn concat_mismatch_names_column_and_day() {
+        let a = Table::new("t", s(&["a", "b"]), vec![]);
+        let b = Table::new("t", s(&["a"]), vec![]);
+        let e = Table::concat(&[("d1".into(), a.clone()), ("d2".into(), b.clone())])
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("'b'") && e.contains("d2"), "{e}");
+        let e = Table::concat(&[("d1".into(), b), ("d2".into(), a)])
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("'b'") && e.contains("d2"), "{e}");
+    }
+
+    #[test]
+    fn concat_header_only_and_empty() {
+        let a = Table::new("t", s(&["a"]), vec![]);
+        let b = Table::new("t", s(&["a"]), vec![s(&["x"])]);
+        let c = Table::concat(&[("d1".into(), a.clone()), ("d2".into(), b)]).unwrap();
+        assert_eq!(c.rows, vec![s(&["d2", "x"])]);
+        let only = Table::concat(&[("d1".into(), a)]).unwrap();
+        assert_eq!(only.headers, s(&["run_date", "a"]));
+        assert_eq!(only.nrows(), 0);
+        assert!(Table::concat(&[]).is_err());
     }
 }

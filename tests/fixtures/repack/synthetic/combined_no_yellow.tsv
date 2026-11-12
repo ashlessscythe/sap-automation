@@ -1,0 +1,4 @@
+lm_serial_number	status	serial_number_2nd_party_verification	spv_scan_copies	pallet	parent_serial_number	material	customer_part_	delivery	customer	plant	storage_location	warehouse_number	document_date	created_on	created_by	plant_doc_line	dloc	kanban_number	container	_of_labels	export_date	yellow
+130004736	SPV	2	2	1		13000636	52941567	13000889	CUSTOMER 027 (13003)	PL65	11	WH01	2026-11-05	2026-11-05	GNAAAAA003	K1 ZFF	ZF-T13A		C0013028	2	2026-11-05	
+130004731	SPV	2	2	1		13000636	52941567	13000889	CUSTOMER 027 (13003)	PL65	11	WH01	2026-11-05	2026-11-05	GNAAAAA003	K1 ZFF	ZF-T13A		C0013028	2	2026-11-05	
+130004721	SPV	2	2	1		13000636	52941567	13000889	CUSTOMER 027 (13003)	PL65	11	WH01	2026-11-05	2026-11-05	GNAAAAA003	K1 ZFF	ZF-T13A		C0013028	2	2026-11-05	

@@ -107,6 +107,13 @@ The application also supports command-line operation for automation scenarios. T
 ./sap_automation.exe --rname=relabel --run-date=2026-11-05   # run k2xx for the same date first
 ./sap_automation.exe --rname=repack --run-date=2026-11-05    # run k2xx, then relabel for the same date first
 
+# Per-day iteration over a week/range, optionally one merged xlsx per report (see "Per-day iteration" below)
+./sap_automation.exe --rname=xdock --run-date=WK40 --loop --merge
+./sap_automation.exe --rname=xdock --run-date=WK40 --loop
+
+# Also write an .xlsx workbook next to the TSV files of a single run
+./sap_automation.exe --rname=xdock --run-date=2026-11-05 --output-format=xlsx
+
 # Fill multi-selection popups (deliveries, shipments, TOs, ...) from the clipboard instead of Page Down (off by default)
 ./sap_automation.exe --rname=mustgo --run-date=2026-11-05 --use-clipboard
 ./sap_automation.exe --tcode mm60 --layout <L> --use-clipboard
@@ -159,6 +166,33 @@ deliberately **no sequence menu id** for them: the sequence runner is config-dri
 optional `[abc.mustgo]` / `[abc.xdock]` / `[abc.toyota]` / `[abc.misc]` / `[abc.k2xx]` / `[abc.relabel]` / `[abc.repack]` sections ([CONFIG.md](CONFIG.md)); flags, exit codes and file locations are in
 [COMMAND_LINE_USAGE.md](COMMAND_LINE_USAGE.md). The SAP steps have not been verified on a live system yet; see the live
 verification checklist in `docs/private/abc_headless_plan.md`.
+
+### Per-day iteration (`--loop`, `--merge`)
+
+`--rname=<name> --run-date=<A..B|WKnn> --loop` runs the report once **per day** of the range or week (all 7 days of `WKnn`,
+Sunday-Saturday) instead of one run over the whole range; a single date with `--loop` is an error. Add `--merge` to combine the
+per-day outputs afterwards (`--merge` requires `--loop`; `--loop` alone leaves the individual per-day runs). The TUI **ABC Headless**
+submenu asks for both (y/N).
+
+```bash
+./sap_automation.exe --rname=xdock --run-date=wk40 --loop --merge
+./sap_automation.exe --rname=repack --run-date=wk40 --loop --merge --output-format=xlsx
+```
+
+* **Chain:** per day the prerequisites run first: `k2xx`, then `relabel`, then `repack` (`--rname=repack` runs all three each day). The
+  other reports have no prerequisites.
+* **Merge:** one `<DATE>_<RNAME>_MERGED.xlsx` per report of the chain (e.g. repack yields k2xx, relabel and repack files), next to
+  the per-day files in `<reports_dir>\<K2XX|INV>\<today>\<rName>\` (`<DATE>` is `WK_<n>` for a week). Its sheets are **all output
+  tables** of the report (including the pivot), the per-day tables concatenated with a leading `run_date` column (ISO
+  `yyyy-mm-dd`). The per-day TSV files keep their `MM-DD-YYYY` names; TSV stays the canonical output.
+* **Failures:** a day with no data (`NO DATA`) is logged and skipped (the rest of that day's chain is not run); any other error stops
+  the whole iteration, **no merge** is written and the per-day files already written stay. A summary lists the days done, skipped
+  and failed. If every day was skipped there is nothing to merge (no merge, no error).
+* `--output-format=xlsx` (default `tsv`) on a single run also writes `<DATE>_<RNAME>.xlsx` with every output table as a sheet.
+* **Not related** to `--run-loop`, `--run-sequence` or `--iterations`, which repeat the config-driven TCode loop/sequence; `--loop`
+  and `--merge` only apply together with `--rname` and cannot be combined with those flags.
+
+Not verified on a live system yet; see `docs/private/abc_iteration_plan.md`.
 
 ## Sequence Menu Option IDs
 

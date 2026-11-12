@@ -136,10 +136,10 @@ fn xdock_two_days_with_gaps() {
     assert_eq!(rows[0], ["run_date", "Row Labels", "Sum of total"]);
     assert_eq!(rows.len(), 1 + 2 * np);
     for (i, r) in pivot.rows.iter().enumerate() {
-        assert_eq!(rows[1 + i][0], "11-02-2026");
+        assert_eq!(rows[1 + i][0], "2026-11-02");
         assert_eq!(rows[1 + i][1], r[0]);
         assert_eq!(rows[1 + i][2], r[1]);
-        assert_eq!(rows[1 + np + i][0], "11-04-2026");
+        assert_eq!(rows[1 + np + i][0], "2026-11-04");
         assert_eq!(rows[1 + np + i][1], r[0]);
         assert_eq!(rows[1 + np + i][2], r[1]);
     }
@@ -148,8 +148,8 @@ fn xdock_two_days_with_gaps() {
     let rows = sheet_rows(&out.path, "vl06o");
     assert_eq!(rows.len(), 141);
     assert_eq!(rows[0][0], "run_date");
-    assert!(rows[1..=100].iter().all(|r| r[0] == "11-02-2026"));
-    assert!(rows[101..].iter().all(|r| r[0] == "11-04-2026"));
+    assert!(rows[1..=100].iter().all(|r| r[0] == "2026-11-02"));
+    assert!(rows[101..].iter().all(|r| r[0] == "2026-11-04"));
 }
 
 #[test]
@@ -201,7 +201,7 @@ fn header_mismatch_is_an_error_naming_day_and_table() {
     let e = merge_report(tmp.path(), def, today(), &range(), &week()).unwrap_err();
     let msg = format!("{e:#}");
     assert!(msg.contains("vl06o"), "{msg}");
-    assert!(msg.contains("11-03-2026"), "{msg}");
+    assert!(msg.contains("2026-11-03"), "{msg}");
     assert!(!registry::merged_path(tmp.path(), def, today(), &range()).exists());
 }
 
@@ -240,8 +240,8 @@ fn repack_chain_one_workbook_per_report() {
     let rl = res[1].1.as_ref().unwrap();
     assert_eq!(rl.tables[0], ("combined".to_string(), 30));
     let rows = sheet_rows(&rl.path, "combined");
-    assert_eq!(rows[1][0], "11-02-2026");
-    assert_eq!(rows[30][0], "11-03-2026");
+    assert_eq!(rows[1][0], "2026-11-02");
+    assert_eq!(rows[30][0], "2026-11-03");
 }
 
 #[test]

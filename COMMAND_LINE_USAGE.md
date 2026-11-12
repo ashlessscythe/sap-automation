@@ -160,8 +160,15 @@ The file extension drives the parser:
 
 | `--date-range-buffer=<DAYS>` | Days added before the start and after the end of the run date range of every tcode that sets one (VT11, ZMDETPC). **Omitted**: ZMDETPC gets **3** days each side when the run is a week (`WKnn`, or the exact Sunday..Saturday range), everything else gets **0**, so a single date or other range is not widened. An explicit value (also `0`) applies to every such tcode and to single dates too. Overrides `[abc.<report>] date_range_buffer`. |
 
+| `--loop` | With `--rname`: one run **per day** of the `--run-date` range or week (7 days for `WKnn`) instead of one run over the range. Per day the prerequisite reports run first (`k2xx` -> `relabel` -> `repack`). A day with no data is skipped; any other error stops the iteration with no merge. Needs a range or week. Not `--run-loop`. |
+| `--merge` | With `--loop` (required): after the per-day runs write one `<DATE>_<RNAME>_MERGED.xlsx` per report of the chain, with every output table as a sheet and a leading `run_date` column (ISO `yyyy-mm-dd`). Not `--iterations`. |
+| `--output-format=<tsv\|xlsx>` | Output of a report run. `tsv` (default); `xlsx` additionally writes `<DATE>_<RNAME>.xlsx` (every output table a sheet) next to the TSV files. |
+
+`--loop` / `--merge` are unrelated to `--run-loop`, `--run-sequence` and `--iterations` (the config-driven TCode loop/sequence) and conflict with
+`--run-loop` / `--run-sequence`.
+
 `--rname` and `--run-date` require each other. Allowed with them: `--skip-sap-check`, `--keep-awake`, `--reports-dir`,
-`--date-format`, `--timezone`, `--ignore-display-error`, `--date-range-buffer`, `--use-clipboard`. Defaults for variants, layouts, warehouse and clean-up come from the
+`--date-format`, `--timezone`, `--ignore-display-error`, `--date-range-buffer`, `--use-clipboard`, `--output-format`, `--loop`, `--merge`. Defaults for variants, layouts, warehouse and clean-up come from the
 optional `[abc.mustgo]` / `[abc.xdock]` / `[abc.toyota]` / `[abc.misc]` / `[abc.k2xx]` / `[abc.relabel]` / `[abc.repack]` section (see [CONFIG.md](CONFIG.md)); there are no per-tcode flags for a report.
 
 ```bash
@@ -176,7 +183,18 @@ optional `[abc.mustgo]` / `[abc.xdock]` / `[abc.toyota]` / `[abc.misc]` / `[abc.
 ./sap_automation.exe --rname=repack --run-date=2026-11-05                      # after k2xx and relabel for the same date, same day
 ./sap_automation.exe --rname=toyota --run-date=WK45                          # ZMDETPC 2026-10-29..2026-11-10
 ./sap_automation.exe --rname=toyota --run-date=WK45 --date-range-buffer=0    # ZMDETPC 2026-11-01..2026-11-07
+./sap_automation.exe --rname=xdock --run-date=2026-11-05 --output-format=xlsx   # TSV files + one workbook
+./sap_automation.exe --rname=xdock --run-date=wk40 --loop                        # 7 separate per-day runs
+./sap_automation.exe --rname=xdock --run-date=wk40 --loop --merge                # ... plus WK_40_XDOCK_MERGED.xlsx
+./sap_automation.exe --rname=repack --run-date=wk40 --loop --merge               # per day k2xx, relabel, repack; 3 merged files
 ```
+
+**Per-day iteration (`--loop`, `--merge`).** Each day is a single-date run of the whole chain (`k2xx` -> `relabel` -> `repack` for repack; a
+report without prerequisites runs alone), so `relabel`/`repack` find the k2xx output of the same day. A `NO DATA` day is logged and skipped,
+every other error stops the iteration (no merge; per-day files stay). The merge covers the days that ran or were skipped (a skipped day
+may still have output); if no day finished there is no merge and no error. Merged workbook: `<reports_dir>\<folder>\<today>\<rName>\<DATE>_<RNAME>_MERGED.xlsx`
+(`WK_<n>` for a week), sheets = all output tables, columns matched by header name, a `run_date` column first (ISO `yyyy-mm-dd`). Per-day
+file names keep `MM-DD-YYYY`. The summary lists days done / skipped / failed.
 
 The run needs a logged-in SAP GUI session (checked unless `--skip-sap-check`), asks nothing, and prints the step row counts
 and the output paths. The flow of `mustgo` is VT11 -> VL06O -> ZMDESNR (by deliveries) -> LT23 -> ZMDESNR (by deliveries +

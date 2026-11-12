@@ -49,12 +49,14 @@ pub fn merge_report(
     let names = registry::tables(def.name);
     let mut days_merged = Vec::new();
     let mut days_missing = Vec::new();
-    // per table: (day label, table) of every merged day
+    // per table: (ISO run_date, table) of every merged day
     let mut per_table: Vec<Vec<(String, Table)>> = vec![Vec::new(); names.len()];
 
     for &day in days {
         let single = RunDate::single(day);
         let label = registry::date_label(&single);
+        // the merged `run_date` column is ISO 8601; file names / messages keep `label`
+        let iso = day.format("%Y-%m-%d").to_string();
         let paths: Vec<PathBuf> = names
             .iter()
             .map(|t| registry::output_path(reports_dir, def, today, &single, t))
@@ -81,7 +83,7 @@ pub fn merge_report(
                 std::fs::read_to_string(p).with_context(|| format!("read {}", p.display()))?;
             let t = Table::from_tsv(names[i], &text)
                 .with_context(|| format!("merge {}: {label} table {}", def.name, names[i]))?;
-            per_table[i].push((label.clone(), t));
+            per_table[i].push((iso.clone(), t));
         }
         days_merged.push(day);
     }

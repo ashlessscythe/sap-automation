@@ -88,6 +88,17 @@ tests `repack_real`, `repack_golden`, `repack_runner`. The parent-exclusion typi
 
 **Resume from `docs/private/abc_headless_plan.md` ("RESUME HERE")**; the spec is `docs/private/abc_headless_migration_spec.md`.
 
+### Per-day iteration, merge, xlsx output (built 2026-11-12, NOT yet run live by the owner)
+
+`--rname=<r> --run-date=<A..B|WKnn> --loop [--merge]` and `--output-format=xlsx` (plan: `docs/private/abc_iteration_plan.md`). `--loop`/`--merge` are
+unrelated to `--run-loop`/`--run-sequence`/`--iterations`. Modules (registered in `src/abc/mod.rs`): `iterate.rs` (`run_iteration[_with]`,
+`DayRunner` seam so tests use a fake, `IterOpts`; `today` is captured **once** per iteration so all days share one output folder; policy:
+`NoDataError` day skipped, other error stops with no merge, all days skipped = no merge/no error; merge gets done + skipped days),
+`merge.rs` (`merge_report`/`merge_chain`: all output tables of each report in the chain, `Table::concat` by header name, `run_date` column in
+ISO `yyyy-mm-dd`; per-day FILE names stay `MM-DD-YYYY`), `xlsx_out.rs` (`rust_xlsxwriter`, pinned; one sheet per table). Registry:
+`chain`, `tables`, `workbook_path`, `merged_path` (`<DATE>_<RNAME>_MERGED.xlsx`). Tests: `merge_golden` (anonymised real fixtures as two days),
+`iterate` unit tests (skip / stop / chain order), clap tests in `cli.rs`.
+
 ## MM60 (LX03 material list)
 
 `sap_automation --tcode mm60 --layout <L> [--variant <V>] [--export-type 1] [--lx03-file <slug|path>] [--rname-dir <D>]` has been **run live by the owner** (2026-11-11). Standalone tcode (`src/mm60.rs` + `mm60_module.rs`): it pastes the

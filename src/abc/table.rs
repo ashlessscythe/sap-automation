@@ -191,7 +191,7 @@ impl Table {
     }
 
     /// Concatenate per-day tables into one, prepending a `run_date` column filled with the
-    /// label of each input. Columns are matched by name (case-insensitive), never by position:
+    /// label of each input, whatever the caller passes (`merge` passes ISO `yyyy-mm-dd`). Columns are matched by name (case-insensitive), never by position:
     /// a different order is reordered to the first table's order; a missing or extra column
     /// is an error naming the column and the day. Hidden rows are dropped first (selection
     /// materialised); a header-only table contributes no rows. Empty input is an error.

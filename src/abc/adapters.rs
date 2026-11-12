@@ -1,7 +1,7 @@
 //! Real SAP adapter for the headless runners: [`RealSapSteps`] implements
 //! [`super::runner::SapSteps`] (`mustgo`), [`super::inv_runner::InvSteps`] (`xdock`, `toyota`),
 //! [`super::inv_runner::MiscSteps`], [`super::k2xx_runner::K2xxSteps`] and
-//! [`super::relabel_runner::RelabelSteps`] on top of the tcode steps (`vt11`, `vl06o`,
+//! [`super::relabel_runner::RelabelSteps`] and [`super::repack_runner::RepackSteps`] on top of the tcode steps (`vt11`, `vl06o`,
 //! `zmdesnr`, `lt23`, `zmdetpc`, `zvt11` Closed).
 //!
 //! Nothing here reads config or CLI overrides: the caller builds a [`MustgoSapConfig`]
@@ -11,7 +11,7 @@
 //! `delete_exports` is set (a file that failed to load is kept for diagnosis).
 //!
 //! NOT run against SAP by the author. See "Live verification checklist (mustgo)", "(xdock)"
-//! "(k2xx)" and "(relabel)" in `docs/private/abc_headless_plan.md` for every control id / behaviour that is
+//! "(k2xx)", "(relabel)" and "(repack)" in `docs/private/abc_headless_plan.md` for every control id / behaviour that is
 //! unverified.
 #![allow(dead_code)]
 
@@ -19,6 +19,7 @@ use super::inv_runner::{InvSteps, MiscSteps};
 use super::k2xx_runner::K2xxSteps;
 use super::raw::RawOptions;
 use super::relabel_runner::RelabelSteps;
+use super::repack_runner::RepackSteps;
 use super::run::RunDate;
 use super::runner::{outcome_to_output, SapSteps, StepOutput};
 use crate::lt23::LT23Params;
@@ -236,6 +237,23 @@ pub fn relabel_history_params(
         export_target: Some(target),
         ignore_display_error: cfg.ignore_display_error,
         ..ZMDESNRParams::default()
+    }
+}
+
+/// `repack`: ZMDESNR by deliveries excluding parents (tab 2, scroll paste for the deliveries; the
+/// exclusion list goes into the exclude tab of the parent-serial selection, spec 3.4). An empty
+/// `exclude` means no exclusion.
+pub fn repack_by_deliveries_params(
+    cfg: &MustgoSapConfig,
+    deliveries: &[String],
+    exclude: &[String],
+    variant: &str,
+    layout: &str,
+    target: ExportTarget,
+) -> ZMDESNRParams {
+    ZMDESNRParams {
+        exclude_serials: Some(exclude.to_vec()).filter(|e| !e.is_empty()),
+        ..relabel_by_deliveries_params(cfg, deliveries, variant, layout, target)
     }
 }
 
@@ -580,6 +598,33 @@ impl RelabelSteps for RealSapSteps<'_> {
     }
 }
 
+impl RepackSteps for RealSapSteps<'_> {
+    fn zmdesnr_by_deliveries_excluding(
+        &mut self,
+        deliveries: &[String],
+        exclude: &[String],
+        variant: &str,
+        layout: &str,
+    ) -> Result<StepOutput> {
+        let (target, _) = self.target("ZMDESNR");
+        let params =
+            repack_by_deliveries_params(&self.cfg, deliveries, exclude, variant, layout, target);
+        let outcome = crate::zmdesnr::run_export_outcome(self.session, &params).map_err(|e| {
+            anyhow!("zmdesnr (by deliveries excluding parents): SAP step failed: {e}")
+        })?;
+        finish_step(&self.cfg, "zmdesnr", outcome)
+    }
+
+    fn zmdesnr_history(
+        &mut self,
+        serials: &[String],
+        variant: &str,
+        layout: &str,
+    ) -> Result<StepOutput> {
+        RelabelSteps::zmdesnr_history(self, serials, variant, layout)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -827,6 +872,33 @@ mod tests {
         assert_eq!(h.history_serials, s(&["5", "6"]));
         assert!(h.delivery_numbers.is_empty() && h.export_target.is_some());
         assert_eq!(h.layout_row.as_deref(), Some("ZMDESNR_RELABEL_LAYOUT"));
+    }
+
+    #[test]
+    fn repack_params() {
+        let cfg = MustgoSapConfig::default();
+        let t = export_target(&cfg, "ZMDESNR", now());
+        let p = repack_by_deliveries_params(
+            &cfg,
+            &s(&["8", "9"]),
+            &s(&["5", "6"]),
+            "ZMDESNR_REPACK_VARIANT",
+            "ZMDESNR_REPACK_LAYOUT",
+            t.clone(),
+        );
+        assert_eq!(
+            p.sap_variant_name.as_deref(),
+            Some("ZMDESNR_REPACK_VARIANT")
+        );
+        assert_eq!(p.layout_row.as_deref(), Some("ZMDESNR_REPACK_LAYOUT"));
+        assert_eq!(p.tab_number, Some(2));
+        assert!(p.scroll_paste);
+        assert_eq!(p.delivery_numbers, s(&["8", "9"]));
+        assert_eq!(p.exclude_serials, Some(s(&["5", "6"])));
+        assert_eq!(p.export_target, Some(t.clone()));
+        // no exclusion list: no exclude step
+        let q = repack_by_deliveries_params(&cfg, &s(&["8"]), &[], "V", "L", t);
+        assert_eq!(q.exclude_serials, None);
     }
 
     #[test]

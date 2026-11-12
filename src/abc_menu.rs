@@ -1,8 +1,9 @@
 //! "ABC Headless" submenu: entry point for the reports used by the headless ABC runner
 //! (see `docs/private/abc_headless_plan.md`). Entries for steps without a standalone run (ZMDETPC,
 //! LT23) are shown but only print a notice. The report entries (`mustgo`, `xdock`, `toyota`,
-//! `misc`, `k2xx`, `relabel`) run the whole headless report after asking for the run date.
-//! `relabel` reads the k2xx output of the same run, so run `k2xx` for that date first.
+//! `misc`, `k2xx`, `relabel`, `repack`) run the whole headless report after asking for the run date.
+//! `relabel` reads the k2xx output of the same run, so run `k2xx` for that date first; `repack`
+//! reads the k2xx and the relabel output of the same run.
 use sap_scripting::*;
 use std::thread;
 use std::time::Duration;
@@ -23,6 +24,7 @@ pub enum AbcChoice {
     Misc,
     K2xx,
     Relabel,
+    Repack,
     Vt11,
     Vl06o,
     Zmdesnr,
@@ -33,7 +35,7 @@ pub enum AbcChoice {
 }
 
 /// Menu entries in display order.
-pub const ABC_ENTRIES: [(AbcChoice, &str); 13] = [
+pub const ABC_ENTRIES: [(AbcChoice, &str); 14] = [
     (
         AbcChoice::Mustgo,
         "mustgo - Headless report (asks for the run date)",
@@ -57,6 +59,10 @@ pub const ABC_ENTRIES: [(AbcChoice, &str); 13] = [
     (
         AbcChoice::Relabel,
         "relabel - Headless report (asks for the run date; needs the k2xx output of that date)",
+    ),
+    (
+        AbcChoice::Repack,
+        "repack - Headless report (asks for the run date; needs the k2xx and relabel output of that date)",
     ),
     (AbcChoice::Vt11, "VT11 - Auto Run (from config)"),
     (AbcChoice::Vl06o, "VL06O - Auto Run (from config)"),
@@ -166,6 +172,7 @@ pub fn run_abc_menu(session: Option<&GuiSession>) {
                 | AbcChoice::Misc
                 | AbcChoice::K2xx
                 | AbcChoice::Relabel
+                | AbcChoice::Repack
         ) {
             let name = match choice {
                 AbcChoice::Mustgo => "mustgo",
@@ -173,6 +180,7 @@ pub fn run_abc_menu(session: Option<&GuiSession>) {
                 AbcChoice::Misc => "misc",
                 AbcChoice::K2xx => "k2xx",
                 AbcChoice::Relabel => "relabel",
+                AbcChoice::Repack => "repack",
                 _ => "toyota",
             };
             run_report_interactive(session, name);
@@ -218,7 +226,8 @@ mod tests {
         assert_eq!(choice_from_index(3), Some(AbcChoice::Misc));
         assert_eq!(choice_from_index(4), Some(AbcChoice::K2xx));
         assert_eq!(choice_from_index(5), Some(AbcChoice::Relabel));
-        assert_eq!(choice_from_index(6), Some(AbcChoice::Vt11));
+        assert_eq!(choice_from_index(6), Some(AbcChoice::Repack));
+        assert_eq!(choice_from_index(7), Some(AbcChoice::Vt11));
         assert_eq!(
             choice_from_index(ABC_ENTRIES.len() - 1),
             Some(AbcChoice::Back)

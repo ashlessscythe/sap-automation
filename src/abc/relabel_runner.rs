@@ -112,10 +112,20 @@ pub fn k2xx_vl06o_path(out: &OutputSpec, date: &RunDate) -> PathBuf {
 /// Read the delivery list of the k2xx block of the same run. A missing, unreadable or empty
 /// file, or one without deliveries, is an error that tells the user to run `k2xx` first.
 pub fn read_k2xx_deliveries(out: &OutputSpec, date: &RunDate) -> Result<Vec<String>> {
+    read_k2xx_deliveries_for("relabel", out, date)
+}
+
+/// [`read_k2xx_deliveries`] for the report `who` (named in the error message; `repack` reads the
+/// same file).
+pub fn read_k2xx_deliveries_for(
+    who: &str,
+    out: &OutputSpec,
+    date: &RunDate,
+) -> Result<Vec<String>> {
     let path = k2xx_vl06o_path(out, date);
     let first = |why: &str| {
         anyhow!(
-            "relabel needs the k2xx output of the same run ({why}: {}). Run k2xx first: \
+            "{who} needs the k2xx output of the same run ({why}: {}). Run k2xx first: \
              sap_automation --rname=k2xx --run-date={}",
             path.display(),
             export_date_label(date)

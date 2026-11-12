@@ -34,6 +34,16 @@
 //! delete_exports = true
 //! ignore_display_error = true
 //!
+//! [abc.repack]                      # needs the k2xx and the relabel output of the same run (same date, today's folder)
+//! zmdesnr_variant = "ZMDESNR_REPACK_VARIANT"    # used by both ZMDESNR calls (by deliveries excluding parents, by serial / History)
+//! zmdesnr_layout = "ZMDESNR_REPACK_LAYOUT"
+//! label_plant = "PL55"               # same keys and defaults as [abc.relabel]
+//! alias_plant = "AL55"
+//! alias_customers = ["ALIAS_A*", "ALIAS_B*", "ALIAS_C*"]
+//! history_warehouse = "WH01"         # History rows of this warehouse number (and status UNP) are kept
+//! delete_exports = true
+//! ignore_display_error = true
+//!
 //! [abc.misc]                         # vt11_variant = "VT11_MISC_VARIANT", vt11_layout, vl06o_layout = "VL06O_INV_LAYOUT"
 //! ship_point_marker = "PLACEHOLDER_SP"  # shipping points containing this text are replaced by the ship-to "(...)"
 //!
@@ -60,6 +70,8 @@ use super::raw::RawOptions;
 use super::registry;
 use super::relabel::RelabelRules;
 use super::relabel_runner::{run_relabel, RelabelSelection, RelabelSummary};
+use super::repack::RepackRules;
+use super::repack_runner::{run_repack, RepackSelection, RepackSummary};
 use super::run::RunDate;
 use super::runner::{run_mustgo, NoDataError, OutputSpec, RunSummary};
 use anyhow::{anyhow, Result};
@@ -341,6 +353,70 @@ pub fn relabel_summary_lines(name: &str, s: &RelabelSummary) -> Vec<String> {
     v
 }
 
+/// Effective settings of a `repack` run.
+#[derive(Debug, Clone)]
+pub struct ResolvedRepack {
+    /// Export/session settings shared with `mustgo` (its VT11/ZMDESNR/LT23 names are unused).
+    pub cfg: MustgoSapConfig,
+    pub sel: RepackSelection,
+    /// Root of the outputs (`<reports_dir>\K2XX\<today>\repack\...`) and where the k2xx and
+    /// relabel TSVs of the same run are read from (`...\K2XX\<today>\k2xx\`, `...\relabel\`).
+    pub reports_dir: PathBuf,
+}
+
+/// CLI > `[abc.repack]` > `[global]` > defaults (spec 5.7). The plant rules use the same keys as
+/// `[abc.relabel]`.
+pub fn resolve_repack(input: &ResolveInput) -> ResolvedRepack {
+    let base = resolve_mustgo(input);
+    let d = RepackSelection::default();
+    let sel = RepackSelection {
+        zmdesnr_variant: s(&input.section, "zmdesnr_variant").unwrap_or(d.zmdesnr_variant),
+        zmdesnr_layout: s(&input.section, "zmdesnr_layout").unwrap_or(d.zmdesnr_layout),
+        rules: RepackRules {
+            plants: RelabelRules {
+                label_plant: s(&input.section, "label_plant").unwrap_or(d.rules.plants.label_plant),
+                alias_plant: s(&input.section, "alias_plant").unwrap_or(d.rules.plants.alias_plant),
+                alias_customers: str_list(&input.section, "alias_customers")
+                    .unwrap_or(d.rules.plants.alias_customers),
+            },
+            history_warehouse: s(&input.section, "history_warehouse")
+                .unwrap_or(d.rules.history_warehouse),
+        },
+    };
+    ResolvedRepack {
+        cfg: base.cfg,
+        sel,
+        reports_dir: base.reports_dir,
+    }
+}
+
+/// Resolve `repack` from the CLI overrides and `config.toml` (section `[abc.repack]`).
+pub fn resolve_repack_from_environment() -> ResolvedRepack {
+    resolve_repack(&environment_input("repack"))
+}
+
+/// Printable summary lines of a finished `repack` run.
+pub fn repack_summary_lines(name: &str, s: &RepackSummary) -> Vec<String> {
+    let b = s.blocks;
+    let mut v = vec![
+        format!("{name} finished (date {})", s.export_date),
+        format!(
+            "  deliveries {} (from the k2xx vl06o file), {} yellow rows in relabel combined ({} serials excluded), repack_sn rows {} ({} treated as alias plant)",
+            s.deliveries, s.yellow_rows, s.excluded, s.repack_sn_rows, s.alias_rows
+        ),
+        format!(
+            "  blocks R1 {}, R2 {} (history: {} serials, {} rows, {} appended), R3 {}, deleted KC/SC {}, R4 {}",
+            b[0], b[1], s.history_serials, s.history_rows, b[2], b[3], b[4], b[5]
+        ),
+        format!(
+            "  rows: snr_repack {}, pivot {} (count {})",
+            s.snr_rows, s.pivot_rows, s.total
+        ),
+    ];
+    v.extend(s.outputs.iter().map(|p| format!("  wrote {}", p.display())));
+    v
+}
+
 /// Resolve from the CLI overrides and `config.toml` (caller layer: this reads the config).
 pub fn resolve_from_environment() -> ResolvedMustgo {
     resolve_mustgo(&environment_input("mustgo"))
@@ -390,7 +466,9 @@ pub fn environment_input(name: &str) -> ResolveInput {
 
 /// Names of the reports that have a runner.
 pub fn runnable_reports() -> &'static [&'static str] {
-    &["mustgo", "xdock", "toyota", "misc", "k2xx", "relabel"]
+    &[
+        "mustgo", "xdock", "toyota", "misc", "k2xx", "relabel", "repack",
+    ]
 }
 
 /// Check that `name` is a registered report with a runner; returns the canonical name.
@@ -545,6 +623,17 @@ pub fn run_report(session: &GuiSession, name: &str, date: &RunDate) -> Result<Ve
             let mut steps = RealSapSteps::new(session, resolved.cfg);
             run_relabel(&mut steps, date, &resolved.sel, &out)
                 .map(|s| (relabel_summary_lines(name, &s), s.outputs))
+        }
+        "repack" => {
+            let resolved = resolve_repack_from_environment();
+            let out = OutputSpec {
+                reports_dir: resolved.reports_dir.clone(),
+                today,
+            };
+            announce(name, date, &resolved.cfg.export_dir, &out);
+            let mut steps = RealSapSteps::new(session, resolved.cfg);
+            run_repack(&mut steps, date, &resolved.sel, &out)
+                .map(|s| (repack_summary_lines(name, &s), s.outputs))
         }
         other => Err(anyhow!("no runner for '{other}'")),
     };
@@ -909,6 +998,81 @@ delete_exports = false
         assert!(l[2].contains("B1 87") && l[2].contains("B3 48") && l[2].contains("5 serials"));
         assert!(l[3].contains("421") && l[3].contains("4 with 4") && l[3].contains("850"));
         assert!(l.last().unwrap().contains("r.tsv"));
+    }
+
+    #[test]
+    fn repack_defaults_precedence_rules_and_summary() {
+        let r = resolve_repack(&ResolveInput::default());
+        assert_eq!(r.sel, RepackSelection::default());
+        assert_eq!(r.sel.zmdesnr_variant, "ZMDESNR_REPACK_VARIANT");
+        assert_eq!(r.sel.zmdesnr_layout, "ZMDESNR_REPACK_LAYOUT");
+        assert_eq!(r.sel.rules.plants, RelabelRules::default());
+        assert_eq!(r.sel.rules.history_warehouse, "WH01");
+        assert_eq!(r.reports_dir, PathBuf::from("reports"));
+
+        let r = resolve_repack(&ResolveInput {
+            cli_reports_dir: Some("C:/cli".into()),
+            cli_ignore_display_error: Some(false),
+            global_reports_dir: Some("C:/global".into()),
+            section: section(
+                "zmdesnr_variant = \"V\"
+zmdesnr_layout = \"  \"
+label_plant = \" P1 \"
+alias_plant = \"P1X\"
+alias_customers = [\"AB*\", \" \", \"CD\"]
+history_warehouse = \"W9\"
+delete_exports = false
+",
+            ),
+            ..ResolveInput::default()
+        });
+        assert_eq!(r.reports_dir, PathBuf::from("C:/cli"));
+        assert!(!r.cfg.ignore_display_error && !r.cfg.delete_exports);
+        assert_eq!(r.sel.zmdesnr_variant, "V");
+        assert_eq!(
+            r.sel.zmdesnr_layout, "ZMDESNR_REPACK_LAYOUT",
+            "blank falls through"
+        );
+        assert_eq!(r.sel.rules.plants.label_plant, "P1");
+        assert_eq!(r.sel.rules.plants.alias_plant, "P1X");
+        assert_eq!(r.sel.rules.plants.alias_customers, ["AB*", "CD"]);
+        assert_eq!(r.sel.rules.history_warehouse, "W9");
+
+        // an empty or wrong-typed list falls back to the default
+        let r = resolve_repack(&ResolveInput {
+            section: section(
+                "alias_customers = []
+label_plant = 5
+history_warehouse = \"\"
+",
+            ),
+            ..ResolveInput::default()
+        });
+        assert_eq!(r.sel.rules, RepackRules::default());
+
+        assert_eq!(check_report(" REPACK ").unwrap(), "repack");
+        assert!(runnable_reports().contains(&"repack"));
+        let s = RepackSummary {
+            outputs: vec![PathBuf::from("p.tsv")],
+            export_date: "2026-11-05".into(),
+            deliveries: 107,
+            yellow_rows: 5,
+            excluded: 5,
+            repack_sn_rows: 5839,
+            alias_rows: 525,
+            blocks: [26, 36, 4, 228, 52, 22],
+            history_serials: 36,
+            history_rows: 380,
+            snr_rows: 280,
+            total: "280".into(),
+            pivot_rows: 9,
+        };
+        let l = repack_summary_lines("repack", &s);
+        assert!(l[0].contains("repack") && l[0].contains("2026-11-05"));
+        assert!(l[1].contains("107") && l[1].contains("5839") && l[1].contains("525"));
+        assert!(l[2].contains("R1 26") && l[2].contains("36 serials") && l[2].contains("R4 22"));
+        assert!(l[3].contains("280") && l[3].contains("pivot 9"));
+        assert!(l.last().unwrap().contains("p.tsv"));
     }
 
     #[test]

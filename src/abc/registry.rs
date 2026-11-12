@@ -43,6 +43,12 @@ pub enum Step {
     ZmdesnrHistory,
     /// `filter_copy_snr`: AL55 effective plant, blocks B1-B7, `_of_labels`, `export_date`, pivot.
     FilterCopyRelabel,
+    /// Read relabel's `combined` TSV of the same run (repack: yellow rows = exclusion list).
+    ReadRelabelCombined,
+    /// ZMDESNR by deliveries excluding parents (repack, spec 5.7 row 68).
+    ZmdesnrByDeliveriesExcluding,
+    /// `filter_copy_repack`: blocks R1-R4, History rows, KC/SC deletion, `export_date`, pivot.
+    FilterCopyRepack,
     /// Write output tables.
     Save,
 }
@@ -116,7 +122,7 @@ pub const MISC: ReportDef = ReportDef {
 
 /// `k2xx` (spec 5.5): VT11 -> VL06O (layout `pallets`) -> ZVT11 Closed -> ZMDETPC -> merge
 /// (plain rules) -> pivot plant/total (owner decision of 2026-11-10, overrides spec 7.0 item 1
-/// "no pivot"). `relabel` / `repack` will read its `vl06o`.
+/// "no pivot"). `relabel` / `repack` read its `vl06o`.
 pub const K2XX: ReportDef = ReportDef {
     name: "k2xx",
     folder: "K2XX",
@@ -147,7 +153,25 @@ pub const RELABEL: ReportDef = ReportDef {
     output_tables: &["combined", "sn_del", "snr_orig", "pivot"],
 };
 
-const REPORTS: &[ReportDef] = &[MUSTGO, XDOCK, TOYOTA, MISC, K2XX, RELABEL];
+/// `repack` (spec 5.7, 9.5): the deliveries come from the k2xx block's `vl06o` TSV and the
+/// exclusion list from the yellow rows of relabel's `combined` TSV, both of the same run. ZMDESNR
+/// by deliveries excluding parents, ZMDESNR History for the R2 serials, then the blocks R1-R4,
+/// `export_date` and the pivot customer x plant (count of `lm_serial_number`).
+pub const REPACK: ReportDef = ReportDef {
+    name: "repack",
+    folder: "K2XX",
+    steps: &[
+        Step::ReadK2xxVl06o,
+        Step::ReadRelabelCombined,
+        Step::ZmdesnrByDeliveriesExcluding,
+        Step::ZmdesnrHistory,
+        Step::FilterCopyRepack,
+        Step::Save,
+    ],
+    output_tables: &["snr_repack", "repack_sn", "pivot"],
+};
+
+const REPORTS: &[ReportDef] = &[MUSTGO, XDOCK, TOYOTA, MISC, K2XX, RELABEL, REPACK];
 
 /// Case-insensitive lookup by rName.
 pub fn find_report(name: &str) -> Option<&'static ReportDef> {
@@ -300,6 +324,26 @@ mod tests {
         let r = find_report("Relabel").unwrap();
         assert_eq!(r.folder, "K2XX");
         assert_eq!(r.output_tables, ["combined", "sn_del", "snr_orig", "pivot"]);
+    }
+
+    #[test]
+    fn repack_output_path() {
+        let rd = RunDate {
+            date1: d(2026, 11, 5),
+            date2: None,
+        };
+        let p = output_path(Path::new("r"), &REPACK, d(2026, 11, 10), &rd, "snr_repack");
+        assert_eq!(
+            p,
+            Path::new("r")
+                .join("K2XX")
+                .join("2026-11-10")
+                .join("repack")
+                .join("11-05-2026_REPACK_SNR_REPACK.tsv")
+        );
+        let r = find_report("RePack").unwrap();
+        assert_eq!(r.folder, "K2XX");
+        assert_eq!(r.output_tables, ["snr_repack", "repack_sn", "pivot"]);
     }
 
     #[test]

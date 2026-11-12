@@ -116,8 +116,30 @@ fn run_report_interactive(session: &GuiSession, name: &str) {
     let Ok(date) = validate_run_date_input(&raw, year) else {
         return;
     };
+    // A range or week may run day by day (asked last; the default answers keep the legacy flow).
+    let mut iterate = false;
+    let mut merge = false;
+    if date.days().len() > 1 {
+        iterate = dialoguer::Confirm::new()
+            .with_prompt("Run each day separately?")
+            .default(false)
+            .interact()
+            .unwrap_or(false);
+        if iterate {
+            merge = dialoguer::Confirm::new()
+                .with_prompt("Merge into one xlsx?")
+                .default(false)
+                .interact()
+                .unwrap_or(false);
+        }
+    }
+    if iterate {
+        let opts = crate::abc::iterate::IterOpts { merge };
+        if let Err(e) = crate::abc::iterate::run_iteration(session, name, &date, opts) {
+            eprintln!("{name} failed: {}", dispatch::describe_error(&e));
+        }
     // Same dispatch as `--rname=<name> --run-date=...` (CLI overrides/config resolved there).
-    if let Err(e) = dispatch::run_report(session, name, &date) {
+    } else if let Err(e) = dispatch::run_report(session, name, &date) {
         eprintln!("{name} failed: {}", dispatch::describe_error(&e));
     }
     let _: std::result::Result<String, _> = dialoguer::Input::new()

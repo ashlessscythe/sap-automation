@@ -153,6 +153,13 @@ pub struct CliOverrides {
 
     /// `--output-format`: `tsv` (default) or `xlsx` (TSV plus an xlsx workbook per report run).
     pub output_format: Option<OutputFormat>,
+
+    /// `--loop`: run each day of the `--rname` run date range/week as its own run (unrelated
+    /// to `--run-loop`).
+    pub iterate_loop: bool,
+
+    /// `--merge` (needs `--loop`): merge the per-day outputs into one xlsx per report.
+    pub merge: bool,
 }
 
 impl CliOverrides {
@@ -353,6 +360,12 @@ impl CliOverrides {
         if let Some(OutputFormat::Xlsx) = self.output_format {
             parts.push("--output-format=xlsx".to_string());
         }
+        if self.iterate_loop {
+            parts.push("--loop".to_string());
+        }
+        if self.merge {
+            parts.push("--merge".to_string());
+        }
         if parts.is_empty() {
             None
         } else {
@@ -372,6 +385,16 @@ pub fn set_cli_overrides(overrides: CliOverrides) {
 /// Is `--use-clipboard` active? Off unless the flag was passed (true / 1 / yes / on).
 pub fn use_clipboard() -> bool {
     cli_overrides().use_clipboard.unwrap_or(false)
+}
+
+/// Is `--loop` (per-day iteration of an `--rname` report) active?
+pub fn iterate_loop() -> bool {
+    cli_overrides().iterate_loop
+}
+
+/// Is `--merge` (merge the per-day outputs of `--loop`) active?
+pub fn merge() -> bool {
+    cli_overrides().merge
 }
 
 /// Active `--output-format` (tsv unless the flag was passed).

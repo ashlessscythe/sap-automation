@@ -397,6 +397,13 @@ pub fn run_rname_unattended(
         println!("CLI overrides applied (these win over config.toml): {line}");
     }
 
+    if cli_overrides().iterate_loop {
+        let opts = crate::abc::iterate::IterOpts {
+            merge: cli_overrides().merge,
+        };
+        return crate::abc::iterate::run_iteration(session, rname, date, opts).map(|_| ());
+    }
+
     crate::abc::dispatch::run_report(session, rname, date).map(|_| ())
 }
 

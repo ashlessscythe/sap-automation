@@ -464,6 +464,12 @@ pub fn environment_input(name: &str) -> ResolveInput {
     }
 }
 
+/// Resolved reports dir of report `name` (CLI > `[global]` > default), where the outputs and the
+/// merged workbooks go.
+pub fn reports_dir_for(name: &str) -> PathBuf {
+    resolve_mustgo(&environment_input(name)).reports_dir
+}
+
 /// Names of the reports that have a runner.
 pub fn runnable_reports() -> &'static [&'static str] {
     &[
@@ -556,8 +562,19 @@ pub fn misc_summary_lines(name: &str, s: &InvSummary) -> Vec<String> {
 /// written. Thin: attach/login checks are the caller's; everything else is tested through the
 /// pieces above.
 pub fn run_report(session: &GuiSession, name: &str, date: &RunDate) -> Result<Vec<PathBuf>> {
+    run_report_on(session, name, date, chrono::Local::now().date_naive())
+}
+
+/// Same as [`run_report`] with an explicit `today` (the date folder of the outputs). A per-day
+/// iteration captures `today` once so every run and the final merge use the same folder, even
+/// across midnight.
+pub fn run_report_on(
+    session: &GuiSession,
+    name: &str,
+    date: &RunDate,
+    today: chrono::NaiveDate,
+) -> Result<Vec<PathBuf>> {
     let name = check_report(name)?;
-    let today = chrono::Local::now().date_naive();
     let result: Result<(Vec<String>, Vec<PathBuf>)> = match name {
         "mustgo" => {
             let resolved = resolve_from_environment();

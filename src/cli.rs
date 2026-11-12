@@ -39,6 +39,22 @@ pub struct Cli {
     #[arg(long, value_name = "DATE|A..B|WKnn", requires = "rname")]
     pub run_date: Option<String>,
 
+    /// Per-day runs of a `--rname` report: every day of the `--run-date` range or week runs as
+    /// its own single-day run (prerequisite reports first, e.g. repack: k2xx, relabel, repack).
+    /// A day without data is skipped, any other error stops the iteration. Needs a range or
+    /// week. Unrelated to `--run-loop` (the config-driven tcode loop).
+    #[arg(
+        long = "loop",
+        requires = "rname",
+        conflicts_with_all = ["run_loop", "run_sequence"]
+    )]
+    pub iterate_loop: bool,
+
+    /// With `--loop`: after the per-day runs, merge the outputs into one `.xlsx` per report
+    /// (all tables as sheets, a `run_date` column). Unrelated to `--run-loop` / `--iterations`.
+    #[arg(long = "merge", requires = "iterate_loop")]
+    pub merge: bool,
+
     /// Override target TCode (case-insensitive: vt11, VL06O, y_dn3_47000149, ...).
     /// On its own runs the TCode auto-flow once. With --run-loop, drives the loop.
     #[arg(long)]
@@ -287,6 +303,8 @@ impl Cli {
             date_range_buffer: self.date_range_buffer,
             use_clipboard: self.use_clipboard,
             output_format: self.output_format,
+            iterate_loop: self.iterate_loop,
+            merge: self.merge,
         })
     }
 }
@@ -315,6 +333,15 @@ impl Cli {
             return Err(anyhow!(
                 "--rname-dir can't be used with --rname (outputs go under the reports dir)"
             ));
+        }
+        if o.iterate_loop {
+            if let Some(d) = &o.run_date {
+                if d.days().len() < 2 {
+                    return Err(anyhow!(
+                        "--loop needs a range or week (--run-date=A..B or WKnn), got a single date"
+                    ));
+                }
+            }
         }
         Ok(())
     }
@@ -451,6 +478,49 @@ mod rname_tests {
         let cli = parse(&["--rname=mustgo", "--run-date=2026-11-05"]).unwrap();
         let o = cli.to_overrides().unwrap();
         assert!(cli.validate_rname(&o).is_ok());
+    }
+
+    #[test]
+    fn loop_and_merge_flags() {
+        let o = ov(&["--rname=xdock", "--run-date=WK45/2026", "--loop"]).unwrap();
+        assert!(o.iterate_loop && !o.merge);
+        let o = ov(&["--rname=xdock", "--run-date=WK45/2026", "--loop", "--merge"]).unwrap();
+        assert!(o.iterate_loop && o.merge);
+        let o = ov(&[
+            "--rname=repack",
+            "--run-date=2026-11-01..2026-11-03",
+            "--loop",
+        ])
+        .unwrap();
+        assert!(o.iterate_loop);
+        // without the flags nothing is set
+        let o = ov(&["--rname=xdock", "--run-date=WK45/2026"]).unwrap();
+        assert!(!o.iterate_loop && !o.merge);
+    }
+
+    #[test]
+    fn loop_and_merge_rules() {
+        // --merge needs --loop; --loop needs --rname; no collision with --run-loop
+        assert!(parse(&["--rname=xdock", "--run-date=WK45", "--merge"]).is_err());
+        assert!(parse(&["--merge"]).is_err());
+        assert!(parse(&["--loop"]).is_err());
+        assert!(parse(&["--rname=xdock", "--run-date=WK45", "--loop", "--run-loop"]).is_err());
+        assert!(parse(&["--loop", "--run-loop"]).is_err());
+        assert!(parse(&["--run-loop"]).unwrap().run_loop);
+        let cli = parse(&["--run-loop"]).unwrap();
+        assert!(!cli.iterate_loop && !cli.merge);
+        // a single date cannot be iterated
+        let e = ov(&["--rname=xdock", "--run-date=2026-11-05", "--loop"])
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("--loop needs a range or week"), "{e}");
+        // a one-day range is still a single date
+        assert!(ov(&[
+            "--rname=xdock",
+            "--run-date=2026-11-05..2026-11-05",
+            "--loop"
+        ])
+        .is_err());
     }
 
     #[test]

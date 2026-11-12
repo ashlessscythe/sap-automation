@@ -59,7 +59,8 @@ pub struct Cli {
     /// closed). The final TSVs of the report and its prerequisites must already exist for every
     /// day (all output tables), else it is an error listing what is missing. With `--loop
     /// --merge` it re-merges an exported week; with `--loop` alone or a single date it only
-    /// verifies the files. Use `--output-date` for the date folder. Not combinable with
+    /// verifies the files. Use `--output-date` for the date folder. A single run checks only
+    /// the report itself unless `--with-prereqs` is given. Not combinable with
     /// `--skip-existing` or `--output-format=xlsx`.
     #[arg(long = "no-sap", requires = "rname", conflicts_with = "skip_existing")]
     pub no_sap: bool,
@@ -67,9 +68,21 @@ pub struct Cli {
     /// RESUME for `--rname`: a day+report whose output tables are ALL present is not run again
     /// ("exists, skipped"); SAP only runs for what is missing or incomplete (e.g. after a hard
     /// error stop). Skipped days still count for the summary and `--merge`. Works with `--loop`
-    /// and for a single run. Not combinable with `--no-sap`.
+    /// and for a single run (which considers only the report itself unless `--with-prereqs` is
+    /// given). Not combinable with `--no-sap`.
     #[arg(long = "skip-existing", requires = "rname")]
     pub skip_existing: bool,
+
+    /// SINGLE runs of `--rname`: also cover the report's prerequisite chain for that one date,
+    /// in order (relabel: k2xx, relabel; repack: k2xx, relabel, repack), never anything
+    /// downstream. No data in a chain member skips the rest of the chain. `--loop` already
+    /// includes the prerequisites, so this flag has no extra effect there. With `--skip-existing`
+    /// only the incomplete chain members run. With `--no-sap` EVERY chain member must already
+    /// be on disk, else it is an error listing what is missing (nothing can be generated
+    /// without SAP). Needs `--rname`; unrelated to `--run-loop` / `--run-sequence` /
+    /// `--iterations`.
+    #[arg(long = "with-prereqs", requires = "rname")]
+    pub with_prereqs: bool,
 
     /// Date folder of the outputs (`<reports_dir>\<folder>\<DATE>\<rName>\...`) to read and
     /// write instead of today's, `YYYY-MM-DD`. For `--rname` runs, `--loop`, `--merge`,
@@ -332,6 +345,7 @@ impl Cli {
             merge: self.merge,
             no_sap: self.no_sap,
             skip_existing: self.skip_existing,
+            with_prereqs: self.with_prereqs,
             output_date,
         })
     }
@@ -613,6 +627,73 @@ mod rname_tests {
         let o = ov(&with(&["--loop", "--merge", "--output-format=xlsx"])).unwrap();
         assert!(!o.no_sap && !o.skip_existing && o.output_date.is_none());
         assert!(!parse(&["--run-loop"]).unwrap().no_sap);
+    }
+
+    #[test]
+    fn with_prereqs_rules() {
+        fn with<'a>(extra: &[&'a str]) -> Vec<&'a str> {
+            let mut v = vec!["--rname=repack", "--run-date=2026-11-05"];
+            v.extend_from_slice(extra);
+            v
+        }
+        // needs --rname
+        assert!(parse(&["--with-prereqs"]).is_err());
+        assert!(parse(&["--tcode=vt11", "--with-prereqs"]).is_err());
+        // conflicts with the config-driven loops (through --rname)
+        assert!(parse(&["--run-loop", "--with-prereqs"]).is_err());
+        assert!(parse(&["--run-sequence", "--with-prereqs"]).is_err());
+        // combines with everything of the family
+        let o = ov(&with(&["--with-prereqs"])).unwrap();
+        assert!(o.with_prereqs);
+        assert!(o.summary_line().unwrap().contains("--with-prereqs"));
+        assert!(ov(&with(&["--with-prereqs", "--no-sap"])).is_ok());
+        assert!(ov(&with(&["--with-prereqs", "--skip-existing"])).is_ok());
+        assert!(ov(&with(&["--with-prereqs", "--output-date=2026-11-12"])).is_ok());
+        assert!(ov(&with(&["--with-prereqs", "--output-format=xlsx"])).is_ok());
+        let o = ov(&[
+            "--rname=repack",
+            "--run-date=WK45",
+            "--loop",
+            "--merge",
+            "--with-prereqs",
+        ])
+        .unwrap();
+        assert!(o.with_prereqs && o.iterate_loop && o.merge);
+        // default off
+        assert!(!ov(&with(&[])).unwrap().with_prereqs);
+        // the clap error names the flag
+        let e = parse(&["--run-loop", "--with-prereqs"])
+            .err()
+            .unwrap()
+            .to_string();
+        assert!(e.contains("--with-prereqs"), "{e}");
+    }
+
+    #[test]
+    fn help_text_documents_with_prereqs() {
+        use clap::CommandFactory;
+        let help = Cli::command().render_long_help().to_string();
+        // collapse the wrapping so phrases can span lines
+        let flat = help.split_whitespace().collect::<Vec<_>>().join(" ");
+        for phrase in [
+            "--with-prereqs",
+            "prerequisite chain",
+            "never anything downstream",
+            "`--loop` already includes the prerequisites",
+            "has no extra effect there",
+            "only the incomplete chain members run",
+            "EVERY chain member must already be on disk",
+            "nothing can be generated without SAP",
+            "Needs `--rname`",
+            "unrelated to `--run-loop` / `--run-sequence` / `--iterations`",
+        ] {
+            assert!(flat.contains(phrase), "help lacks: {phrase}");
+        }
+        // cross references in the help of --no-sap and --skip-existing
+        assert!(
+            flat.matches("unless `--with-prereqs` is given").count() >= 2,
+            "--no-sap and --skip-existing must point to --with-prereqs"
+        );
     }
 
     #[test]

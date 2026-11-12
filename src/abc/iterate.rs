@@ -43,6 +43,9 @@ pub struct IterOpts {
     pub skip_existing: bool,
     /// Strict offline: never run, only verify (and merge) existing outputs.
     pub no_sap: bool,
+    /// Single (non-loop) runs only: cover the report's own chain (prerequisites first) instead
+    /// of just the report. A loop already includes the prerequisites, so it has no effect there.
+    pub with_prereqs: bool,
 }
 
 impl IterOpts {
@@ -53,6 +56,7 @@ impl IterOpts {
             merge: o::merge(),
             skip_existing: o::skip_existing(),
             no_sap: o::no_sap(),
+            with_prereqs: o::with_prereqs(),
         }
     }
 }
@@ -191,6 +195,8 @@ pub enum SingleOutcome {
     Existing,
     /// `--no-sap`: the output is complete, nothing ran.
     Ready,
+    /// `--with-prereqs`: a chain member had no data; the rest of the chain was not run.
+    NoData,
 }
 
 /// A single run of `rname` for `date` (`--rname` without `--loop`) with the reuse flags:
@@ -203,6 +209,9 @@ pub fn run_single_with(
     opts: IterOpts,
     today: NaiveDate,
 ) -> Result<SingleOutcome> {
+    if opts.with_prereqs {
+        return run_single_chain(runner, rname, date, opts, today);
+    }
     if !(opts.no_sap || opts.skip_existing) {
         runner.run(rname, date, today)?;
         return Ok(SingleOutcome::Ran);
@@ -227,6 +236,114 @@ pub fn run_single_with(
     }
     runner.run(rname, date, today)?;
     Ok(SingleOutcome::Ran)
+}
+
+/// A single run with `--with-prereqs`: the chain of `rname` (prerequisites first, never anything
+/// downstream) for this one date. Shares the per-day policy with the loop ([`run_day_chain`]):
+/// no data stops the rest of the chain (skipped, not an error), any other error is a hard error.
+/// `no_sap`: every chain member must be complete (one error listing all gaps), nothing runs.
+/// `skip_existing`: only incomplete members run.
+fn run_single_chain(
+    runner: &mut dyn DayRunner,
+    rname: &str,
+    date: &RunDate,
+    opts: IterOpts,
+    today: NaiveDate,
+) -> Result<SingleOutcome> {
+    let chain = registry::chain(rname);
+    if chain.is_empty() {
+        return Err(anyhow!("unknown report '{rname}'"));
+    }
+    let label = registry::date_label(date);
+    println!(
+        "--with-prereqs: '{rname}' {label}, chain: {}",
+        chain.join(" -> ")
+    );
+    if opts.no_sap {
+        let mut gaps = Vec::new();
+        for report in &chain {
+            match runner.complete(report, date, today) {
+                Completeness::Complete => {}
+                other => gaps.push(format!("  {report}: {}", describe_incomplete(&other))),
+            }
+        }
+        if !gaps.is_empty() {
+            return Err(anyhow!(
+                "--no-sap --with-prereqs: the chain of '{rname}' {label} is not complete under {today} (nothing can be generated without SAP):{nl}{gaps}",
+                nl = "\n",
+                gaps = gaps.join("\n")
+            ));
+        }
+        println!(
+            "{rname} {label}: {} complete under {today}, ready (--no-sap).",
+            chain.join(" + ")
+        );
+        return Ok(SingleOutcome::Ready);
+    }
+    let mut summary = IterationSummary::default();
+    let ok = run_day_chain(
+        runner,
+        rname,
+        &chain,
+        date,
+        date.date1,
+        1,
+        opts,
+        today,
+        &mut summary,
+    )?;
+    if !ok {
+        // no data somewhere in the chain: reported like a skipped loop day, not an error
+        print_summary(&summary, 1, None);
+        return Ok(SingleOutcome::NoData);
+    }
+    Ok(if summary.existing.len() == chain.len() {
+        SingleOutcome::Existing
+    } else {
+        SingleOutcome::Ran
+    })
+}
+
+/// One day (or one single-run date) over the chain, shared by the loop and `--with-prereqs`.
+/// Returns `Ok(true)` when the whole chain finished (or existed), `Ok(false)` when a no-data
+/// report cut the rest of the chain (recorded in `summary.skipped`); any other error prints
+/// the summary and is returned.
+#[allow(clippy::too_many_arguments)]
+fn run_day_chain(
+    runner: &mut dyn DayRunner,
+    rname: &str,
+    chain: &[&'static str],
+    date: &RunDate,
+    day: NaiveDate,
+    total: usize,
+    opts: IterOpts,
+    today: NaiveDate,
+    summary: &mut IterationSummary,
+) -> Result<bool> {
+    for report in chain {
+        println!("--- {day}: {report} ---");
+        if opts.skip_existing && runner.complete(report, date, today).is_complete() {
+            println!("{day}: {report} exists, skipped");
+            summary.existing.push((day, report.to_string()));
+            continue;
+        }
+        match runner.run(report, date, today) {
+            Ok(()) => {}
+            Err(e) if e.downcast_ref::<NoDataError>().is_some() => {
+                let msg = dispatch::describe_error(&e);
+                println!("{day}: {report} skipped, {msg}");
+                summary.skipped.push((day, report.to_string(), msg));
+                return Ok(false);
+            }
+            Err(e) => {
+                print_summary(summary, total, Some((day, report)));
+                return Err(e.context(format!(
+                    "run of '{rname}' stopped at {day}, report '{report}' (no merge; files already written stay)"
+                )));
+            }
+        }
+    }
+    Ok(true)
 }
 
 fn describe_incomplete(c: &Completeness) -> String {
@@ -260,6 +377,10 @@ pub fn needs_sap(
                 .iter()
                 .any(|r| !runner.complete(r, &RunDate::single(d), today).is_complete())
         })
+    } else if opts.with_prereqs {
+        registry::chain(rname)
+            .iter()
+            .any(|r| !runner.complete(r, date, today).is_complete())
     } else {
         !runner.complete(rname, date, today).is_complete()
     }
@@ -375,36 +496,17 @@ fn iterate_core(
     let run_days: &[NaiveDate] = if opts.no_sap { &[] } else { &days };
     for (i, &day) in run_days.iter().enumerate() {
         println!("=== Day {}/{total}: {day} ===", i + 1);
-        let mut day_ok = true;
-        for report in &chain {
-            println!("--- {day}: {report} ---");
-            if opts.skip_existing
-                && runner
-                    .complete(report, &RunDate::single(day), today)
-                    .is_complete()
-            {
-                println!("{day}: {report} exists, skipped");
-                summary.existing.push((day, report.to_string()));
-                continue;
-            }
-            match runner.run(report, &RunDate::single(day), today) {
-                Ok(()) => {}
-                Err(e) if e.downcast_ref::<NoDataError>().is_some() => {
-                    let msg = dispatch::describe_error(&e);
-                    println!("{day}: {report} skipped, {msg}");
-                    summary.skipped.push((day, report.to_string(), msg));
-                    day_ok = false;
-                    break;
-                }
-                Err(e) => {
-                    print_summary(&summary, total, Some((day, report)));
-                    return Err(e.context(format!(
-                        "iteration of '{rname}' stopped at {day}, report '{report}' \
-                         (no merge; files already written stay)"
-                    )));
-                }
-            }
-        }
+        let day_ok = run_day_chain(
+            runner,
+            rname,
+            &chain,
+            &RunDate::single(day),
+            day,
+            total,
+            opts,
+            today,
+            &mut summary,
+        )?;
         if day_ok {
             summary.done.push(day);
         }
@@ -813,6 +915,7 @@ mod tests {
             merge,
             skip_existing,
             no_sap,
+            with_prereqs: false,
         }
     }
 
@@ -1056,6 +1159,232 @@ mod tests {
         .unwrap();
         assert_eq!(live, 2);
         assert!(f.calls.is_empty() && f.merges.len() == 1);
+    }
+
+    fn wp(skip_existing: bool, no_sap: bool) -> IterOpts {
+        IterOpts {
+            with_prereqs: true,
+            ..opts(false, skip_existing, no_sap)
+        }
+    }
+
+    fn one() -> RunDate {
+        RunDate::single(d(5))
+    }
+
+    #[test]
+    fn with_prereqs_runs_the_own_chain_in_order() {
+        let mut f = Fake::default();
+        let r = run_single_with(&mut f, "repack", &one(), wp(false, false), today()).unwrap();
+        assert_eq!(r, SingleOutcome::Ran);
+        assert_eq!(names(&f), ["k2xx@05", "relabel@05", "repack@05"]);
+        // never downstream: relabel does not run repack
+        let mut f = Fake::default();
+        run_single_with(&mut f, "relabel", &one(), wp(false, false), today()).unwrap();
+        assert_eq!(names(&f), ["k2xx@05", "relabel@05"]);
+        // independent report: just itself
+        let mut f = Fake::default();
+        run_single_with(&mut f, "xdock", &one(), wp(false, false), today()).unwrap();
+        assert_eq!(names(&f), ["xdock@05"]);
+        assert!(f.todays.iter().all(|t| *t == today()));
+    }
+
+    #[test]
+    fn with_prereqs_no_data_cuts_the_rest_of_the_chain() {
+        let mut f = Fake {
+            no_data: vec![("k2xx".into(), 5)],
+            ..Fake::default()
+        };
+        let r = run_single_with(&mut f, "repack", &one(), wp(false, false), today()).unwrap();
+        assert_eq!(r, SingleOutcome::NoData);
+        assert_eq!(names(&f), ["k2xx@05"]);
+        // any other error is hard
+        let mut f = Fake {
+            hard: Some(("relabel".into(), 5)),
+            ..Fake::default()
+        };
+        let e = run_single_with(&mut f, "repack", &one(), wp(false, false), today()).unwrap_err();
+        assert!(format!("{e:#}").contains("boom"));
+        assert_eq!(names(&f), ["k2xx@05", "relabel@05"]);
+    }
+
+    #[test]
+    fn with_prereqs_skip_existing_runs_only_incomplete_members() {
+        let mut f = Fake {
+            states: vec![
+                ("k2xx".into(), 5, Completeness::Complete),
+                ("relabel".into(), 5, missing(&["pivot"])),
+                ("repack".into(), 5, Completeness::None),
+            ],
+            ..Fake::default()
+        };
+        let r = run_single_with(&mut f, "repack", &one(), wp(true, false), today()).unwrap();
+        assert_eq!(r, SingleOutcome::Ran);
+        assert_eq!(names(&f), ["relabel@05", "repack@05"]);
+        // everything complete: nothing runs
+        let mut f = Fake {
+            all_complete: true,
+            ..Fake::default()
+        };
+        let r = run_single_with(&mut f, "repack", &one(), wp(true, false), today()).unwrap();
+        assert_eq!(r, SingleOutcome::Existing);
+        assert!(f.calls.is_empty());
+        // without the flag only the report itself is considered
+        let mut f = Fake {
+            states: vec![("repack".into(), 5, Completeness::Complete)],
+            ..Fake::default()
+        };
+        let r = run_single_with(&mut f, "repack", &one(), opts(false, true, false), today());
+        assert_eq!(r.unwrap(), SingleOutcome::Existing);
+        assert!(f.calls.is_empty());
+    }
+
+    #[test]
+    fn with_prereqs_no_sap_requires_the_whole_chain() {
+        // k2xx missing, relabel partial, repack present
+        let mut f = Fake {
+            states: vec![
+                ("k2xx".into(), 5, Completeness::None),
+                ("relabel".into(), 5, missing(&["combined", "pivot"])),
+                ("repack".into(), 5, Completeness::Complete),
+            ],
+            ..Fake::default()
+        };
+        let e = run_single_with(&mut f, "repack", &one(), wp(false, true), today()).unwrap_err();
+        let m = format!("{e:#}");
+        assert!(m.contains("k2xx: no output files"), "{m}");
+        assert!(
+            m.contains("relabel: missing table(s): combined, pivot"),
+            "{m}"
+        );
+        assert!(!m.contains("repack:"), "{m}");
+        assert!(f.calls.is_empty(), "nothing may run");
+        // all present: ready
+        let mut f = Fake {
+            all_complete: true,
+            ..Fake::default()
+        };
+        let r = run_single_with(&mut f, "repack", &one(), wp(false, true), today()).unwrap();
+        assert_eq!(r, SingleOutcome::Ready);
+        assert!(f.calls.is_empty());
+        // without --with-prereqs the prerequisites are not checked (today's behaviour)
+        let mut f = Fake {
+            states: vec![("repack".into(), 5, Completeness::Complete)],
+            ..Fake::default()
+        };
+        let r = run_single_with(&mut f, "repack", &one(), opts(false, false, true), today());
+        assert_eq!(r.unwrap(), SingleOutcome::Ready);
+    }
+
+    #[test]
+    fn with_prereqs_routing_never_connects_for_no_sap_and_complete_resume() {
+        let mut live = 0;
+        // no-sap with a gap: error, no SAP
+        let mut f = Fake {
+            states: vec![("k2xx".into(), 5, Completeness::None)],
+            all_complete: true,
+            ..Fake::default()
+        };
+        let r = run_rname_routed(
+            &mut f,
+            "repack",
+            &one(),
+            false,
+            wp(false, true),
+            today(),
+            || {
+                live += 1;
+                Ok(())
+            },
+        );
+        assert!(r.is_err() && live == 0 && f.calls.is_empty());
+        // no-sap all present: ready, no SAP
+        let mut f = Fake {
+            all_complete: true,
+            ..Fake::default()
+        };
+        run_rname_routed(
+            &mut f,
+            "repack",
+            &one(),
+            false,
+            wp(false, true),
+            today(),
+            || {
+                live += 1;
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert_eq!(live, 0);
+        // skip-existing: all chain members complete = no SAP; one gap in a prerequisite = SAP
+        run_rname_routed(
+            &mut f,
+            "repack",
+            &one(),
+            false,
+            wp(true, false),
+            today(),
+            || {
+                live += 1;
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert_eq!(live, 0);
+        let mut f = Fake {
+            states: vec![("k2xx".into(), 5, Completeness::None)],
+            all_complete: true,
+            ..Fake::default()
+        };
+        run_rname_routed(
+            &mut f,
+            "repack",
+            &one(),
+            false,
+            wp(true, false),
+            today(),
+            || {
+                live += 1;
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert_eq!(live, 1);
+        // without the flag the prerequisite gap does not matter (repack itself is complete)
+        let o = opts(false, true, false);
+        run_rname_routed(&mut f, "repack", &one(), false, o, today(), || {
+            live += 1;
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(live, 1);
+    }
+
+    #[test]
+    fn with_prereqs_has_no_effect_on_a_loop() {
+        let mut a = Fake::default();
+        let sa = run_iteration_with(&mut a, "repack", &week(), opts(true, false, false), today())
+            .unwrap();
+        let mut b = Fake::default();
+        let with = IterOpts {
+            with_prereqs: true,
+            ..opts(true, false, false)
+        };
+        let sb = run_iteration_with(&mut b, "repack", &week(), with, today()).unwrap();
+        assert_eq!(a.calls, b.calls);
+        assert_eq!(a.merges, b.merges);
+        assert_eq!((sa.done, sa.skipped.len()), (sb.done, sb.skipped.len()));
+        // routing a loop with the flag takes the iteration path as well
+        let mut f = Fake::default();
+        run_rname_routed(&mut f, "repack", &week(), true, with, today(), || Ok(())).unwrap();
+    }
+
+    #[test]
+    fn without_with_prereqs_a_single_run_is_unchanged() {
+        let mut f = Fake::default();
+        run_single_with(&mut f, "repack", &one(), IterOpts::default(), today()).unwrap();
+        assert_eq!(names(&f), ["repack@05"]);
     }
 
     #[test]

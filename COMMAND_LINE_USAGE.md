@@ -162,8 +162,9 @@ The file extension drives the parser:
 
 | `--loop` | With `--rname`: one run **per day** of the `--run-date` range or week (7 days for `WKnn`) instead of one run over the range. Per day the prerequisite reports run first (`k2xx` -> `relabel` -> `repack`). A day with no data is skipped; any other error stops the iteration with no merge. Needs a range or week. Not `--run-loop`. |
 | `--merge` | With `--loop` (required): after the per-day runs write one `<DATE>_<RNAME>_MERGED.xlsx` per report of the chain, with every output table as a sheet and a leading `run_date` column (ISO `yyyy-mm-dd`). Not `--iterations`. |
-| `--no-sap` | With `--rname`: strict offline, SAP is never touched (no session; SAP GUI may be closed). Every day and report of the chain (prerequisites too) must have ALL its output TSVs, else an error lists the missing day/report/tables and nothing is merged. With `--loop --merge` re-merges an exported week; with `--loop` alone or a single date only verifies. Conflicts with `--skip-existing`; an error with `--output-format=xlsx`. |
-| `--skip-existing` | With `--rname`: resume. A day+report whose output tables are all present is logged "exists, skipped" and not run; the rest runs in SAP. Skipped days count as done and are merged. Works with `--loop` and for a single run. Conflicts with `--no-sap`. |
+| `--no-sap` | With `--rname`: strict offline, SAP is never touched (no session; SAP GUI may be closed). Every day and report of the chain (prerequisites too) must have ALL its output TSVs, else an error lists the missing day/report/tables and nothing is merged. With `--loop --merge` re-merges an exported week; with `--loop` alone or a single date only verifies (a single run checks only the report itself unless `--with-prereqs`). Conflicts with `--skip-existing`; an error with `--output-format=xlsx`. |
+| `--skip-existing` | With `--rname`: resume. A day+report whose output tables are all present is logged "exists, skipped" and not run; the rest runs in SAP. Skipped days count as done and are merged. Works with `--loop` and for a single run (which considers only the report itself unless `--with-prereqs`). Conflicts with `--no-sap`. |
+| `--with-prereqs` | With `--rname`, single (non-loop) runs: also cover the report's prerequisite chain for that one date, in order (relabel: k2xx, relabel; repack: k2xx, relabel, repack), never anything downstream. No data in a member skips the rest of the chain (not an error). With `--skip-existing` only incomplete members run (all complete: no SAP connection). With `--no-sap` EVERY chain member must be complete on disk, else an error lists each missing report and its tables; if all are present it prints "ready". Accepted with `--loop` but no extra effect (the loop already includes prerequisites). Conflicts with `--run-loop` / `--run-sequence`; not in the TUI. |
 | `--output-date=<YYYY-MM-DD>` | With `--rname`: the output date folder to read/write instead of today (runs, `--loop`, `--merge`, `--skip-existing`, `--no-sap`; relabel/repack read the k2xx/relabel TSVs of that folder). |
 | `--output-format=<tsv\|xlsx>` | Output of a report run. `tsv` (default); `xlsx` additionally writes `<DATE>_<RNAME>.xlsx` (every output table a sheet) next to the TSV files. |
 
@@ -171,8 +172,19 @@ The file extension drives the parser:
 `--run-loop` / `--run-sequence`. `--no-sap` / `--skip-existing` / `--output-date` only reuse or redirect the `--rname` TSV outputs; they are
 likewise unrelated to those (config-driven) loops and are not in the TUI.
 
+Combinations of `--with-prereqs` for a single run (`--rname=repack --run-date=<date>`):
+
+| Flags | Effect |
+|---|---|
+| (none) | repack only (unchanged) |
+| `--with-prereqs` | k2xx, relabel, repack for that date; no data stops the rest of the chain |
+| `--with-prereqs --skip-existing` | only the chain members whose TSV set is incomplete; "exists, skipped" for the rest; no SAP if all exist |
+| `--with-prereqs --no-sap` | SAP never touched; k2xx, relabel and repack must all be complete, else an error lists every missing report + tables; else "ready" |
+| `--no-sap` (no `--with-prereqs`) | checks only repack |
+| `--loop --with-prereqs` | same as `--loop` (the loop already runs the prerequisites) |
+
 `--rname` and `--run-date` require each other. Allowed with them: `--skip-sap-check`, `--keep-awake`, `--reports-dir`,
-`--date-format`, `--timezone`, `--ignore-display-error`, `--date-range-buffer`, `--use-clipboard`, `--output-format`, `--loop`, `--merge`, `--no-sap`, `--skip-existing`, `--output-date`. Defaults for variants, layouts, warehouse and clean-up come from the
+`--date-format`, `--timezone`, `--ignore-display-error`, `--date-range-buffer`, `--use-clipboard`, `--output-format`, `--loop`, `--merge`, `--no-sap`, `--skip-existing`, `--with-prereqs`, `--output-date`. Defaults for variants, layouts, warehouse and clean-up come from the
 optional `[abc.mustgo]` / `[abc.xdock]` / `[abc.toyota]` / `[abc.misc]` / `[abc.k2xx]` / `[abc.relabel]` / `[abc.repack]` section (see [CONFIG.md](CONFIG.md)); there are no per-tcode flags for a report.
 
 ```bash

@@ -169,6 +169,10 @@ pub struct CliOverrides {
     /// present is not run again.
     pub skip_existing: bool,
 
+    /// `--with-prereqs` (needs `--rname`): a single run also covers the report's prerequisite
+    /// chain for that date. No extra effect with `--loop` (which includes it already).
+    pub with_prereqs: bool,
+
     /// `--output-date`: the date folder of the outputs instead of the real today.
     pub output_date: Option<NaiveDate>,
 }
@@ -383,6 +387,9 @@ impl CliOverrides {
         if self.skip_existing {
             parts.push("--skip-existing".to_string());
         }
+        if self.with_prereqs {
+            parts.push("--with-prereqs".to_string());
+        }
         if let Some(d) = self.output_date {
             parts.push(format!("--output-date={}", d.format("%Y-%m-%d")));
         }
@@ -425,6 +432,11 @@ pub fn no_sap() -> bool {
 /// Is `--skip-existing` (resume: skip complete day+report outputs) active?
 pub fn skip_existing() -> bool {
     cli_overrides().skip_existing
+}
+
+/// Is `--with-prereqs` (single runs cover the prerequisite chain) active?
+pub fn with_prereqs() -> bool {
+    cli_overrides().with_prereqs
 }
 
 /// `--output-date`, when given.

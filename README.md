@@ -216,12 +216,20 @@ tables exist as files (header-only files count; a partial set is incomplete) - t
   (prerequisites too) must be complete, else ONE error lists the missing day / report / tables and nothing is merged. With `--loop --merge` it
   re-merges an exported week; with `--loop` alone, or a single date, it only verifies the files. Not with `--skip-existing`; with
   `--output-format=xlsx` it is an error (the per-day workbook is not regenerated offline; `--merge` always writes its xlsx).
+* `--with-prereqs` (single runs): also covers the report's own prerequisite chain for that one date, in order (relabel: k2xx, relabel;
+  repack: k2xx, relabel, repack), never anything downstream (relabel does not run repack). Without the flag a single run checks / runs only
+  the report itself. No data in a chain member skips the rest of the chain for that date (reported, not an error). Combined with
+  `--skip-existing` only the incomplete chain members run (all complete: SAP is not connected). Combined with `--no-sap` EVERY chain member must
+  be complete on disk, else ONE error lists each missing report and its tables (nothing can be generated without SAP); if all are present it
+  prints "ready". Needs `--rname`. With `--loop` it is accepted but has no extra effect (the loop already includes the prerequisites).
 * Unlike `--run-loop` / `--run-sequence` / `--iterations` (config-driven TCode repetition) these flags only reuse or redirect `--rname` outputs.
-* Not in the TUI.
+* Not in the TUI (also not `--with-prereqs`).
 
 ```
 ./sap_automation.exe --rname=xdock --run-date=wk46 --loop --merge --no-sap --output-date=2026-11-12   # re-merge with SAP closed
 ./sap_automation.exe --rname=xdock --run-date=wk46 --loop --merge --skip-existing --output-date=2026-11-12   # resume after a stop
+./sap_automation.exe --rname=repack --run-date=2026-11-05 --with-prereqs                 # k2xx, relabel, repack for one date
+./sap_automation.exe --rname=repack --run-date=2026-11-05 --with-prereqs --no-sap --output-date=2026-11-12   # verify all three exist
 ```
 
 Not verified on a live system yet (including the reuse flags); see `docs/private/abc_iteration_plan.md`.

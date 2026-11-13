@@ -1,4 +1,6 @@
 // first: it defines the crate-wide `println!` / `eprintln!` (opt-in async logging, see the module)
+extern crate self as sap_automation;
+
 #[macro_use]
 pub mod logging;
 pub mod abc;

@@ -209,6 +209,8 @@ match close_excel_windows(Some(file_name)) {
 | `N session(s) already open + M new > 6` / `only N free session slot(s)` | Parallel runs (`--multi-conn`, `--conn-count`) need free windows: SAP allows 6 per connection including yours. Close windows or use a smaller `--conn-count`. |
 | `--rname given N times: add --multi-conn` | Several `--rname` are only for parallel sessions; add `--multi-conn` (and no `--loop`), or run the reports one by one. |
 | Parallel run slower than expected | Parallel sessions do not speed up one report; the whole range or set of reports finishes sooner. Heavy reports (VT11, VL06O) compete on the SAP server. Compare the start/end columns of the final table with a sequential run. |
+| Status grid at the bottom flickers, or leaves stray lines | The grid is redrawn as one frame where the terminal supports synchronized output (recent Windows Terminal); very narrow windows (under about 40 columns) can wrap it. Widen the window, or set `SAP_NO_STATUS=1` to turn the grid off. |
+| Parallel run feels slow | Use a release build (`cargo run --release -- ...` or `target\i686-pc-windows-msvcelease\sap_automation.exe`): debug builds are much slower per COM call. |
 | Export file name has `-s3` in it | Intended: in parallel runs the session number is added (`<timestamp>-s3_<TCODE>.txt`) so sessions never overwrite each other. |
 
 **Tips:**

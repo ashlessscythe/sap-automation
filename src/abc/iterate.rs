@@ -593,6 +593,7 @@ pub fn parallel_worker(
     let chain = registry::chain(rname);
     while let Some(day) = shared.next_day() {
         println!("=== Day {day} ===");
+        sap_automation::logging::task(&format!("{rname} for {day}"));
         let mut local = IterationSummary::default();
         let outcome = run_day_chain(
             runner,
@@ -609,6 +610,7 @@ pub fn parallel_worker(
             Ok(ok) => {
                 if let Ok(mut r) = shared.results.lock() {
                     r.push((day, ok, local));
+                    sap_automation::logging::progress(r.len(), shared.total);
                 }
             }
             Err(e) => {

@@ -247,6 +247,8 @@ time (one thread and one COM instance per session) and closes them again at the 
 * Export files carry the session number (`20261112162255-s3_VT11.txt`); console lines are prefixed `[s3]` and written asynchronously.
 * A day without data is skipped; any other error stops new days, running ones finish, nothing is merged. A summary table lists every job.
 
+* **Status panel (v0.17.0):** on a terminal, a grid stays pinned below the scrolling output: a header (elapsed time, `days done/total`, active sessions) and one row per session with its state (`running` / `done` / `FAILED`), its task (`toyota for 2026-01-09`), a per-row timer and its latest log line. Output redirected to a file or pipe is unchanged; set `SAP_NO_STATUS=1` to switch the panel off.
+
 Live-verified for two reports (xdock + k2xx) and for days of a range (`--conn-count`); see [COMMAND_LINE_USAGE.md](COMMAND_LINE_USAGE.md).
 
 ## Sequence Menu Option IDs

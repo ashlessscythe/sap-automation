@@ -111,8 +111,10 @@ fn worker(label: String, session_id: String, job: Job, t0: Instant) -> Outcome {
             .ok_or_else(|| anyhow!("{session_id} is not a GuiSession"))?;
         crate::utils::sap_export_utils::set_session_tag(&session_tag(&session_id));
         println!("[{label}] {started} started in {session_id}");
+        crate::logging::status("running");
         job(&session)
     })();
+    crate::logging::status(if result.is_ok() { "done" } else { "FAILED" });
     Outcome {
         label,
         session_id,
@@ -267,6 +269,13 @@ pub fn run_reports(
         .map(|r| {
             let (name, d) = (r.clone(), *date);
             let job: Job = Box::new(move |s: &GuiSession| {
+                let (a, b) = d.as_range();
+                let when = if a == b {
+                    a.to_string()
+                } else {
+                    format!("{a}..{b}")
+                };
+                crate::logging::task(&format!("{name} for {when}"));
                 crate::utils::unattended_runner::run_rname_unattended(s, &name, &d, skip_sap_check)
             });
             (r.clone(), job)

@@ -182,6 +182,7 @@ Sessions are created on the first connection and closed again when the run ends;
 sequential `--loop`: a day without data is skipped, any other error stops new days (running ones finish) and nothing is merged; with `--merge` the merge runs
 once at the end, without SAP. Several `--rname` can't be combined with `--loop`; `--no-sap` can't be combined with the parallel flags, `--skip-existing` and
 `--with-prereqs` not with `--multi-conn` over several `--rname`, and `--use-clipboard` not at all (the Windows clipboard is shared by all sessions).
+On a terminal a parallel run also pins a status grid below the scrolling output (elapsed time, days done/total, and per session: state, task such as `toyota for 2026-01-09`, timer, latest log line). It is only drawn when stdout is a terminal; `SAP_NO_STATUS=1` turns it off.
 Export files written in a parallel run carry the session number, `20261112162255-s3_VT11.txt`, so two sessions running the same tcode never collide, and the
 export folder is sent to SAP as a clean absolute `C:\a\b` path (no confirmation prompt). Console output is asynchronous (queued and written by one thread)
 and every line is prefixed with its session, `[s3] ...`. A table at the end shows each job, session, start and end time.

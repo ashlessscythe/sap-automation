@@ -49,7 +49,6 @@ pub struct Cli {
         num_args = 0..=1,
         default_missing_value = "true",
         value_parser = clap::builder::BoolishValueParser::new(),
-        requires = "rname",
         conflicts_with_all = ["no_sap", "skip_existing", "with_prereqs"]
     )]
     pub multi_conn: Option<bool>,
@@ -65,7 +64,6 @@ pub struct Cli {
         long = "conn-count",
         value_name = "N",
         value_parser = clap::value_parser!(u8).range(2..=6),
-        requires = "iterate_loop",
         conflicts_with_all = ["no_sap"]
     )]
     pub conn_count: Option<u8>,
@@ -311,6 +309,71 @@ pub struct Cli {
     #[arg(long, value_name = "BIN")]
     pub bin_filter: Option<String>,
 
+    /// LT03 ONLY (`--tcode lt03`): shipment numbers to create transfer orders for, comma separated.
+    /// Per shipment: VL06O -> ZMDESNR by material -> LT03 per delivery. See also
+    /// `--shipments-file` and `--shipments-clipboard`; without any of them the shipment_number
+    /// column of the newest VT11 export is used.
+    #[arg(long, value_name = "N1,N2", value_delimiter = ',', num_args = 1..)]
+    pub shipments: Vec<String>,
+
+    /// LT03 ONLY: file with the shipment numbers (`.txt` one per line, `.tsv`/`.xlsx` with a
+    /// `shipment_number` column). `-` reads standard input, e.g.
+    /// `Get-Clipboard | sap_automation --tcode lt03 --shipments-file -`.
+    #[arg(long, value_name = "PATH|-")]
+    pub shipments_file: Option<String>,
+
+    /// LT03 ONLY: read the shipment numbers from the Windows clipboard once at start.
+    #[arg(long)]
+    pub shipments_clipboard: bool,
+
+    /// LT03 ONLY: drive SAP up to the stock screen of every material and show what would be
+    /// picked, but enter no quantity and create no transfer order.
+    #[arg(long)]
+    pub dry_run: bool,
+
+    /// LT03 ONLY: bin pick strategy `fifo`, `lifo`, `load_balance` or `sequential` (default).
+    /// Overrides `[tcode.LT03].bin_pick_strategy`.
+    #[arg(long, value_name = "STRATEGY")]
+    pub bin_pick_strategy: Option<String>,
+
+    /// LT03 ONLY: maximum goods receipt age in days of a bin (fifo/lifo only; 0 = off).
+    #[arg(long, value_name = "DAYS")]
+    pub age_cutoff: Option<u32>,
+
+    /// LT03 ONLY: allow bins of other ship-tos when the ship-to bins cannot cover the quantity.
+    #[arg(
+        long,
+        value_name = "BOOL",
+        num_args = 0..=1,
+        default_missing_value = "true",
+        value_parser = clap::builder::BoolishValueParser::new()
+    )]
+    pub allow_relabel: Option<bool>,
+
+    /// LT03 ONLY: apply the blocked-stock (blacklist) rules from the stock DB.
+    #[arg(
+        long,
+        value_name = "BOOL",
+        num_args = 0..=1,
+        default_missing_value = "true",
+        value_parser = clap::builder::BoolishValueParser::new()
+    )]
+    pub skip_blacklist: Option<bool>,
+
+    /// LT03 ONLY: `skip_if_any` (default: a material with blocked stock is skipped) or
+    /// `allow_material_skip_bins` (only the blocked bins are skipped).
+    #[arg(long, value_name = "POLICY")]
+    pub blacklist_material_policy: Option<String>,
+
+    /// LT03 ONLY: open the table of the last `--dry-run` again (scrollable viewer, then the plain
+    /// table). Reads `dryrun_picks.tsv` of the newest run; does not touch SAP.
+    #[arg(long = "show-last")]
+    pub show_last: bool,
+
+    /// LT03 ONLY: resume: deliveries with a green result today are not run again.
+    #[arg(long = "lt03-resume")]
+    pub lt03_resume: bool,
+
     /// Days added before the start and after the end of the run date range of every tcode that
     /// sets one (VT11, ZMDETPC). When omitted: 3 for ZMDETPC on a week run (`WK<n>`), else 0.
     /// Overrides `[abc.<report>] date_range_buffer`.
@@ -379,7 +442,54 @@ impl Cli {
             self.run_date.as_deref(),
         )?;
 
+        let lt03 = crate::utils::cli_overrides::Lt03Cli {
+            shipments: self
+                .shipments
+                .iter()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect(),
+            shipments_file: self.shipments_file.clone(),
+            shipments_clipboard: self.shipments_clipboard,
+            dry_run: self.dry_run,
+            bin_pick_strategy: self.bin_pick_strategy.clone(),
+            age_cutoff: self.age_cutoff,
+            allow_relabel: self.allow_relabel,
+            skip_blacklist: self.skip_blacklist,
+            blacklist_material_policy: self.blacklist_material_policy.clone(),
+            resume: self.lt03_resume,
+            show_last: self.show_last,
+        };
+        let is_lt03 = self
+            .tcode
+            .as_deref()
+            .is_some_and(|t| t.eq_ignore_ascii_case("lt03"));
+        let lt03_flags = lt03.flag_names();
+        if !lt03_flags.is_empty() && !is_lt03 {
+            return Err(anyhow!(
+                "{} only work with --tcode lt03",
+                lt03_flags.join(", ")
+            ));
+        }
+        if let Some(s) = &lt03.bin_pick_strategy {
+            crate::lt03_plan::Strategy::parse(s)?;
+        }
+        if (self.multi_conn == Some(true) || self.conn_count.is_some())
+            && self.rname.is_empty()
+            && !is_lt03
+        {
+            return Err(anyhow!(
+                "--multi-conn / --conn-count need --rname (reports) or --tcode lt03 (shipments)"
+            ));
+        }
+        if self.conn_count.is_some() && !self.iterate_loop && !is_lt03 {
+            return Err(anyhow!(
+                "--conn-count needs --loop (days of a range) or --tcode lt03 (shipments)"
+            ));
+        }
+
         Ok(CliOverrides {
+            lt03,
             rname,
             run_date,
             tcode: self.tcode.as_ref().map(|s| s.to_uppercase()),
@@ -571,7 +681,7 @@ mod rname_tests {
             assert!(parse(&a).is_err(), "{bad}");
         }
         // --multi-conn alone is rejected
-        assert!(parse(&["--multi-conn"]).is_err());
+        assert!(ov(&["--multi-conn"]).is_err());
         // with --loop it parallelises the days of ONE report, several --rname + --loop is an error
         let one = ["--rname=k2xx", "--run-date=WK45", "--loop", "--multi-conn"];
         assert!(ov(&one).is_ok());
@@ -603,10 +713,51 @@ mod rname_tests {
             assert!(parse(&a).is_err(), "{bad}");
         }
         // needs --loop, conflicts with --no-sap
-        assert!(parse(&["--rname=k2xx", "--run-date=WK45", "--conn-count=3"]).is_err());
+        assert!(ov(&["--rname=k2xx", "--run-date=WK45", "--conn-count=3"]).is_err());
         let mut a = base.to_vec();
         a.extend(["--conn-count=3", "--no-sap"]);
         assert!(parse(&a).is_err());
+    }
+
+    #[test]
+    fn lt03_flags_are_opt_in_and_tied_to_the_tcode() {
+        let o = ov(&[
+            "--tcode=lt03",
+            "--shipments=111,222",
+            "--shipments",
+            "333",
+            "--dry-run",
+            "--bin-pick-strategy=FIFO",
+            "--age-cutoff=30",
+            "--allow-relabel",
+            "--skip-blacklist=false",
+            "--blacklist-material-policy=allow_material_skip_bins",
+            "--lt03-resume",
+        ])
+        .unwrap();
+        assert_eq!(o.lt03.shipments, ["111", "222", "333"]);
+        assert!(o.lt03.dry_run && o.lt03.resume);
+        assert_eq!(o.lt03.age_cutoff, Some(30));
+        assert_eq!(o.lt03.allow_relabel, Some(true));
+        assert_eq!(o.lt03.skip_blacklist, Some(false));
+        // without the flags nothing is set
+        assert!(ov(&["--tcode=lt03"]).unwrap().lt03.flag_names().is_empty());
+        // the flags are LT03 only
+        assert!(ov(&["--tcode=vt11", "--dry-run"]).is_err());
+        assert!(ov(&["--shipments=1"]).is_err());
+        // unknown strategy
+        assert!(ov(&["--tcode=lt03", "--bin-pick-strategy=random"]).is_err());
+    }
+
+    #[test]
+    fn lt03_parallel_sessions() {
+        let o = ov(&["--tcode=lt03", "--shipments=1,2,3", "--conn-count=2"]).unwrap();
+        assert_eq!(o.lt03.shipments.len(), 3);
+        assert!(ov(&["--tcode=lt03", "--shipments=1,2", "--multi-conn"]).is_ok());
+        assert!(parse(&["--tcode=lt03", "--conn-count=7"]).is_err());
+        // other tcodes still can't run in parallel
+        assert!(ov(&["--tcode=vt11", "--conn-count=2"]).is_err());
+        assert!(ov(&["--tcode=vt11", "--multi-conn"]).is_err());
     }
 
     #[test]

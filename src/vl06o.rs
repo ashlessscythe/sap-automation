@@ -401,6 +401,29 @@ pub fn run_export_outcome(session: &GuiSession, params: &VL06OParams) -> Result<
         ));
     }
 
+    // The first row must be the first shipment asked for: a stale clipboard or leftover entries
+    // would otherwise run the report for some other shipment without anyone noticing.
+    if let (Some(want), Some((ok, shown))) = (
+        params.shipment_numbers.first(),
+        crate::utils::sap_ctrl_utils::first_entry_check(
+            session,
+            1,
+            table_id,
+            params
+                .shipment_numbers
+                .first()
+                .map(String::as_str)
+                .unwrap_or(""),
+        ),
+    ) {
+        if !ok {
+            println!("VL06O: the multi-selection starts with '{shown}', expected '{want}'");
+            return Ok(ExportOutcome::Error(format!(
+                "VL06O: the shipment list in SAP starts with '{shown}' but '{want}' was requested                  (stale clipboard or leftover entries?)"
+            )));
+        }
+    }
+
     // Close Multi-Window
     if let Ok(window) = session.find_by_id("wnd[1]".to_string()) {
         if let Some(modal_window) = window.downcast::<GuiModalWindow>() {

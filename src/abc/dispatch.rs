@@ -112,7 +112,7 @@ pub fn chrono_date_format(name: &str) -> &'static str {
     }
 }
 
-fn s(section: &Option<toml::Value>, key: &str) -> Option<String> {
+pub(crate) fn s(section: &Option<toml::Value>, key: &str) -> Option<String> {
     section
         .as_ref()?
         .get(key)?
@@ -136,11 +136,11 @@ fn str_list(section: &Option<toml::Value>, key: &str) -> Option<Vec<String>> {
     (!v.is_empty()).then_some(v)
 }
 
-fn int(section: &Option<toml::Value>, key: &str) -> Option<i64> {
+pub(crate) fn int(section: &Option<toml::Value>, key: &str) -> Option<i64> {
     section.as_ref()?.get(key)?.as_integer()
 }
 
-fn b(section: &Option<toml::Value>, key: &str) -> Option<bool> {
+pub(crate) fn b(section: &Option<toml::Value>, key: &str) -> Option<bool> {
     section.as_ref()?.get(key)?.as_bool()
 }
 

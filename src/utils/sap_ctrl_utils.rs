@@ -380,6 +380,38 @@ fn multi_row_text(session: &GuiSession, wnd_idx: i32, table_id: &str, row: i32) 
     None
 }
 
+/// Scroll the multi-selection table back to its first row (its own vertical scrollbar).
+fn scroll_multi_to_top(session: &GuiSession, wnd_idx: i32, table_id: &str) {
+    let table = session
+        .find_by_id(format!("wnd[{wnd_idx}]/usr/{table_id}"))
+        .ok()
+        .and_then(|c| c.downcast::<GuiTableControl>());
+    if let Some(sb) = table
+        .and_then(|t| t.vertical_scrollbar().ok())
+        .map(|c| GuiScrollbar::from(c.get_idispatch().clone()))
+    {
+        if sb.position().map(|p| p != 0).unwrap_or(false) {
+            let _ = sb.set_position(0);
+            std::thread::sleep(std::time::Duration::from_millis(150));
+        }
+    }
+}
+
+/// What the first row of the open multi-selection holds against what was meant to be pasted:
+/// `Some((matches, shown))`, `None` when the row cannot be read. Catches a paste that put some
+/// other list in the table (a stale clipboard, leftover entries of a variant).
+pub fn first_entry_check(
+    session: &GuiSession,
+    wnd_idx: i32,
+    table_id: &str,
+    expected: &str,
+) -> Option<(bool, String)> {
+    // after a paste the table may be scrolled to its end: look at the top
+    scroll_multi_to_top(session, wnd_idx, table_id);
+    let shown = multi_row_text(session, wnd_idx, table_id, 0)?;
+    Some((same_entry(&shown, expected), shown))
+}
+
 /// Check that a clipboard upload really landed: the first entry is in row 0, the table holds at
 /// least as many rows as entries and, after scrolling to its end, the last entry is the last
 /// filled row. The table is scrolled back to the top afterwards. Not every row is compared.

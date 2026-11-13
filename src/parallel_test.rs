@@ -342,6 +342,124 @@ pub fn run_loop_parallel(
     finish_parallel(shared, &mut offline_runner(), rname, range, opts, today).map(|_| ())
 }
 
+/// `--tcode lt03 --multi-conn | --conn-count=N`: the shipments are work units on a shared queue.
+/// N sessions (exactly `--conn-count`, never more than shipments; with `--multi-conn` one per
+/// shipment limited by the free session slots) each take the next shipment when they are free, so
+/// 3 shipments on `--conn-count=2` use two sessions for the first two shipments and the first
+/// session that finishes takes the third. A unit that fails stops new units from starting (the
+/// running ones finish); a shipment without data is skipped. The log, results and summary are
+/// written once at the end, like a single-session run.
+pub fn run_lt03_parallel(conn_count: Option<usize>) -> Result<()> {
+    use crate::lt03_module::{
+        finish_run, output_dir, plan_units, read_done_deliveries, run_unit,
+        settings_from_environment, shipments_from_environment, RealManualTo, RunReport, UnitReport,
+        UnitStatus,
+    };
+    use std::collections::{HashSet, VecDeque};
+    use std::sync::{Arc, Mutex};
+
+    crate::utils::cli_overrides::set_unattended(true);
+    let st = Arc::new(settings_from_environment()?);
+    let shipments = shipments_from_environment(&st)?;
+    let units = plan_units(&shipments, true);
+    if units.len() < 2 {
+        bail!(
+            "parallel sessions need at least 2 shipments (got {})",
+            units.len()
+        );
+    }
+    let workers = match conn_count {
+        Some(n) => n.min(units.len()),
+        None => {
+            let free = MAX_SESSIONS.saturating_sub(open_session_count()?);
+            if free < 2 {
+                bail!(
+                    "only {free} free session slot(s) (SAP allows {MAX_SESSIONS} per connection);                      close some windows"
+                );
+            }
+            units.len().min(free)
+        }
+    };
+    let skip = Arc::new(if st.resume && !st.lt.dry_run {
+        read_done_deliveries(&output_dir(&st.reports_dir, st.lt.today))
+    } else {
+        HashSet::new()
+    });
+
+    struct Shared {
+        queue: VecDeque<(usize, crate::lt03_module::Unit)>,
+        reports: Vec<(usize, UnitReport)>,
+        abort: bool,
+    }
+    let shared = Arc::new(Mutex::new(Shared {
+        queue: units.iter().cloned().enumerate().collect(),
+        reports: Vec::new(),
+        abort: false,
+    }));
+    let mut first = crate::lt03_runner::RunLog::default();
+    crate::lt03_module::announce_settings(&st, &mut first);
+    let log = Arc::new(Mutex::new(first));
+
+    let jobs = (1..=workers)
+        .map(|i| {
+            let (st, skip, shared, log) = (
+                Arc::clone(&st),
+                Arc::clone(&skip),
+                Arc::clone(&shared),
+                Arc::clone(&log),
+            );
+            let job: Job = Box::new(move |session: &GuiSession| {
+                let mut sap = RealManualTo::new(session, &st);
+                loop {
+                    let next = {
+                        let mut g = shared.lock().unwrap();
+                        if g.abort {
+                            None
+                        } else {
+                            g.queue.pop_front()
+                        }
+                    };
+                    let Some((idx, unit)) = next else { break };
+                    crate::logging::task(&format!("shipment {}", unit.tag));
+                    let mut local = crate::lt03_runner::RunLog::default();
+                    let rep = run_unit(&mut sap, &st, &unit, &skip, &mut local);
+                    log.lock().unwrap().lines.extend(local.lines);
+                    let mut g = shared.lock().unwrap();
+                    if matches!(rep.status, UnitStatus::Failed(_)) {
+                        g.abort = true;
+                    }
+                    g.reports.push((idx, rep));
+                }
+                Ok(())
+            });
+            (format!("conn{i}"), job)
+        })
+        .collect();
+    println!(
+        "Running LT03 for {} shipment(s) on {workers} parallel session(s)...",
+        units.len()
+    );
+    run_jobs(jobs)?;
+
+    let mut shared = Arc::try_unwrap(shared)
+        .map_err(|_| anyhow!("internal error: a worker still holds the shared state"))?
+        .into_inner()
+        .map_err(|_| anyhow!("internal error: poisoned lock"))?;
+    shared.reports.sort_by_key(|(i, _)| *i);
+    let mut log = Arc::try_unwrap(log)
+        .map_err(|_| anyhow!("internal error: a worker still holds the log"))?
+        .into_inner()
+        .map_err(|_| anyhow!("internal error: poisoned lock"))?;
+    log.lines.sort_by_key(|l| l.at);
+    let rep = RunReport {
+        units: shared.reports.into_iter().map(|(_, r)| r).collect(),
+        dry_run: st.lt.dry_run,
+        today: st.lt.today,
+    };
+    let _log = crate::logging::start();
+    finish_run(&st, &rep, &log)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -40,8 +40,79 @@ pub fn can_prompt() -> bool {
     !is_unattended() && std::io::stdin().is_terminal() && std::io::stdout().is_terminal()
 }
 
+/// LT03 (`--tcode lt03`, the `manual_to` flow) flags. All opt-in; `None` / empty = config.
+#[derive(Debug, Default, Clone)]
+pub struct Lt03Cli {
+    /// `--shipments`: shipment numbers given directly.
+    pub shipments: Vec<String>,
+    /// `--shipments-file`: file with shipment numbers (`-` = stdin).
+    pub shipments_file: Option<String>,
+    /// `--shipments-clipboard`: read the shipment numbers from the Windows clipboard.
+    pub shipments_clipboard: bool,
+    /// `--dry-run`: plan and show the picks, enter nothing, create nothing.
+    pub dry_run: bool,
+    /// `--bin-pick-strategy`: fifo | lifo | load_balance | sequential.
+    pub bin_pick_strategy: Option<String>,
+    /// `--age-cutoff`: maximum GR age in days (fifo/lifo only; 0 = off).
+    pub age_cutoff: Option<u32>,
+    /// `--allow-relabel`: may use bins of other ship-tos when the ship-to bins are short.
+    pub allow_relabel: Option<bool>,
+    /// `--skip-blacklist`: apply the blocked-stock (blacklist) rules.
+    pub skip_blacklist: Option<bool>,
+    /// `--blacklist-material-policy`: skip_if_any | allow_material_skip_bins.
+    pub blacklist_material_policy: Option<String>,
+    /// `--lt03-resume`: skip deliveries that already have a green result today.
+    pub resume: bool,
+    /// `--show-last`: open the table of the last dry run again (no SAP).
+    pub show_last: bool,
+}
+
+impl Lt03Cli {
+    /// Names of the flags that are set (for "only with --tcode lt03" errors).
+    pub fn flag_names(&self) -> Vec<&'static str> {
+        let mut v = Vec::new();
+        if !self.shipments.is_empty() {
+            v.push("--shipments");
+        }
+        if self.shipments_file.is_some() {
+            v.push("--shipments-file");
+        }
+        if self.shipments_clipboard {
+            v.push("--shipments-clipboard");
+        }
+        if self.dry_run {
+            v.push("--dry-run");
+        }
+        if self.bin_pick_strategy.is_some() {
+            v.push("--bin-pick-strategy");
+        }
+        if self.age_cutoff.is_some() {
+            v.push("--age-cutoff");
+        }
+        if self.allow_relabel.is_some() {
+            v.push("--allow-relabel");
+        }
+        if self.skip_blacklist.is_some() {
+            v.push("--skip-blacklist");
+        }
+        if self.blacklist_material_policy.is_some() {
+            v.push("--blacklist-material-policy");
+        }
+        if self.resume {
+            v.push("--lt03-resume");
+        }
+        if self.show_last {
+            v.push("--show-last");
+        }
+        v
+    }
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct CliOverrides {
+    /// LT03 / `manual_to` flags.
+    pub lt03: Lt03Cli,
+
     /// Target TCode (case-insensitive on input; stored upper-cased).
     pub tcode: Option<String>,
 
@@ -412,6 +483,11 @@ pub fn set_cli_overrides(overrides: CliOverrides) {
 /// Is `--use-clipboard` active? Off unless the flag was passed (true / 1 / yes / on).
 pub fn use_clipboard() -> bool {
     cli_overrides().use_clipboard.unwrap_or(false)
+}
+
+/// The LT03 flags of this run.
+pub fn lt03() -> &'static Lt03Cli {
+    &cli_overrides().lt03
 }
 
 /// Is `--loop` (per-day iteration of an `--rname` report) active?

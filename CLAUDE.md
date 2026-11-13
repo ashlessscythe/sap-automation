@@ -113,6 +113,21 @@ Module `src/parallel_test.rs` (in lib.rs only, `main.rs` calls `sap_automation::
 Status panel (v0.17.0, NOT yet run live): `logging.rs` writer thread also pins a grid under the scrolling output when stdout is a TTY (and `SAP_NO_STATUS` unset): `Panel` (rows per session tag: state, task, timer, latest log line; header: elapsed, `days d/t`), erased and redrawn once per batch (30 ms coalescing, synchronized-update frame, 1 s idle refresh). API: `logging::status` / `task` / `progress` (no-ops outside parallel runs). `iterate.rs` is compiled in the bin too, so it calls `sap_automation::logging::...` (`extern crate self as sap_automation;` in lib.rs).
 Cross-cutting, all inert outside parallel runs: (1) per-thread session tag `sap_export_utils::set_session_tag` -> export names `<ts>-s3_<TCODE>.<ext>` (both `export_file_name` and `get_tcode_file_path`), (2) `sap_file_utils::normalize_export_dir` applied in `export_to_target` only when a tag is set (clean absolute `C:\a\b`, stops SAP's confirmation prompt), (3) `src/logging.rs`: crate-wide shadowing `println!`/`eprintln!` macros (declared first in lib.rs with `#[macro_use]`) that are plain std printing until `logging::start()`; then lines go through a channel to a buffered writer thread with a `[s3]` prefix, flushed when the guard drops (`print!` not covered; bin modules keep std printing, the parallel code runs in lib copies). `--use-clipboard` is refused (one shared Windows clipboard).
 
+## LT03 / manual_to (`--tcode lt03`)
+
+Port of the `manual_to` macro's LT03 flow (VBA in `C:	empepoas_files\manual_to`, `lt03_.bas`): shipments -> VL06O -> ZMDESNR by
+material (new `ZMDESNRParams.materials`, tab 2 `S_MATNR`) -> LT03 per delivery. **Built 2026-11-13, NOT yet run live.** Modules:
+`lt03_plan` (pure planner, port of `PlanPicksFromSnapshot`: full-pallet multiples, exact / smallest >= / largest <=, whitelist before
+other ship-tos, fifo/lifo + age cutoff, load_balance with the macro's `Hash32`; deviation: a bin used in pass 1 is not offered again with
+its full stock), `lt03_db` (stock DB / VL06O / shipment-list readers, columns by header name), `lt03_runner` (`Lt03Screen` seam +
+`run_delivery`, tested with a fake screen), `lt03` (`RealLt03Screen` over the GUI), `lt03_module` (settings `[abc.manual_to]`,
+`ManualToSap`, `run_unit`, outputs, `run_lt03_auto`), `parallel_test::run_lt03_parallel` (shipment queue over `--conn-count` /
+`--multi-conn`). Headless: never prompts (missing GR date = sequential fallback, logged), results in `<reports_dir>\MANUAL_TO\<date>\`
+(`log.tsv`, `result.tsv`, `summary.json`), non-zero exit on failures. `--dry-run` (interactive output, not a headless contract) drives the
+GUI to the stock overview, enters nothing, leaves with Cancel (F12) until the delivery field is back and prints the planned picks.
+Control ids come from the macro and a recording/screenshot; the first live run should be one shipment with `--dry-run`.
+`resources/*.xlsx` / `*.txt` are git-ignored (real data); anonymise before any fixture.
+
 ## MM60 (LX03 material list)
 
 `sap_automation --tcode mm60 --layout <L> [--variant <V>] [--export-type 1] [--lx03-file <slug|path>] [--rname-dir <D>]` has been **run live by the owner** (2026-11-11). Standalone tcode (`src/mm60.rs` + `mm60_module.rs`): it pastes the

@@ -118,6 +118,9 @@ fn run_loop_unattended_internal(session: &GuiSession) -> Result<()> {
             "MM60" => {
                 crate::mm60_module::run_mm60_auto(session)?;
             }
+            "LT03" => {
+                crate::lt03_module::run_lt03_auto(session)?;
+            }
             "y_dn3_47000149" | "Y_DN3_47000149" => {
                 // Handle 149 report with different run types
                 let run_type = config
@@ -341,6 +344,7 @@ pub fn run_single_tcode_unattended(
         "ZMDESNR" => crate::zmdesnr_module::run_zmdesnr_auto(session)?,
         "LX03" => crate::lx03_module::run_lx03_auto(session)?,
         "MM60" => crate::mm60_module::run_mm60_auto(session)?,
+        "LT03" => crate::lt03_module::run_lt03_auto(session)?,
         "Y_DN3_47000149" => {
             let run_type = tcode_run_type.map(|s| s.to_ascii_lowercase());
             match run_type.as_deref() {

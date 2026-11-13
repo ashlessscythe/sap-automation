@@ -155,3 +155,19 @@ label_plant = "PL55"                # same keys as [abc.relabel]
 alias_plant = "AL55"
 alias_customers = ["ALIAS_A*", "ALIAS_B*", "ALIAS_C*"]
 history_warehouse = "WH01"          # History rows of this warehouse number (status UNP) are kept
+
+[abc.manual_to]                     # `--tcode lt03`: shipments -> VL06O -> ZMDESNR by material -> LT03 per delivery
+vl06o_variant = "MANUAL_TO_VL06O_VARIANT"
+vl06o_layout = "MANUAL_TO_VL06O_LAYOUT"
+zmdesnr_variant = "MANUAL_TO_ZMDESNR_VARIANT"
+zmdesnr_layout = "MANUAL_TO_ZMDESNR_LAYOUT"
+warehouse = "WH01"                  # LT03 warehouse number (LTAK-LGNUM)
+bin_pick_strategy = "fifo"          # fifo (default) | lifo | load_balance | sequential
+age_cutoff = 30                     # max GR age in days of a bin (fifo/lifo only, 0 = off)
+allow_relabel = true                # may use bins of other ship-tos when the ship-to's bins are short
+skip_blacklist = true               # apply the blocked-stock rules of the ZMDESNR export
+blacklist_material_policy = "allow_material_skip_bins"   # default; or skip_if_any (skip the whole material)
+shipto_strategy = "first"           # ship-to of a delivery with several: first | majority
+proceed_without_gr = true           # fifo/lifo with bins without GR date: continue sequentially (never asks)
+sap_date_format = "yyyy-mm-dd"      # format of the GR date column (default: [global] date_format)
+# material_col / bin_col / qty_col / shipto_col / blocked_col: header names of the ZMDESNR export

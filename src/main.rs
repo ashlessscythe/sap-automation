@@ -14,6 +14,11 @@ mod abc_menu;
 mod app;
 mod inbond_shipment;
 mod inbond_shipment_module;
+mod lt03;
+mod lt03_db;
+mod lt03_module;
+mod lt03_plan;
+mod lt03_runner;
 mod lt23;
 mod lx03;
 mod lx03_module;
@@ -150,6 +155,11 @@ fn main() -> anyhow::Result<()> {
     // so every `*Config::load()` call site sees the merged view.
     set_cli_overrides(overrides);
 
+    // LT03: show the table of the last dry run again (no SAP, no shipments needed)
+    if cli_overrides().lt03.show_last {
+        return lt03_module::show_last_table();
+    }
+
     // --run-sequence is config-driven: per-tcode flags are not allowed.
     if cli.run_sequence || matches!(cli.command, Some(Commands::RunSequence { .. })) {
         let bad = cli_overrides().per_tcode_flag_names();
@@ -165,6 +175,19 @@ fn main() -> anyhow::Result<()> {
     // Parallel sessions (opt-in): several --rname (one session each) or the days of a --loop
     // range (one session per day, or exactly --conn-count). See cli.rs for the flag docs.
     if cli.multi_conn == Some(true) || cli.conn_count.is_some() {
+        if cli_overrides().tcode.as_deref() == Some("LT03") {
+            if sap_automation::utils::cli_overrides::use_clipboard() {
+                return Err(anyhow::anyhow!(
+                    "parallel sessions can't be combined with --use-clipboard (one shared Windows clipboard)"
+                ));
+            }
+            if cli.keep_awake {
+                let _ = keep_awake::start_keep_awake_thread();
+            }
+            return sap_automation::parallel_test::run_lt03_parallel(
+                cli.conn_count.map(usize::from),
+            );
+        }
         if sap_automation::utils::cli_overrides::use_clipboard() {
             return Err(anyhow::anyhow!(
                 "parallel sessions can't be combined with --use-clipboard (one shared Windows clipboard)"

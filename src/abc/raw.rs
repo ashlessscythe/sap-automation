@@ -122,7 +122,8 @@ fn find_header(lines: &[&str]) -> Option<usize> {
     let ne: Vec<usize> = (0..lines.len())
         .filter(|&i| !lines[i].trim().is_empty())
         .collect();
-    let mut first: Option<usize> = None;
+    let mut first: Option<(usize, usize)> = None; // (position in `ne`, line index)
+    let mut found: Option<(usize, usize)> = None;
     for (k, &i) in ne.iter().enumerate() {
         let n = fields(lines[i]).len();
         if n < 2 {
@@ -136,11 +137,26 @@ fn find_header(lines: &[&str]) -> Option<usize> {
             continue;
         }
         if lines[i].starts_with('\t') {
-            return Some(i);
+            found = Some((k, i));
+            break;
         }
-        first.get_or_insert(i);
+        first.get_or_insert((k, i));
     }
-    first
+    let (k, i) = found.or(first)?;
+    // A totals row right under the header (a single filled cell, possibly with more fields than
+    // the header) can win the width test instead of the header: when the line above is clearly
+    // the richer one, it is the header.
+    if k > 0 {
+        let prev = ne[k - 1];
+        let filled = |l: &str| fields(l).iter().filter(|c| !c.trim().is_empty()).count();
+        if fields(lines[prev]).len() >= 2
+            && filled(lines[prev]) > filled(lines[i]).max(1)
+            && lines[prev].starts_with('\t') == lines[i].starts_with('\t')
+        {
+            return Some(prev);
+        }
+    }
+    Some(i)
 }
 
 /// `-?d{1,3}(,ddd)+(.d+)?` -> commas removed.
@@ -401,6 +417,18 @@ mod tests {
 
     fn p(text: &str) -> Table {
         parse_export("t", text, &RawOptions::default()).unwrap()
+    }
+
+    #[test]
+    fn totals_row_under_the_header_does_not_become_the_header() {
+        // the row below the header carries one total and more (blank) fields than the header
+        let text = "\tLM Serial\tMaterial\tBin\tQty\n\t\t\t\t1,234\t\t\t\n\tS1\tM1\tB1\t5\n";
+        let t = p(text);
+        assert_eq!(t.headers, ["lm_serial", "material", "bin", "qty"]);
+        assert_eq!(t.nrows(), 2);
+        // a plain preamble line is still not mistaken for the header
+        let t = p("Report title\n\tA\tB\n\t1\t2\n");
+        assert_eq!(t.headers, ["a", "b"]);
     }
 
     #[test]

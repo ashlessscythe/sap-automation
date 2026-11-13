@@ -5,14 +5,17 @@ use crossterm::{
     cursor::{Hide, Show},
     event::{self, Event, KeyCode, KeyEventKind},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, Clear, ClearType},
+    terminal::{
+        disable_raw_mode, enable_raw_mode, Clear, ClearType, EnterAlternateScreen,
+        LeaveAlternateScreen,
+    },
 };
 use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Row, Table},
+    widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Row, Table, Wrap},
     Frame, Terminal,
 };
 use std::io;
@@ -695,4 +698,248 @@ fn input_ui(f: &mut Frame, prompt: &str, input: &str, _cursor_pos: usize) {
             .style(Style::default().fg(Color::Gray)),
     );
     f.render_widget(instructions, chunks[2]);
+}
+
+/// Scrollable table with a sticky header row (top), scrolling rows (middle) and a stationary
+/// status line (bottom), on the alternate screen so the terminal is left as it was.
+///
+/// Keys: Up/Down (j/k), PageUp/PageDown, Home/End scroll; q, Esc or Enter close. `row_style`
+/// colours a row from its cells.
+pub fn show_table_view(
+    title: &str,
+    headers: &[&str],
+    rows: &[Vec<String>],
+    summary: &str,
+    row_style: &dyn Fn(&[String]) -> Style,
+) -> io::Result<()> {
+    enable_raw_mode()?;
+    let mut stdout = io::stdout();
+    execute!(stdout, EnterAlternateScreen, Hide)?;
+    let mut terminal = Terminal::new(CrosstermBackend::new(stdout))?;
+    let res = run_table_view(&mut terminal, title, headers, rows, summary, row_style);
+    disable_raw_mode()?;
+    execute!(terminal.backend_mut(), Show, LeaveAlternateScreen)?;
+    res
+}
+
+fn run_table_view(
+    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+    title: &str,
+    headers: &[&str],
+    rows: &[Vec<String>],
+    summary: &str,
+    row_style: &dyn Fn(&[String]) -> Style,
+) -> io::Result<()> {
+    use ratatui::widgets::TableState;
+
+    // column widths from the content (the last column takes the rest)
+    let mut widths: Vec<usize> = headers.iter().map(|h| h.chars().count()).collect();
+    for r in rows {
+        for (i, c) in r.iter().enumerate() {
+            if i < widths.len() {
+                widths[i] = widths[i].max(c.chars().count());
+            }
+        }
+    }
+    let last = widths.len().saturating_sub(1);
+
+    let mut state = TableState::default();
+    if !rows.is_empty() {
+        state.select(Some(0));
+    }
+    loop {
+        let mut page = 10usize;
+        terminal.draw(|f| {
+            let area = f.area();
+            let chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([
+                    Constraint::Length(title_height(title, area.width as usize)),
+                    Constraint::Min(2),
+                    Constraint::Length(1),
+                    Constraint::Length(1),
+                ])
+                .split(area);
+            page = (chunks[1].height as usize).saturating_sub(2).max(1);
+            let col_w = fit_widths(&widths, area.width as usize, 2, 24);
+            let constraints: Vec<Constraint> = col_w
+                .iter()
+                .enumerate()
+                .map(|(i, w)| {
+                    if i == last {
+                        Constraint::Fill(1)
+                    } else {
+                        Constraint::Length(*w as u16)
+                    }
+                })
+                .collect();
+            let last_w = col_w.get(last).copied().unwrap_or(0);
+            f.render_widget(
+                Paragraph::new(title.to_string())
+                    .wrap(Wrap { trim: false })
+                    .style(Style::default().add_modifier(Modifier::BOLD)),
+                chunks[0],
+            );
+            let header = Row::new(headers.iter().map(|h| h.to_string())).style(
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            );
+            let body: Vec<Row> = rows
+                .iter()
+                .map(|r| {
+                    let cells: Vec<String> = r
+                        .iter()
+                        .enumerate()
+                        .map(|(i, c)| clip(c, col_w.get(i).copied().unwrap_or(c.len())))
+                        .collect();
+                    Row::new(cells).style(row_style(r))
+                })
+                .collect();
+            let table = Table::new(body, constraints)
+                .header(header)
+                .column_spacing(2)
+                .row_highlight_style(Style::default().add_modifier(Modifier::REVERSED));
+            f.render_stateful_widget(table, chunks[1], &mut state);
+            // the full text of the last column of the selected row (the table clips long ones)
+            let full = state
+                .selected()
+                .and_then(|s| rows.get(s))
+                .and_then(|r| r.get(last))
+                .cloned()
+                .unwrap_or_default();
+            let detail = if full.chars().count() > last_w {
+                format!(" {full}")
+            } else {
+                String::new()
+            };
+            f.render_widget(
+                Paragraph::new(detail).style(Style::default().fg(Color::Gray)),
+                chunks[2],
+            );
+            let pos = state.selected().map(|s| s + 1).unwrap_or(0);
+            let status = format!(
+                " {pos}/{}   Up/Down PgUp/PgDn Home/End scroll   q close   |   {summary}",
+                rows.len()
+            );
+            f.render_widget(
+                Paragraph::new(status).style(Style::default().add_modifier(Modifier::REVERSED)),
+                chunks[3],
+            );
+        })?;
+
+        if crossterm::event::poll(Duration::from_millis(250))? {
+            if let Event::Key(key) = event::read()? {
+                if key.kind != KeyEventKind::Press {
+                    continue;
+                }
+                let n = rows.len();
+                let cur = state.selected().unwrap_or(0);
+                let to = match key.code {
+                    KeyCode::Char('q') | KeyCode::Esc | KeyCode::Enter => return Ok(()),
+                    KeyCode::Down | KeyCode::Char('j') => Some((cur + 1).min(n.saturating_sub(1))),
+                    KeyCode::Up | KeyCode::Char('k') => Some(cur.saturating_sub(1)),
+                    KeyCode::PageDown => Some((cur + page).min(n.saturating_sub(1))),
+                    KeyCode::PageUp => Some(cur.saturating_sub(page)),
+                    KeyCode::Home => Some(0),
+                    KeyCode::End => Some(n.saturating_sub(1)),
+                    _ => None,
+                };
+                if let (Some(t), true) = (to, n > 0) {
+                    state.select(Some(t));
+                }
+            }
+        }
+    }
+}
+
+/// Rows the (wrapped, possibly multi-line) title needs: at least 1, at most 6.
+fn title_height(title: &str, width: usize) -> u16 {
+    let width = width.max(1);
+    let rows: usize = title
+        .lines()
+        .map(|l| l.chars().count().div_ceil(width).max(1))
+        .sum();
+    rows.clamp(1, 6) as u16
+}
+
+/// Cut `s` to `width` characters, ending in `~` when something was left out.
+fn clip(s: &str, width: usize) -> String {
+    if s.chars().count() <= width {
+        s.to_string()
+    } else if width <= 1 {
+        s.chars().take(width).collect()
+    } else {
+        let mut t: String = s.chars().take(width - 1).collect();
+        t.push('~');
+        t
+    }
+}
+
+/// Column widths that fit a terminal of `total` characters: the last column gets at least
+/// `min_last`, the other columns shrink (widest first, never below 4) when they do not fit.
+fn fit_widths(widths: &[usize], total: usize, spacing: usize, min_last: usize) -> Vec<usize> {
+    let mut w = widths.to_vec();
+    if w.is_empty() {
+        return w;
+    }
+    let last = w.len() - 1;
+    for v in w.iter_mut().take(last) {
+        *v = (*v).min(40);
+    }
+    let gaps = spacing * last;
+    let budget = total.saturating_sub(gaps + min_last);
+    while w[..last].iter().sum::<usize>() > budget {
+        let Some((i, _)) = w[..last]
+            .iter()
+            .enumerate()
+            .filter(|(_, v)| **v > 4)
+            .max_by_key(|(_, v)| **v)
+        else {
+            break;
+        };
+        w[i] -= 1;
+    }
+    let used = w[..last].iter().sum::<usize>() + gaps;
+    w[last] = total.saturating_sub(used).max(1).min(widths[last].max(1));
+    w
+}
+
+#[cfg(test)]
+mod table_tests {
+    use super::*;
+
+    #[test]
+    fn title_height_counts_lines_and_wrapping() {
+        assert_eq!(title_height("one line", 80), 1);
+        assert_eq!(title_height("a\nb", 80), 2);
+        assert_eq!(title_height(&"x".repeat(100), 40), 3);
+        assert_eq!(title_height(&"x".repeat(1000), 10), 6);
+        assert_eq!(title_height("", 80), 1);
+    }
+
+    #[test]
+    fn clip_marks_what_was_cut() {
+        assert_eq!(clip("abcdef", 6), "abcdef");
+        assert_eq!(clip("abcdef", 4), "abc~");
+        assert_eq!(clip("abc", 1), "a");
+    }
+
+    #[test]
+    fn widths_fit_the_terminal_and_keep_room_for_the_last_column() {
+        let widths = vec![4, 8, 8, 4, 10, 3, 5, 5, 10, 120];
+        for total in [80usize, 100, 160, 300] {
+            let w = fit_widths(&widths, total, 2, 24);
+            let sum: usize = w.iter().sum::<usize>() + 2 * (w.len() - 1);
+            assert!(
+                sum <= total.max(w[..9].iter().sum::<usize>() + 18 + 24),
+                "{total}: {w:?}"
+            );
+            assert!(w[9] >= 24.min(total), "{total}: {w:?}");
+        }
+        // plenty of room: nothing is cut
+        let w = fit_widths(&widths, 300, 2, 24);
+        assert_eq!(w[..9], widths[..9]);
+    }
 }

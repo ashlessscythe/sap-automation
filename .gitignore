@@ -8,7 +8,13 @@ config.toml.bk
 
 # local data bundles
 resources/*.zip
+# real site exports (never commit; anonymise before they become fixtures)
+resources/*.xlsx
+resources/*.txt
 
 # private / site-specific material (never commit)
 docs/private/
 config.private.toml
+
+# run outputs written under a relative reports dir
+/reports/

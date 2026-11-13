@@ -248,6 +248,7 @@ time (one thread and one COM instance per session) and closes them again at the 
 * A day without data is skipped; any other error stops new days, running ones finish, nothing is merged. A summary table lists every job.
 
 * **Status panel (v0.17.0):** on a terminal, a grid stays pinned below the scrolling output: a header (elapsed time, `days done/total`, active sessions) and one row per session with its state (`running` / `done` / `FAILED`), its task (`toyota for 2026-01-09`), a per-row timer and its latest log line. Output redirected to a file or pipe is unchanged; set `SAP_NO_STATUS=1` to switch the panel off.
+* **LT03 / manual_to (v0.18.0):** `--tcode lt03` creates transfer orders per shipment (VL06O -> ZMDESNR by material -> LT03 per delivery) with a bin planner (fifo/lifo, GR age cutoff, whitelist before relabel, full pallets before repacks, whole bins before splitting). Shipments come from `--shipments`, `--shipments-file` (or `-` for stdin), `--shipments-clipboard` or the newest VT11 export; `--conn-count` / `--multi-conn` spread them over parallel sessions. `--dry-run` shows a scrollable table of the planned picks and enters nothing; `--show-last` reopens it. See `COMMAND_LINE_USAGE.md` and `[abc.manual_to]` in `config.toml.example`.
 
 Live-verified for two reports (xdock + k2xx) and for days of a range (`--conn-count`); see [COMMAND_LINE_USAGE.md](COMMAND_LINE_USAGE.md).
 

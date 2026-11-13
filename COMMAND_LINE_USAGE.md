@@ -460,6 +460,36 @@ de-duplicated by (material, plant) only. `--lx03-file=<slug|path>` pins the sour
 ./sap_automation.exe --tcode=mm60 --layout=value --lx03-file=C:\reports\LX03\x.txt
 ```
 
+### LT03: transfer orders for shipments (manual_to)
+
+Per shipment: VL06O -> ZMDESNR by material (stock DB) -> LT03 per delivery. Settings are in
+`[abc.manual_to]` (see `config.toml.example`); the flags below win over config. Never prompts.
+
+```
+# shipments: list, file (txt one per line, or tsv/xlsx with a shipment_number column), stdin, clipboard
+sap_automation --tcode lt03 --shipments=24483092,24483094 --bin-pick-strategy=fifo --age-cutoff=30
+sap_automation --tcode lt03 --shipments-file shipments.txt
+Get-Clipboard | sap_automation --tcode lt03 --shipments-file -
+sap_automation --tcode lt03 --shipments-clipboard
+# no shipment flag: the shipment_number column of the newest VT11 export
+
+# show what would be picked, enter nothing, create no TO (prints a table, writes dryrun_*.tsv)
+sap_automation --tcode lt03 --shipments=24483092 --dry-run
+
+# parallel sessions: shipments are taken from a queue (3 shipments on --conn-count=2: the first
+# session that finishes takes the third); --multi-conn = one session per shipment (max 6 in all)
+sap_automation --tcode lt03 --shipments=1,2,3 --conn-count=2
+sap_automation --tcode lt03 --shipments=1,2,3 --multi-conn
+
+# resume: skip deliveries that already have a created TO in today's result.tsv
+sap_automation --tcode lt03 --shipments-file shipments.txt --lt03-resume
+```
+
+Outputs go to `<reports_dir>\MANUAL_TO\<yyyy-mm-dd>\`: `log.tsv` (what was planned/entered/skipped),
+`result.tsv` (one row per delivery: created, no_items, in_process, nothing_picked, failed),
+`summary.json` (machine-readable) and, for `--dry-run`, `dryrun_picks.tsv`. The exit code is non-zero
+when a delivery or shipment failed (no data / nothing to pick is not a failure).
+
 ### Sequence (config-driven) with a faster cadence
 
 ```bash

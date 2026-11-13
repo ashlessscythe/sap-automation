@@ -47,6 +47,9 @@ pub struct ZMDESNRParams {
     /// Serials for ZMDESNR by serial / History (tab 1, radio "History"; spec 3.4 "by serial").
     /// Used with `tab_number = Some(1)`; empty keeps the legacy tab-1 behaviour.
     pub history_serials: Vec<String>,
+    /// Materials for ZMDESNR by material (tab 2, multi-selection `S_MATNR`; `manual_to`).
+    /// Non-empty: pasted instead of deliveries/TOs. Selection by material only, no delivery paste.
+    pub materials: Vec<String>,
 }
 
 impl Default for ZMDESNRParams {
@@ -67,6 +70,7 @@ impl Default for ZMDESNRParams {
             export_target: None,
             ignore_display_error: false,
             history_serials: Vec::new(),
+            materials: Vec::new(),
         }
     }
 }
@@ -419,6 +423,10 @@ fn handle_tab1_history(session: &GuiSession, params: &ZMDESNRParams) -> Result<b
     )
 }
 
+/// Sub-screen prefix of tab 2 (by delivery / material).
+const TAB2_PREFIX: &str =
+    "wnd[0]/usr/tabsTABSTRIP_TABB1/tabpUCOMM2/ssub%_SUBSCREEN_TABB1:ZMDE_SERIALNUMBER_HISTORY:9002/";
+
 /// Handle operations specific to tab 2
 fn handle_tab2_operations(session: &GuiSession, params: &ZMDESNRParams) -> Result<bool> {
     // Check if we're using serial number or delivery numbers
@@ -433,6 +441,17 @@ fn handle_tab2_operations(session: &GuiSession, params: &ZMDESNRParams) -> Resul
 
             return Ok(true);
         }
+    }
+
+    // By material (manual_to `zmdesnr_sn`): materials into S_MATNR, nothing else is selected.
+    // UNVERIFIED in this port: the id comes from the macro (`sn_from_pn_run`), where it ran live.
+    if !params.materials.is_empty() {
+        return crate::zmdetpc::paste_multi(
+            session,
+            "ZMDESNR",
+            &format!("{TAB2_PREFIX}btn%_S_MATNR_%_APP_%-VALU_PUSH"),
+            &params.materials,
+        );
     }
 
     // Bin filter: set Storage Bin (LGPLA) and skip delivery multi-paste

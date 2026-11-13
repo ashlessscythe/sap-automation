@@ -465,6 +465,12 @@ de-duplicated by (material, plant) only. `--lx03-file=<slug|path>` pins the sour
 Per shipment: VL06O -> ZMDESNR by material (stock DB) -> LT03 per delivery. Settings are in
 `[abc.manual_to]` (see `config.toml.example`); the flags below win over config. Never prompts.
 
+> **Status:** `--dry-run` has been tested live. Creating real transfer orders (without `--dry-run`) has
+> **not** been run live yet: try one delivery first.
+
+Defaults: `fifo`, `--age-cutoff` 30 days, `--allow-relabel` on, `--skip-blacklist` on, blacklist policy
+`allow_material_skip_bins`. They are printed at the start of every run and written to the first line of `log.tsv`.
+
 ```
 # shipments: list, file (txt one per line, or tsv/xlsx with a shipment_number column), stdin, clipboard
 sap_automation --tcode lt03 --shipments=24483092,24483094 --bin-pick-strategy=fifo --age-cutoff=30
@@ -473,8 +479,13 @@ Get-Clipboard | sap_automation --tcode lt03 --shipments-file -
 sap_automation --tcode lt03 --shipments-clipboard
 # no shipment flag: the shipment_number column of the newest VT11 export
 
-# show what would be picked, enter nothing, create no TO (prints a table, writes dryrun_*.tsv)
+# show what would be picked, enter nothing, create no TO: scrollable table (sticky header, Up/Down,
+# PgUp/PgDn, Home/End, q to close; yellow = relabel, magenta = repack, red = skipped), then the plain
+# table; writes dryrun_*.tsv
 sap_automation --tcode lt03 --shipments=24483092 --dry-run
+
+# open the table of the last dry run again (no SAP)
+sap_automation --tcode lt03 --show-last
 
 # parallel sessions: shipments are taken from a queue (3 shipments on --conn-count=2: the first
 # session that finishes takes the third); --multi-conn = one session per shipment (max 6 in all)
@@ -487,8 +498,14 @@ sap_automation --tcode lt03 --shipments-file shipments.txt --lt03-resume
 
 Outputs go to `<reports_dir>\MANUAL_TO\<yyyy-mm-dd>\`: `log.tsv` (what was planned/entered/skipped),
 `result.tsv` (one row per delivery: created, no_items, in_process, nothing_picked, failed),
-`summary.json` (machine-readable) and, for `--dry-run`, `dryrun_picks.tsv`. The exit code is non-zero
-when a delivery or shipment failed (no data / nothing to pick is not a failure).
+`summary.json` (machine-readable), the VL06O and stock (`to_sn`) tables of the run, and, for `--dry-run`,
+`dryrun_picks.tsv` (every file gets a `dryrun_` prefix). The exit code is non-zero when a delivery or shipment
+failed (no data / nothing to pick is not a failure).
+
+A pick is flagged `relabel` when its bin is not on the delivery's ship-to whitelist and `repack` when its quantity
+is not a multiple of the pallet size (the most common bin quantity of the material). The shipment column of the
+files is filled when the VL06O layout has a `Shipment Number` column; set `vl06o_per_shipment = true` to run
+VL06O once per shipment instead.
 
 ### Sequence (config-driven) with a faster cadence
 

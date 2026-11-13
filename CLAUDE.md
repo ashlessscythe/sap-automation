@@ -115,18 +115,42 @@ Cross-cutting, all inert outside parallel runs: (1) per-thread session tag `sap_
 
 ## LT03 / manual_to (`--tcode lt03`)
 
-Port of the `manual_to` macro's LT03 flow (VBA in `C:	empepoas_files\manual_to`, `lt03_.bas`): shipments -> VL06O -> ZMDESNR by
-material (new `ZMDESNRParams.materials`, tab 2 `S_MATNR`) -> LT03 per delivery. **Built 2026-11-13, NOT yet run live.** Modules:
-`lt03_plan` (pure planner, port of `PlanPicksFromSnapshot`: full-pallet multiples, exact / smallest >= / largest <=, whitelist before
-other ship-tos, fifo/lifo + age cutoff, load_balance with the macro's `Hash32`; deviation: a bin used in pass 1 is not offered again with
-its full stock), `lt03_db` (stock DB / VL06O / shipment-list readers, columns by header name), `lt03_runner` (`Lt03Screen` seam +
-`run_delivery`, tested with a fake screen), `lt03` (`RealLt03Screen` over the GUI), `lt03_module` (settings `[abc.manual_to]`,
-`ManualToSap`, `run_unit`, outputs, `run_lt03_auto`), `parallel_test::run_lt03_parallel` (shipment queue over `--conn-count` /
-`--multi-conn`). Headless: never prompts (missing GR date = sequential fallback, logged), results in `<reports_dir>\MANUAL_TO\<date>\`
-(`log.tsv`, `result.tsv`, `summary.json`), non-zero exit on failures. `--dry-run` (interactive output, not a headless contract) drives the
-GUI to the stock overview, enters nothing, leaves with Cancel (F12) until the delivery field is back and prints the planned picks.
-Control ids come from the macro and a recording/screenshot; the first live run should be one shipment with `--dry-run`.
-`resources/*.xlsx` / `*.txt` are git-ignored (real data); anonymise before any fixture.
+Port of the `manual_to` macro's LT03 flow (VBA in `C:\temp\repo\bas_files\manual_to`, `lt03_.bas`): shipments -> VL06O -> ZMDESNR by
+material (`ZMDESNRParams.materials`, tab 2 `S_MATNR`) -> LT03 per delivery. Built 2026-11-13 (v0.18.0). **Status: `--dry-run` has been run
+live by the owner (VL06O, ZMDESNR by material, stock table read, planner, exit back to the start screen). Real transfer order creation
+(entering quantities, saving the TO, the save popup / TO status text) has NOT been run live yet**; do one delivery first.
+
+Modules: `lt03_plan` (pure planner, no SAP/clock/console), `lt03_db` (stock DB / VL06O / shipment-list readers, columns matched by header
+name ignoring underscores), `lt03_runner` (`Lt03Screen` seam + `run_delivery`, tested with a fake screen in `lt03_runner::fakes`), `lt03`
+(`RealLt03Screen` over the GUI), `lt03_module` (settings, `ManualToSap`, `run_unit`, outputs, `run_lt03_auto`, `--show-last`),
+`parallel_test::run_lt03_parallel` (shipment queue over `--conn-count` / `--multi-conn`), `tui::show_table_view` (dry-run viewer).
+
+Planner rules (`lt03_plan`), in order: blocked bins are always excluded (`[abc.manual_to]` column `blocked` = X/TRUE marks the whole bin);
+with fifo/lifo the GR age cutoff drops old and undated bins; ship-to (whitelist) bins before other ship-tos, which are only used when
+`allow_relabel` is on and the ship-to's bins cannot cover the open quantity; **pallet size = the most common bin quantity of the
+snapshot (all bins, ties -> larger)**; pass 1 whole bins that are a multiple of the pallet; then an exact bin, then several whole bins that
+add up exactly to the rest (0/1 knapsack, `Ctx::whole_cover`), and only then a split of the smallest large-enough bin or the largest one
+that fits. A pick is `[RELABEL]` when its bin is not on the ship-to whitelist and `[REPACK]` when its quantity is not a multiple of the
+pallet. Deviation from the macro: a bin used in pass 1 is not offered again with its full stock. Known quirk kept from the macro: when
+"smallest bin >= rest" has equal candidates a non-whitelist bin wins the tie.
+
+Defaults (CLI > `[abc.manual_to]` > default): `fifo`, `age_cutoff` 30, `allow_relabel` true, `skip_blacklist` true,
+`blacklist_material_policy` `allow_material_skip_bins`, `shipto_strategy` first, `proceed_without_gr` true (never asks), warehouse
+placeholder. The effective settings are printed and written as the first `log.tsv` line (`Run Settings`) of every run.
+
+Headless: never prompts, files in `<reports_dir>\MANUAL_TO\<date>\` (`log.tsv`, `result.tsv`, `summary.json`, the VL06O / `to_sn` tables of
+the run as `<unit>_vl06o.tsv` / `<unit>_to_sn.tsv`; `dryrun_` prefix for `--dry-run`), non-zero exit on failures (no data / no items to
+pick are not failures). The VL06O step checks that SAP's shipment list starts with the first requested shipment (scrolled back to the
+top first). One VL06O with all shipments is the default; `vl06o_per_shipment = true` runs it per shipment. The shipment column of the
+files is filled when the VL06O layout has a `Shipment Number` column (or in per-shipment mode); otherwise it is blank.
+
+`--dry-run` (interactive output, not a headless contract) drives the GUI to the stock overview, enters nothing, leaves with Cancel (F12)
+until the start screen (delivery field present, `tabsFUNC_TABSTRIP` absent) is back, and shows a scrollable table (sticky header,
+shipments line, status line; relabel yellow, repack magenta, skipped red; no shipment column on screen) before printing the plain table.
+`--show-last` re-opens the last dry run from `dryrun_picks.tsv` / `dryrun_summary.json` without SAP.
+
+Control ids come from the macro and a recording / screenshot (`wnd[0]` is a `GuiMainWindow`, keys go through it). `resources/*.xlsx` /
+`*.txt` and `/reports/` are git-ignored (real data); anonymise before any fixture.
 
 ## MM60 (LX03 material list)
 

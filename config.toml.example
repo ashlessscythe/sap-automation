@@ -169,5 +169,6 @@ skip_blacklist = true               # apply the blocked-stock rules of the ZMDES
 blacklist_material_policy = "allow_material_skip_bins"   # default; or skip_if_any (skip the whole material)
 shipto_strategy = "first"           # ship-to of a delivery with several: first | majority
 proceed_without_gr = true           # fifo/lifo with bins without GR date: continue sequentially (never asks)
+vl06o_per_shipment = false         # true: one VL06O per shipment (every delivery then knows its shipment); default: one VL06O with all
 sap_date_format = "yyyy-mm-dd"      # format of the GR date column (default: [global] date_format)
 # material_col / bin_col / qty_col / shipto_col / blocked_col: header names of the ZMDESNR export

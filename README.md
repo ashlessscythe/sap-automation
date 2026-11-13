@@ -234,6 +234,21 @@ tables exist as files (header-only files count; a partial set is incomplete) - t
 
 Not verified on a live system yet (including the reuse flags); see `docs/private/abc_iteration_plan.md`.
 
+#### Parallel SAP sessions (`--multi-conn`, `--conn-count`)
+
+Opt-in; without these flags nothing changes. The tool opens extra windows (sessions) on the first SAP connection, runs work in them at the same
+time (one thread and one COM instance per session) and closes them again at the end.
+
+* `--rname=xdock --rname=k2xx --run-date=<date> --multi-conn`: one session per report, all at once.
+* `--rname=k2xx --run-date=WK46 --loop --multi-conn`: one session per day of the range (at most 6, fewer if windows are already open).
+* `--rname=k2xx --run-date=WK46 --loop --conn-count=3`: exactly 3 sessions share the days from a queue: a session that finishes a day takes the
+  next one (sessions are reused, not respawned). With `--merge` the merge runs once at the end, without SAP.
+* SAP allows 6 sessions per connection **including your own open windows**. No `--use-clipboard` (one shared clipboard) and no `--no-sap`.
+* Export files carry the session number (`20261112162255-s3_VT11.txt`); console lines are prefixed `[s3]` and written asynchronously.
+* A day without data is skipped; any other error stops new days, running ones finish, nothing is merged. A summary table lists every job.
+
+Live-verified for two reports (xdock + k2xx) and for days of a range (`--conn-count`); see [COMMAND_LINE_USAGE.md](COMMAND_LINE_USAGE.md).
+
 ## Sequence Menu Option IDs
 
 These IDs match the current main menu and can be used in the sequence configuration:

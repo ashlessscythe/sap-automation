@@ -1,3 +1,6 @@
+// first: it defines the crate-wide `println!` / `eprintln!` (opt-in async logging, see the module)
+#[macro_use]
+pub mod logging;
 pub mod abc;
 pub mod abc_menu;
 pub mod app;
@@ -9,6 +12,7 @@ pub mod lx03;
 pub mod lx03_module;
 pub mod mm60;
 pub mod mm60_module;
+pub mod parallel_test;
 pub mod tui;
 pub mod utils;
 pub mod vl06o;

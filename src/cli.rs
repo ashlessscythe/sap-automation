@@ -20,6 +20,56 @@ pub struct Cli {
     #[arg(long = "run-sequence", conflicts_with = "run_loop")]
     pub run_sequence: bool,
 
+    /// Feasibility test: open one new SAP session per tcode of `--tcodes` and start each
+    /// tcode in its own session at the same time (no exports).
+    #[arg(
+        long = "test",
+        hide = true,
+        requires = "tcodes",
+        conflicts_with_all = ["run_loop", "run_sequence", "rname", "tcode"]
+    )]
+    pub test: bool,
+
+    /// Comma-separated tcodes for `--test`, e.g. `zvt11,vt11` (2 to 6).
+    #[arg(long, hide = true, value_name = "T1,T2", requires = "test")]
+    pub tcodes: Option<String>,
+
+    /// PARALLEL SESSIONS for `--rname`: repeat `--rname` (`--rname xdock --rname k2xx`, 2 to 6)
+    /// and each report runs its single-run flow for `--run-date` in its own NEW SAP session at
+    /// the same time (sessions are created and closed by the tool; max 6 per connection,
+    /// counting the ones already open; export files get a `-s<N>` session tag). Accepts bare /
+    /// `true` / `1` / `yes`. Opt-in: several `--rname` without it is an error. The number of
+    /// sessions follows the work: one per `--rname`, or with `--loop` one per day of the range
+    /// (at most 6, fewer if some windows are already open); `--conn-count` sets it explicitly.
+    /// Not combinable with `--no-sap`, `--skip-existing`, `--with-prereqs` or `--use-clipboard`
+    /// (one shared Windows clipboard); several `--rname` can't be combined with `--loop`.
+    #[arg(
+        long = "multi-conn",
+        value_name = "BOOL",
+        num_args = 0..=1,
+        default_missing_value = "true",
+        value_parser = clap::builder::BoolishValueParser::new(),
+        requires = "rname",
+        conflicts_with_all = ["no_sap", "skip_existing", "with_prereqs"]
+    )]
+    pub multi_conn: Option<bool>,
+
+    /// PARALLEL DAYS for `--rname ... --loop`: run the days of the range or week on exactly N new
+    /// SAP sessions at the same time (2 to 6; max 6 per connection, counting the ones already
+    /// open). Implies parallel mode (`--multi-conn` with `--loop` picks N itself: one per day).
+    /// The sessions stay open and take the next day when free (reused, not respawned); with
+    /// `--merge` the merge runs once at the end. Same policy as the sequential loop: a day without
+    /// data is skipped, any other error stops new days and nothing is merged. Opt-in; not
+    /// combinable with `--no-sap` or `--use-clipboard` (shared clipboard).
+    #[arg(
+        long = "conn-count",
+        value_name = "N",
+        value_parser = clap::value_parser!(u8).range(2..=6),
+        requires = "iterate_loop",
+        conflicts_with_all = ["no_sap"]
+    )]
+    pub conn_count: Option<u8>,
+
     /// Skip SAP connection check (for testing)
     #[arg(long, default_value = "false")]
     pub skip_sap_check: bool,
@@ -31,8 +81,15 @@ pub struct Cli {
     /// Run a headless report by name (see `--run-date`), e.g. `--rname=mustgo`. Drives all
     /// SAP steps of the report unattended and writes TSV outputs under the reports dir.
     /// Cannot be combined with --run-loop / --run-sequence / per-tcode flags.
-    #[arg(long, value_name = "NAME", requires = "run_date", conflicts_with_all = ["run_loop", "run_sequence"])]
-    pub rname: Option<String>,
+    /// Repeat it together with `--multi-conn` to run several reports in parallel sessions.
+    #[arg(
+        long,
+        value_name = "NAME",
+        action = clap::ArgAction::Append,
+        requires = "run_date",
+        conflicts_with_all = ["run_loop", "run_sequence"]
+    )]
+    pub rname: Vec<String>,
 
     /// Run date of --rname: `YYYY-MM-DD`, `YYYY-MM-DD..YYYY-MM-DD`, or a week `WK45` /
     /// `WK45/2026` (Sunday..Saturday, Excel WEEKNUM). A range or week is one run.
@@ -303,7 +360,24 @@ impl Cli {
 
         let output_date = parse_iso_date_opt("--output-date", self.output_date.as_deref())?;
 
-        let (rname, run_date) = parse_rname_opts(self.rname.as_deref(), self.run_date.as_deref())?;
+        // Several --rname only with --multi-conn; the process-wide override keeps the first
+        // report (main reads the whole list from `Cli::rname`).
+        if self.rname.len() > 1 && self.multi_conn != Some(true) {
+            return Err(anyhow!(
+                "--rname given {} times: add --multi-conn to run them in parallel sessions",
+                self.rname.len()
+            ));
+        }
+        if self.rname.len() > 1 && self.iterate_loop {
+            return Err(anyhow!(
+                "several --rname can't be combined with --loop (parallel days run one report: \
+                 use --multi-conn or --conn-count with a single --rname)"
+            ));
+        }
+        let (rname, run_date) = parse_rname_opts(
+            self.rname.first().map(String::as_str),
+            self.run_date.as_deref(),
+        )?;
 
         Ok(CliOverrides {
             rname,
@@ -461,6 +535,78 @@ mod rname_tests {
         let o = cli.to_overrides()?;
         cli.validate_rname(&o)?;
         Ok(o)
+    }
+
+    #[test]
+    fn multi_conn_is_opt_in() {
+        // nothing changes without the new flags
+        let cli = parse(&["--rname=mustgo", "--run-date=2026-11-05"]).unwrap();
+        assert!(cli.multi_conn.is_none() && !cli.test && cli.tcodes.is_none());
+        assert_eq!(cli.rname, vec!["mustgo"]);
+        // several --rname need --multi-conn
+        let args = [
+            "--rname",
+            "xdock",
+            "--rname",
+            "k2xx",
+            "--run-date=2026-11-05",
+        ];
+        assert!(ov(&args).is_err());
+        let mut with = args.to_vec();
+        with.push("--multi-conn");
+        let cli = parse(&with).unwrap();
+        assert_eq!(cli.multi_conn, Some(true));
+        let o = cli.to_overrides().unwrap();
+        assert_eq!(o.rname.as_deref(), Some("xdock"));
+        for v in ["true", "1", "yes"] {
+            let flag = format!("--multi-conn={v}");
+            let mut a = args.to_vec();
+            a.push(&flag);
+            assert_eq!(parse(&a).unwrap().multi_conn, Some(true));
+        }
+        // conflicts
+        for bad in ["--no-sap", "--skip-existing", "--with-prereqs"] {
+            let mut a = with.clone();
+            a.push(bad);
+            assert!(parse(&a).is_err(), "{bad}");
+        }
+        // --multi-conn alone is rejected
+        assert!(parse(&["--multi-conn"]).is_err());
+        // with --loop it parallelises the days of ONE report, several --rname + --loop is an error
+        let one = ["--rname=k2xx", "--run-date=WK45", "--loop", "--multi-conn"];
+        assert!(ov(&one).is_ok());
+        let mut a = one.to_vec();
+        a.extend(["--conn-count=3"]);
+        assert_eq!(parse(&a).unwrap().conn_count, Some(3));
+        let two = [
+            "--rname",
+            "xdock",
+            "--rname",
+            "k2xx",
+            "--run-date=WK45",
+            "--loop",
+            "--multi-conn",
+        ];
+        assert!(ov(&two).is_err());
+    }
+
+    #[test]
+    fn conn_count_is_opt_in_and_validated() {
+        let base = ["--rname=k2xx", "--run-date=WK45", "--loop"];
+        let mut a = base.to_vec();
+        a.push("--conn-count=3");
+        assert_eq!(parse(&a).unwrap().conn_count, Some(3));
+        assert!(parse(&base).unwrap().conn_count.is_none());
+        for bad in ["--conn-count=1", "--conn-count=7", "--conn-count=x"] {
+            let mut a = base.to_vec();
+            a.push(bad);
+            assert!(parse(&a).is_err(), "{bad}");
+        }
+        // needs --loop, conflicts with --no-sap
+        assert!(parse(&["--rname=k2xx", "--run-date=WK45", "--conn-count=3"]).is_err());
+        let mut a = base.to_vec();
+        a.extend(["--conn-count=3", "--no-sap"]);
+        assert!(parse(&a).is_err());
     }
 
     #[test]

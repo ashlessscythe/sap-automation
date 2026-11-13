@@ -513,19 +513,156 @@ fn iterate_core(
     }
 
     if opts.merge {
-        if summary.done.is_empty() {
-            println!("No day finished: nothing to merge.");
-        } else {
-            // days that were touched at all (a skipped day may still have prerequisite output)
-            let mut touched: Vec<NaiveDate> = summary.done.clone();
-            touched.extend(summary.skipped.iter().map(|(d, _, _)| *d));
-            touched.sort();
-            touched.dedup();
-            summary.merged = Some(match runner.merge(rname, today, range, &touched) {
-                Ok(v) => v,
-                Err(e) => vec![(rname.to_string(), Err(e))],
-            });
+        merge_tail(runner, rname, range, today, &mut summary);
+    }
+    Ok(summary)
+}
+
+/// The merge after the per-day runs: done + skipped days (a skipped day may still have
+/// prerequisite output); a merge that errors as a whole is one failed entry named `rname`.
+fn merge_tail(
+    runner: &mut dyn DayRunner,
+    rname: &str,
+    range: &RunDate,
+    today: NaiveDate,
+    summary: &mut IterationSummary,
+) {
+    if summary.done.is_empty() {
+        println!("No day finished: nothing to merge.");
+        return;
+    }
+    let mut touched: Vec<NaiveDate> = summary.done.clone();
+    touched.extend(summary.skipped.iter().map(|(d, _, _)| *d));
+    touched.sort();
+    touched.dedup();
+    summary.merged = Some(match runner.merge(rname, today, range, &touched) {
+        Ok(v) => v,
+        Err(e) => vec![(rname.to_string(), Err(e))],
+    });
+}
+
+// ------------------------------------------------------------------ parallel days (--conn-count)
+
+/// The offline runner (merge without a SAP session) for [`finish_parallel`].
+pub fn offline_runner() -> OfflineDayRunner {
+    OfflineDayRunner
+}
+
+/// One finished day of a parallel run: (day, whole chain finished, its partial summary).
+type DayResult = (NaiveDate, bool, IterationSummary);
+
+/// State shared by the workers of a `--conn-count` run: a queue of days (each worker takes the
+/// next one when it is free, so fast days do not wait for slow ones), the per-day results and
+/// the first hard error. After a hard error no new day is started (running ones finish).
+pub struct ParallelShared {
+    queue: std::sync::Mutex<std::collections::VecDeque<NaiveDate>>,
+    results: std::sync::Mutex<Vec<DayResult>>,
+    error: std::sync::Mutex<Option<anyhow::Error>>,
+    abort: std::sync::atomic::AtomicBool,
+    pub total: usize,
+}
+
+impl ParallelShared {
+    pub fn new(days: &[NaiveDate]) -> Self {
+        Self {
+            queue: std::sync::Mutex::new(days.iter().copied().collect()),
+            results: std::sync::Mutex::new(Vec::new()),
+            error: std::sync::Mutex::new(None),
+            abort: std::sync::atomic::AtomicBool::new(false),
+            total: days.len(),
         }
+    }
+
+    fn next_day(&self) -> Option<NaiveDate> {
+        if self.abort.load(std::sync::atomic::Ordering::Acquire) {
+            return None;
+        }
+        self.queue.lock().ok()?.pop_front()
+    }
+}
+
+/// One worker: take days from the queue and run the chain of `rname` for each on its own
+/// `runner` (its own SAP session) until the queue is empty or another worker failed hard.
+pub fn parallel_worker(
+    shared: &ParallelShared,
+    runner: &mut dyn DayRunner,
+    rname: &str,
+    opts: IterOpts,
+    today: NaiveDate,
+) {
+    let chain = registry::chain(rname);
+    while let Some(day) = shared.next_day() {
+        println!("=== Day {day} ===");
+        let mut local = IterationSummary::default();
+        let outcome = run_day_chain(
+            runner,
+            rname,
+            &chain,
+            &RunDate::single(day),
+            day,
+            shared.total,
+            opts,
+            today,
+            &mut local,
+        );
+        match outcome {
+            Ok(ok) => {
+                if let Ok(mut r) = shared.results.lock() {
+                    r.push((day, ok, local));
+                }
+            }
+            Err(e) => {
+                shared
+                    .abort
+                    .store(true, std::sync::atomic::Ordering::Release);
+                if let Ok(mut slot) = shared.error.lock() {
+                    if slot.is_none() {
+                        *slot = Some(e);
+                    } else {
+                        println!("{day}: also failed: {e:#}");
+                    }
+                }
+                return;
+            }
+        }
+    }
+}
+
+/// After all workers returned: combine the per-day results in day order, apply the same policy
+/// as the sequential loop (hard error = summary, no merge, `Err`; otherwise optional merge via
+/// `merge_runner`, which needs no SAP session) and print the summary.
+pub fn finish_parallel(
+    shared: ParallelShared,
+    merge_runner: &mut dyn DayRunner,
+    rname: &str,
+    range: &RunDate,
+    opts: IterOpts,
+    today: NaiveDate,
+) -> Result<IterationSummary> {
+    let total = shared.total;
+    let mut results = shared.results.into_inner().unwrap_or_default();
+    results.sort_by_key(|(d, _, _)| *d);
+    let mut summary = IterationSummary::default();
+    for (day, ok, part) in results {
+        if ok {
+            summary.done.push(day);
+        }
+        summary.skipped.extend(part.skipped);
+        summary.existing.extend(part.existing);
+    }
+    if let Some(e) = shared.error.into_inner().unwrap_or(None) {
+        print_summary(&summary, total, None);
+        return Err(e);
+    }
+    if opts.merge {
+        merge_tail(merge_runner, rname, range, today, &mut summary);
+    }
+    print_summary(&summary, total, None);
+    let failed = summary.merge_failures();
+    if failed > 0 {
+        return Err(anyhow!(
+            "{failed} merge(s) failed (see the summary above; reports that merged keep their workbooks)"
+        ));
     }
     Ok(summary)
 }
@@ -630,6 +767,56 @@ mod tests {
             },
             today(),
         )
+    }
+
+    fn opts_merge() -> IterOpts {
+        IterOpts {
+            merge: true,
+            ..IterOpts::default()
+        }
+    }
+
+    #[test]
+    fn parallel_workers_share_the_days_and_merge_once() {
+        let days: Vec<NaiveDate> = (1..=6).map(d).collect();
+        let shared = ParallelShared::new(&days);
+        let mut fakes = [Fake::default(), Fake::default(), Fake::default()];
+        std::thread::scope(|s| {
+            for f in fakes.iter_mut() {
+                let shared = &shared;
+                s.spawn(move || parallel_worker(shared, f, "k2xx", opts_merge(), today()));
+            }
+        });
+        let ran: usize = fakes.iter().map(|f| f.calls.len()).sum();
+        assert_eq!(ran, 6 * registry::chain("k2xx").len());
+        let mut merger = Fake::default();
+        let range = RunDate {
+            date1: d(1),
+            date2: Some(d(6)),
+        };
+        let sum =
+            finish_parallel(shared, &mut merger, "k2xx", &range, opts_merge(), today()).unwrap();
+        assert_eq!(sum.done, days);
+        assert_eq!(merger.merges.len(), 1);
+        assert_eq!(merger.merges[0].1, days);
+    }
+
+    #[test]
+    fn parallel_hard_error_stops_new_days_and_skips_merge() {
+        let days: Vec<NaiveDate> = (1..=6).map(d).collect();
+        let shared = ParallelShared::new(&days);
+        let first = registry::chain("k2xx")[0].to_string();
+        let mut f = Fake {
+            hard: Some((first, 2)),
+            ..Fake::default()
+        };
+        parallel_worker(&shared, &mut f, "k2xx", opts_merge(), today());
+        let mut merger = Fake::default();
+        let err = finish_parallel(shared, &mut merger, "k2xx", &week(), opts_merge(), today());
+        assert!(err.is_err());
+        assert!(merger.merges.is_empty());
+        // day 1 ran, day 2 failed, later days never started
+        assert!(f.calls.iter().all(|(_, day)| *day <= d(2)));
     }
 
     #[derive(Default)]

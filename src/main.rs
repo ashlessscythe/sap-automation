@@ -59,6 +59,11 @@ fn main() -> anyhow::Result<()> {
     // Parse command line arguments
     let cli = Cli::parse();
 
+    // Parallel-session feasibility spike (hidden): `--test --tcodes=zvt11,vt11`
+    if cli.test {
+        return sap_automation::parallel_test::run(cli.tcodes.as_deref().unwrap_or_default());
+    }
+
     // Project the CLI surface into the override struct (this also validates ISO
     // dates and other parseable fields up-front).
     let overrides = cli.to_overrides()?;
@@ -155,6 +160,42 @@ fn main() -> anyhow::Result<()> {
                 bad.join(", ")
             ));
         }
+    }
+
+    // Parallel sessions (opt-in): several --rname (one session each) or the days of a --loop
+    // range (one session per day, or exactly --conn-count). See cli.rs for the flag docs.
+    if cli.multi_conn == Some(true) || cli.conn_count.is_some() {
+        if sap_automation::utils::cli_overrides::use_clipboard() {
+            return Err(anyhow::anyhow!(
+                "parallel sessions can't be combined with --use-clipboard (one shared Windows clipboard)"
+            ));
+        }
+        let date = cli_overrides()
+            .run_date
+            .ok_or_else(|| anyhow::anyhow!("parallel sessions need --run-date"))?;
+        if cli.keep_awake {
+            let _ = keep_awake::start_keep_awake_thread();
+        }
+        if cli.iterate_loop {
+            let rname = cli_overrides()
+                .rname
+                .clone()
+                .ok_or_else(|| anyhow::anyhow!("parallel days need --rname"))?;
+            return sap_automation::parallel_test::run_loop_parallel(
+                &rname,
+                &date,
+                cli.conn_count.map(usize::from),
+                sap_automation::abc::iterate::IterOpts::from_overrides(),
+                sap_automation::utils::cli_overrides::effective_today(),
+            );
+        }
+        if cli.rname.len() < 2 {
+            return Err(anyhow::anyhow!(
+                "--multi-conn needs several --rname (one session each) or --loop over a date range"
+            ));
+        }
+        let names = sap_automation::parallel_test::parse_rnames(&cli.rname)?;
+        return sap_automation::parallel_test::run_reports(&names, &date, true);
     }
 
     // Headless report by name: --rname=<name> --run-date=<date>

@@ -65,6 +65,32 @@ pub fn collapse_backslashes(p: &str) -> String {
     out
 }
 
+/// Directory text for the SAP "save list in file" dialog: forward slashes and doubled
+/// backslashes collapsed to single `\`, `.` parts dropped, relative paths made absolute (the
+/// dialog runs on the front end and would treat anything else as a new/unknown path and ask
+/// for confirmation), no trailing backslash.
+pub fn normalize_export_dir(dir: &str) -> String {
+    let flat = collapse_backslashes(&dir.trim().replace('/', "\\"));
+    let p = Path::new(&flat);
+    let abs = if p.is_absolute() {
+        p.to_path_buf()
+    } else {
+        std::env::current_dir().unwrap_or_default().join(p)
+    };
+    let mut out = std::path::PathBuf::new();
+    for c in abs.components() {
+        if !matches!(c, std::path::Component::CurDir) {
+            out.push(c.as_os_str());
+        }
+    }
+    let s = collapse_backslashes(&out.to_string_lossy());
+    if s.len() > 3 {
+        s.trim_end_matches('\\').to_string()
+    } else {
+        s
+    }
+}
+
 /// Gets a file path for a specific tcode
 ///
 /// This function generates a file path based on the tcode, timestamp, and extension.
@@ -94,7 +120,10 @@ pub fn get_tcode_file_path(tcode: &str, ext: &str) -> (String, String) {
     }
 
     let timestamp = generate_timestamp();
-    let file_name = format!("{timestamp}_{tcode}.{ext}");
+    let file_name = format!(
+        "{timestamp}{}_{tcode}.{ext}",
+        crate::utils::sap_export_utils::session_tag_suffix()
+    );
     let file_path = tcode_dir;
 
     (file_path, file_name)
@@ -397,8 +426,27 @@ pub fn save_sap_file(
 
 #[cfg(test)]
 mod export_dir_tests {
-    use super::resolve_export_dir;
+    use super::{normalize_export_dir, resolve_export_dir};
     use std::path::Path;
+
+    #[test]
+    fn normalizes_for_the_save_dialog() {
+        assert_eq!(
+            normalize_export_dir("C:/temp//reports/VT11"),
+            r"C:\temp\reports\VT11"
+        );
+        assert_eq!(
+            normalize_export_dir(r"C:\\temp\\reports\VT11\"),
+            r"C:\temp\reports\VT11"
+        );
+        assert_eq!(
+            normalize_export_dir(r"C:\temp\.\reports"),
+            r"C:\temp\reports"
+        );
+        assert_eq!(normalize_export_dir(r"\\srv\share\x"), r"\\srv\share\x");
+        let rel = normalize_export_dir(r"reports\VT11");
+        assert!(Path::new(&rel).is_absolute() && rel.ends_with(r"reports\VT11"));
+    }
 
     fn joined(base: &str, parts: &[&str]) -> String {
         let mut p = Path::new(base).to_path_buf();

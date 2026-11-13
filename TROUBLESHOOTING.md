@@ -206,6 +206,10 @@ match close_excel_windows(Some(file_name)) {
 | `weekly_pivot` sheet missing | Its source table lacked a column or had no rows; the summary prints a note. The merge itself still succeeded. |
 | `Run k2xx first` / `Run relabel first` on a single run | relabel and repack read the k2xx / relabel output of the same run. Run the prerequisites first or add `--with-prereqs`. |
 | `--loop`/`--merge` seem to do nothing like `--run-loop` | They are unrelated flags: `--run-loop` / `--run-sequence` / `--iterations` drive the config loop and sequence; `--loop` / `--merge` expand a `--rname` date range into per-day runs. |
+| `N session(s) already open + M new > 6` / `only N free session slot(s)` | Parallel runs (`--multi-conn`, `--conn-count`) need free windows: SAP allows 6 per connection including yours. Close windows or use a smaller `--conn-count`. |
+| `--rname given N times: add --multi-conn` | Several `--rname` are only for parallel sessions; add `--multi-conn` (and no `--loop`), or run the reports one by one. |
+| Parallel run slower than expected | Parallel sessions do not speed up one report; the whole range or set of reports finishes sooner. Heavy reports (VT11, VL06O) compete on the SAP server. Compare the start/end columns of the final table with a sequential run. |
+| Export file name has `-s3` in it | Intended: in parallel runs the session number is added (`<timestamp>-s3_<TCODE>.txt`) so sessions never overwrite each other. |
 
 **Tips:**
 

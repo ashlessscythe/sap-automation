@@ -168,6 +168,24 @@ The file extension drives the parser:
 | `--output-date=<YYYY-MM-DD>` | With `--rname`: the output date folder to read/write instead of today (runs, `--loop`, `--merge`, `--skip-existing`, `--no-sap`; relabel/repack read the k2xx/relabel TSVs of that folder). |
 | `--output-format=<tsv\|xlsx>` | Output of a report run. `tsv` (default); `xlsx` additionally writes `<DATE>_<RNAME>.xlsx` (every output table a sheet) next to the TSV files. |
 
+**Parallel SAP sessions (opt-in).** Several windows of the same connection work at the same time. Nothing changes unless one of these flags is given.
+
+| Flag | Effect |
+|---|---|
+| `--rname=<a> --rname=<b> --multi-conn` | Repeat `--rname` (2 to 6 reports, e.g. `xdock` and `k2xx`) with ONE `--run-date`: each report runs its single-run flow in its own NEW session at the same time. Several `--rname` without `--multi-conn` is an error. |
+| `--multi-conn` with `--loop` | One session per day of the range or week (at most 6, fewer when windows are already open); a session that finishes a day takes the next one. |
+| `--conn-count=<2..6>` | With `--loop`: exactly N sessions instead of one per day (never more than there are days). Also switches parallel mode on by itself. |
+| `--multi-conn` accepts bare / `true` / `1` / `yes` | |
+
+Sessions are created on the first connection and closed again when the run ends; SAP allows 6 per connection **including the windows you already have open**
+(the run stops with a clear message otherwise). They stay open for the whole run and are **reused** day after day (not respawned). Same policy as the
+sequential `--loop`: a day without data is skipped, any other error stops new days (running ones finish) and nothing is merged; with `--merge` the merge runs
+once at the end, without SAP. Several `--rname` can't be combined with `--loop`; `--no-sap` can't be combined with the parallel flags, `--skip-existing` and
+`--with-prereqs` not with `--multi-conn` over several `--rname`, and `--use-clipboard` not at all (the Windows clipboard is shared by all sessions).
+Export files written in a parallel run carry the session number, `20261112162255-s3_VT11.txt`, so two sessions running the same tcode never collide, and the
+export folder is sent to SAP as a clean absolute `C:\a\b` path (no confirmation prompt). Console output is asynchronous (queued and written by one thread)
+and every line is prefixed with its session, `[s3] ...`. A table at the end shows each job, session, start and end time.
+
 `--loop` / `--merge` are unrelated to `--run-loop`, `--run-sequence` and `--iterations` (the config-driven TCode loop/sequence) and conflict with
 `--run-loop` / `--run-sequence`. `--no-sap` / `--skip-existing` / `--output-date` only reuse or redirect the `--rname` TSV outputs; they are
 likewise unrelated to those (config-driven) loops and are not in the TUI.
@@ -184,7 +202,7 @@ Combinations of `--with-prereqs` for a single run (`--rname=repack --run-date=<d
 | `--loop --with-prereqs` | same as `--loop` (the loop already runs the prerequisites) |
 
 `--rname` and `--run-date` require each other. Allowed with them: `--skip-sap-check`, `--keep-awake`, `--reports-dir`,
-`--date-format`, `--timezone`, `--ignore-display-error`, `--date-range-buffer`, `--use-clipboard`, `--output-format`, `--loop`, `--merge`, `--no-sap`, `--skip-existing`, `--with-prereqs`, `--output-date`. Defaults for variants, layouts, warehouse and clean-up come from the
+`--date-format`, `--timezone`, `--ignore-display-error`, `--date-range-buffer`, `--use-clipboard`, `--output-format`, `--loop`, `--merge`, `--no-sap`, `--skip-existing`, `--with-prereqs`, `--output-date`, `--multi-conn`, `--conn-count`. Defaults for variants, layouts, warehouse and clean-up come from the
 optional `[abc.mustgo]` / `[abc.xdock]` / `[abc.toyota]` / `[abc.misc]` / `[abc.k2xx]` / `[abc.relabel]` / `[abc.repack]` section (see [CONFIG.md](CONFIG.md)); there are no per-tcode flags for a report.
 
 ```bash
@@ -205,6 +223,9 @@ optional `[abc.mustgo]` / `[abc.xdock]` / `[abc.toyota]` / `[abc.misc]` / `[abc.
 ./sap_automation.exe --rname=repack --run-date=wk40 --loop --merge               # per day k2xx, relabel, repack; 3 merged files
 ./sap_automation.exe --rname=xdock --run-date=wk46 --loop --merge --no-sap --output-date=2026-11-12        # re-merge, SAP closed
 ./sap_automation.exe --rname=xdock --run-date=wk46 --loop --merge --skip-existing --output-date=2026-11-12 # resume after a stop
+./sap_automation.exe --rname=xdock --rname=k2xx --run-date=2026-11-05 --multi-conn   # two reports, two sessions, same time
+./sap_automation.exe --rname=k2xx --run-date=wk46 --loop --merge --multi-conn        # one session per day (max 6)
+./sap_automation.exe --rname=k2xx --run-date=wk46 --loop --merge --conn-count=3      # 3 sessions share the 7 days
 ```
 
 **Per-day iteration (`--loop`, `--merge`).** Each day is a single-date run of the whole chain (`k2xx` -> `relabel` -> `repack` for repack; a

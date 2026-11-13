@@ -34,12 +34,40 @@ impl ExportTarget {
     }
 }
 
-/// `<yyyymmddhhmmss>_<tcode>.<ext>` (same pattern as `get_tcode_file_path`, but with the time
-/// passed in so no config/timezone lookup is needed).
+thread_local! {
+    static SESSION_TAG: std::cell::RefCell<String> = const { std::cell::RefCell::new(String::new()) };
+}
+
+/// Tag the export file names written by THIS thread (parallel sessions, `--multi-conn`), e.g.
+/// `s3` gives `<ts>-s3_<TCODE>.<ext>`. Empty (the default) keeps the plain names.
+pub fn set_session_tag(tag: &str) {
+    SESSION_TAG.with(|t| *t.borrow_mut() = tag.to_string());
+}
+
+/// The tag itself (`s3`), empty when none is set on this thread.
+pub fn session_tag_name() -> String {
+    SESSION_TAG.with(|t| t.borrow().clone())
+}
+
+/// `-s3` for the tag `s3`, empty when no tag is set on this thread.
+pub fn session_tag_suffix() -> String {
+    SESSION_TAG.with(|t| {
+        let t = t.borrow();
+        if t.is_empty() {
+            String::new()
+        } else {
+            format!("-{t}")
+        }
+    })
+}
+
+/// `<yyyymmddhhmmss>[-<session tag>]_<tcode>.<ext>` (same pattern as `get_tcode_file_path`, but
+/// with the time passed in so no config/timezone lookup is needed).
 pub fn export_file_name(tcode: &str, export_type: u8, now: chrono::NaiveDateTime) -> String {
     format!(
-        "{}_{}.{}",
+        "{}{}_{}.{}",
         now.format("%Y%m%d%H%M%S"),
+        session_tag_suffix(),
         tcode,
         export_type_to_extension(export_type)
     )
@@ -162,6 +190,18 @@ pub fn export_to_target(
             target.export_type
         )));
     }
+    // the front-end dialog needs a clean absolute `C:\a\b` path (see normalize_export_dir)
+    // Opt-in: only for parallel sessions (`--multi-conn`, session tag set); plain runs keep
+    // sending the directory exactly as before.
+    let normalized = ExportTarget {
+        dir: if session_tag_suffix().is_empty() {
+            target.dir.clone()
+        } else {
+            crate::utils::sap_file_utils::normalize_export_dir(&target.dir)
+        },
+        ..target.clone()
+    };
+    let target = &normalized;
     if let Err(e) = std::fs::create_dir_all(&target.dir) {
         return Ok(ExportOutcome::Error(format!(
             "{tcode}: cannot create export dir {}: {e}",
@@ -295,6 +335,10 @@ mod tests {
             .unwrap();
         assert_eq!(export_file_name("VT11", 1, t), "20261110101550_VT11.txt");
         assert_eq!(export_file_name("LT23", 3, t), "20261110101550_LT23.html");
+        set_session_tag("s3");
+        assert_eq!(export_file_name("VT11", 1, t), "20261110101550-s3_VT11.txt");
+        set_session_tag("");
+        assert_eq!(export_file_name("VT11", 1, t), "20261110101550_VT11.txt");
         let target = ExportTarget {
             export_type: 1,
             dir: "out".into(),

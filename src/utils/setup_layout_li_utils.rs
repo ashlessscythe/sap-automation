@@ -1,12 +1,18 @@
 //! LI layout setup (VBA port); entry points are not all called from the binary.
+//!
+//! `setup_layout_li` is the port of the VBA function `SetupLayout_li` (list-style editor). The
+//! old version downcast the two `GuiTableControl`s to `GuiGridView` and always returned
+//! `Ok(false)`; the column picking now lives in [`crate::utils::layout_editors`] (table controls)
+//! and the per-tcode save step in [`crate::utils::layout_create`]. New code should use
+//! [`crate::utils::layout_create::create_layout`] / [`crate::utils::layout_create::apply_columns`].
 #![allow(dead_code)]
 
 use sap_scripting::*;
-use std::thread;
-use std::time::Duration;
 
-use crate::utils::sap_ctrl_utils::*;
-use crate::utils::utils::*;
+use crate::utils::layout_create::{
+    confirm_editor, profile_for, save_list, status_text, to_windows_error, SaveFlow,
+};
+use crate::utils::layout_editors::{pick_columns_list, RealListScreen};
 
 /// Struct to hold layout parameters
 #[derive(Debug, Clone, Default)]
@@ -19,7 +25,9 @@ pub struct LayoutParams {
 
 /// Setup a layout with list items
 ///
-/// This function is a port of the VBA function SetupLayout_li
+/// This function is a port of the VBA function SetupLayout_li. Columns that cannot be found are
+/// skipped (printed) and an existing layout of that name is overwritten (legacy behaviour).
+/// `Ok(false)` = the list editor is not on screen or the tcode has no list-style save flow.
 #[allow(clippy::too_many_arguments)]
 pub fn setup_layout_li(
     session: &GuiSession,
@@ -28,504 +36,49 @@ pub fn setup_layout_li(
     base_obj_name: &str,
     layout_name: &str,
     list: &[String],
-    limit: i32,
+    _limit: i32,
     no_save: bool,
 ) -> windows::core::Result<bool> {
     println!("Setting up layout with list items: {layout_name}");
 
-    let wnd = format!("wnd[{n_wnd}]");
-    let obj_name = base_obj_name;
-    let obj_list_left = format!("{wnd}{obj_name}/tblSAPLSKBHTC_WRITE_LIST");
-    let obj_list_right = format!("{wnd}/usr/tblSAPLSKBHTC_FIELD_LIST");
-    let obj_button_to_left = format!("{wnd}/usr/btnAPP_WL_SING");
-    let obj_button_to_right = format!("{wnd}/usr/btnAPP_FL_SING");
-
-    let nw_obj_list_left = format!("{obj_name}/tblSAPLSKBHTC_WRITE_LIST");
-    let _nw_obj_list_right = "/usr/tblSAPLSKBHTC_FIELD_LIST";
-
-    // Get the left grid
-    let left_grid = session.find_by_id(obj_list_left.clone())?;
-
-    // Try to downcast to GuiGridView
-    if let Some(grid_left) = left_grid.downcast::<GuiGridView>() {
-        // Get row count
-        let rc = grid_left.row_count()?;
-        let vrc = grid_left.visible_row_count()?;
-        let curr_row = grid_left.current_cell_row()?;
-        let scrl_pos = (curr_row as f64 / rc as f64 * rc as f64).floor() as i32;
-
-        println!("Row count is {rc}");
-        println!("Visible rowcount is {vrc}");
-        println!("Vertical Scrollbar Position is {scrl_pos}");
-
-        // Clear left grid
-        println!("{rc} items found in current layout. Clearing...");
-
-        // Select all rows
-        for j in 1..rc {
-            let ctrl_id = format!("{nw_obj_list_left}/txtGT_WRITE_LIST-SELTEXT[0,{j}]");
-            let err_ctrl = exist_ctrl(session, 1, &ctrl_id, true)?;
-
-            if err_ctrl.cband {
-                if !contains(&err_ctrl.ctext, "**_**", Some(false)) {
-                    // Select row
-                    grid_left.set_selected_rows(j.to_string())?;
-
-                    // Scroll down if needed
-                    if j % 12 == 0 {
-                        let err_ctrl = exist_ctrl(session, 1, &nw_obj_list_left, true)?;
-                        if err_ctrl.cband {
-                            let _scroll_position =
-                                (curr_row as f64 / rc as f64 * rc as f64).floor() as i32;
-                            println!("Vertical Scrollbar Position is {scrl_pos}");
-
-                            // Scroll down
-                            grid_left.set_current_cell(scrl_pos + 12, "down".into())?;
-                        }
-                    }
-                } else {
-                    break;
-                }
-            }
+    let mut screen = RealListScreen::new(session, n_wnd, base_obj_name);
+    if !screen.is_open() {
+        return Ok(false);
+    }
+    let profile = match profile_for(tcode) {
+        Ok(p) => p,
+        Err(e) => {
+            println!("{e}");
+            return Ok(false);
         }
+    };
+    let SaveFlow::List { save, dialog } = profile.save else {
+        println!("Tcode {tcode} has no list-style layout editor");
+        return Ok(false);
+    };
 
-        // Move to right (clear)
-        if let Ok(button) = session.find_by_id(obj_button_to_right.clone()) {
-            if let Some(btn) = button.downcast::<GuiButton>() {
-                btn.press()?;
-            }
-        }
+    let report = pick_columns_list(&mut screen, list).map_err(|e| to_windows_error(&e))?;
+    for item in &report.missing {
+        println!("Item ({item}) not found, skipping");
+    }
+    println!("Added {} items to Layout", report.moved.len());
 
-        // Start working with right list
-        // Order alphabetical
-        if let Ok(button) = session.find_by_id("wnd[1]/usr/btn%#AUTOTEXT002".to_string()) {
-            if let Some(btn) = button.downcast::<GuiButton>() {
-                btn.press()?;
-            }
-        }
-
-        // Get the right grid
-        let right_grid = session.find_by_id(obj_list_right.clone())?;
-
-        // Try to downcast to GuiGridView
-        if let Some(grid_right) = right_grid.downcast::<GuiGridView>() {
-            // Get row count
-            let rc = grid_right.row_count()?;
-            let _vrc = grid_right.visible_row_count()?;
-            let _scrl_pos = (curr_row as f64 / rc as f64 * rc as f64).floor() as i32;
-
-            // Add items from list to layout
-            for item in list {
-                if item.to_uppercase() != "SHIPMENT NUMBER"
-                    && item.to_uppercase() != "DELIVERY"
-                    && !contains(&item.to_uppercase(), "_LAYOUT", Some(false))
-                {
-                    let mut counter = 1;
-
-                    'layout_item: while counter < limit {
-                        counter += 1;
-
-                        for i in 0..12 {
-                            // Check if row exists and get cell value directly
-                            if i < grid_right.row_count()? {
-                                if let Ok(name) =
-                                    grid_right.get_cell_value(i, "SELTEXT".to_string())
-                                {
-                                    let name = name.trim().to_string();
-
-                                    if item.to_uppercase() == name.to_uppercase() {
-                                        // Found, select row
-                                        grid_right.set_selected_rows(i.to_string())?;
-                                        println!("Item ({name}) selected from right");
-                                        thread::sleep(Duration::from_millis(100));
-
-                                        // Move to left - create a fresh clone of the button path for each use
-                                        if let Ok(button) =
-                                            session.find_by_id(obj_button_to_left.clone())
-                                        {
-                                            if let Some(btn) = button.downcast::<GuiButton>() {
-                                                btn.press()?;
-                                            }
-                                        }
-
-                                        println!("Item ({name}) moved to left");
-
-                                        // Reset scrollbar to top - Alternative to vertical_scrollbar
-                                        grid_right.set_first_visible_row(0)?;
-
-                                        break 'layout_item;
-                                    }
-                                }
-                            } else {
-                                // Row doesn't exist, item not found
-                                println!("Item ({item}) not found, skipping");
-
-                                // Reset scrollbar to top - Alternative to vertical_scrollbar
-                                grid_right.set_first_visible_row(0)?;
-
-                                break 'layout_item;
-                            }
-                        }
-
-                        // Scroll down - Alternative to vertical_scrollbar
-                        let err_ctrl = exist_ctrl(session, 1, &nw_obj_list_left, true)?;
-                        if err_ctrl.cband {
-                            let current_first_row = grid_right.first_visible_row()?;
-
-                            // Scroll down by setting first visible row
-                            grid_right.set_first_visible_row(current_first_row + 12)?;
-
-                            let new_first_row = grid_right.first_visible_row()?;
-
-                            // Check if scrollbar moved (if not it reached bottom)
-                            if current_first_row == new_first_row {
-                                println!("Item ({item}) not found, skipping");
-
-                                // Reset scrollbar to top - Alternative to vertical_scrollbar
-                                grid_right.set_first_visible_row(0)?;
-
-                                break 'layout_item;
-                            }
-                        }
-                    }
-                }
-            }
-
-            println!("Added {} items to Layout", list.len());
-
-            // Save the layout based on tcode
-            if !no_save {
-                match tcode.to_uppercase().as_str() {
-                    "MB52" => {
-                        // Enter
-                        if let Ok(button) = session.find_by_id("wnd[1]/tbar[0]/btn[0]".to_string())
-                        {
-                            if let Some(btn) = button.downcast::<GuiButton>() {
-                                btn.press()?;
-                            }
-                        }
-
-                        // Save
-                        if let Ok(button) = session.find_by_id("wnd[0]/tbar[1]/btn[34]".to_string())
-                        {
-                            if let Some(btn) = button.downcast::<GuiButton>() {
-                                btn.press()?;
-                            }
-                        }
-
-                        // Check layout name length
-                        if layout_name.len() > 12 {
-                            println!("Layout name is more than 12 characters, unable to save.");
-
-                            // Close window if exists
-                            let err_ctrl = exist_ctrl(session, 1, "", true)?;
-                            if err_ctrl.cband {
-                                if let Ok(window) = session.find_by_id("wnd[1]".to_string()) {
-                                    if let Some(wnd) = window.downcast::<GuiFrameWindow>() {
-                                        wnd.close()?;
-                                    }
-                                }
-                            }
-                        } else {
-                            // Set layout name
-                            if let Ok(textfield) =
-                                session.find_by_id("wnd[1]/usr/ctxtLTDX-VARIANT".to_string())
-                            {
-                                if let Some(txt) = textfield.downcast::<GuiTextField>() {
-                                    txt.set_text(layout_name.to_string())?;
-                                }
-                            }
-
-                            // Set layout description
-                            if let Ok(textfield) =
-                                session.find_by_id("wnd[1]/usr/txtLTDXT-TEXT".to_string())
-                            {
-                                if let Some(txt) = textfield.downcast::<GuiTextField>() {
-                                    txt.set_text(layout_name.to_string())?;
-                                }
-                            }
-
-                            // Enter
-                            if let Ok(window) = session.find_by_id("wnd[1]".to_string()) {
-                                if let Some(wnd) = window.downcast::<GuiFrameWindow>() {
-                                    wnd.send_v_key(0)?;
-                                }
-                            }
-
-                            // LayoutExists Overwrite Y/N
-                            let err_ctrl = exist_ctrl(session, 2, "", true)?;
-                            if err_ctrl.cband {
-                                if let Ok(window) = session.find_by_id("wnd[2]".to_string()) {
-                                    if let Some(wnd) = window.downcast::<GuiFrameWindow>() {
-                                        wnd.send_v_key(0)?;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    "LX03" | "LX02" => {
-                        // Enter
-                        if let Ok(button) = session.find_by_id("wnd[1]/tbar[0]/btn[0]".to_string())
-                        {
-                            if let Some(btn) = button.downcast::<GuiButton>() {
-                                btn.press()?;
-                            }
-                        }
-
-                        // Save
-                        if let Ok(button) = session.find_by_id("wnd[0]/tbar[1]/btn[36]".to_string())
-                        {
-                            if let Some(btn) = button.downcast::<GuiButton>() {
-                                btn.press()?;
-                            }
-                        }
-
-                        // Check layout name length
-                        if layout_name.len() > 12 {
-                            println!("Layout name is more than 12 characters, unable to save.");
-
-                            // Close window if exists
-                            let err_ctrl = exist_ctrl(session, 1, "", true)?;
-                            if err_ctrl.cband {
-                                if let Ok(window) = session.find_by_id("wnd[1]".to_string()) {
-                                    if let Some(wnd) = window.downcast::<GuiFrameWindow>() {
-                                        wnd.close()?;
-                                    }
-                                }
-                            }
-                        } else {
-                            // Set layout name
-                            if let Ok(textfield) =
-                                session.find_by_id("wnd[1]/usr/ctxtLTDX-VARIANT".to_string())
-                            {
-                                if let Some(txt) = textfield.downcast::<GuiTextField>() {
-                                    txt.set_text(layout_name.to_string())?;
-                                }
-                            }
-
-                            // Set layout description
-                            if let Ok(textfield) =
-                                session.find_by_id("wnd[1]/usr/txtLTDXT-TEXT".to_string())
-                            {
-                                if let Some(txt) = textfield.downcast::<GuiTextField>() {
-                                    txt.set_text(layout_name.to_string())?;
-                                }
-                            }
-
-                            // Enter
-                            if let Ok(window) = session.find_by_id("wnd[1]".to_string()) {
-                                if let Some(wnd) = window.downcast::<GuiFrameWindow>() {
-                                    wnd.send_v_key(0)?;
-                                }
-                            }
-
-                            // LayoutExists Overwrite Y/N
-                            let err_ctrl = exist_ctrl(session, 2, "", true)?;
-                            if err_ctrl.cband {
-                                if let Ok(window) = session.find_by_id("wnd[2]".to_string()) {
-                                    if let Some(wnd) = window.downcast::<GuiFrameWindow>() {
-                                        wnd.send_v_key(0)?;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    "LT23" => {
-                        // Enter (Close window)
-                        if let Ok(window) = session.find_by_id("wnd[1]".to_string()) {
-                            if let Some(wnd) = window.downcast::<GuiFrameWindow>() {
-                                wnd.send_v_key(0)?;
-                            }
-                        }
-
-                        // Save layout button
-                        if let Ok(menu) =
-                            session.find_by_id("wnd[0]/mbar/menu[3]/menu[2]/menu[3]".to_string())
-                        {
-                            if let Some(menu_item) = menu.downcast::<GuiMenu>() {
-                                menu_item.select()?;
-                            }
-                        }
-
-                        // User Specific
-                        if let Ok(checkbox) =
-                            session.find_by_id("wnd[1]/usr/chkG_FOR_USER".to_string())
-                        {
-                            if let Some(chk) = checkbox.downcast::<GuiCheckBox>() {
-                                chk.set_selected(true)?;
-                            }
-                        }
-
-                        // LayoutName
-                        if let Ok(textfield) =
-                            session.find_by_id("wnd[1]/usr/ctxtLTDX-VARIANT".to_string())
-                        {
-                            if let Some(txt) = textfield.downcast::<GuiTextField>() {
-                                txt.set_text(layout_name.to_string())?;
-                            }
-                        }
-
-                        // Layout Description
-                        if let Ok(textfield) =
-                            session.find_by_id("wnd[1]/usr/txtLTDXT-TEXT".to_string())
-                        {
-                            if let Some(txt) = textfield.downcast::<GuiTextField>() {
-                                txt.set_text(layout_name.to_string())?;
-                            }
-                        }
-
-                        // Enter (Save)
-                        if let Ok(window) = session.find_by_id("wnd[1]".to_string()) {
-                            if let Some(wnd) = window.downcast::<GuiFrameWindow>() {
-                                wnd.send_v_key(0)?;
-                            }
-                        }
-
-                        // LayoutExists Overwrite Y/N
-                        let err_ctrl = exist_ctrl(session, 2, "", true)?;
-                        if err_ctrl.cband {
-                            if let Ok(window) = session.find_by_id("wnd[2]".to_string()) {
-                                if let Some(wnd) = window.downcast::<GuiFrameWindow>() {
-                                    wnd.send_v_key(0)?;
-                                }
-                            }
-                        }
-                    }
-                    "VT11" => {
-                        // Enter (Close window)
-                        if let Ok(window) = session.find_by_id("wnd[1]".to_string()) {
-                            if let Some(wnd) = window.downcast::<GuiFrameWindow>() {
-                                wnd.send_v_key(0)?;
-                            }
-                        }
-
-                        // Save layout button
-                        if let Ok(menu) =
-                            session.find_by_id("wnd[0]/mbar/menu[3]/menu[0]/menu[3]".to_string())
-                        {
-                            if let Some(menu_item) = menu.downcast::<GuiMenu>() {
-                                menu_item.select()?;
-                            }
-                        }
-
-                        // User Specific
-                        if let Ok(checkbox) =
-                            session.find_by_id("wnd[1]/usr/chkG_FOR_USER".to_string())
-                        {
-                            if let Some(chk) = checkbox.downcast::<GuiCheckBox>() {
-                                chk.set_selected(true)?;
-                            }
-                        }
-
-                        // Save as name
-                        if let Ok(textfield) =
-                            session.find_by_id("wnd[1]/usr/ctxtLTDX-VARIANT".to_string())
-                        {
-                            if let Some(txt) = textfield.downcast::<GuiTextField>() {
-                                txt.set_text(layout_name.to_string())?;
-                            }
-                        }
-
-                        // Save as Description
-                        if let Ok(textfield) =
-                            session.find_by_id("wnd[1]/usr/txtLTDXT-TEXT".to_string())
-                        {
-                            if let Some(txt) = textfield.downcast::<GuiTextField>() {
-                                txt.set_text(layout_name.to_string())?;
-                            }
-                        }
-
-                        // Enter (Save)
-                        if let Ok(window) = session.find_by_id("wnd[1]".to_string()) {
-                            if let Some(wnd) = window.downcast::<GuiFrameWindow>() {
-                                wnd.send_v_key(0)?;
-                            }
-                        }
-
-                        // LayoutExists Overwrite Y/N
-                        let err_ctrl = exist_ctrl(session, 2, "", true)?;
-                        if err_ctrl.cband {
-                            if let Ok(window) = session.find_by_id("wnd[2]".to_string()) {
-                                if let Some(wnd) = window.downcast::<GuiFrameWindow>() {
-                                    wnd.send_v_key(0)?;
-                                }
-                            }
-                        }
-                    }
-                    "VL06O" => {
-                        // Enter (Close window)
-                        if let Ok(window) = session.find_by_id("wnd[1]".to_string()) {
-                            if let Some(wnd) = window.downcast::<GuiFrameWindow>() {
-                                wnd.send_v_key(0)?;
-                            }
-                        }
-
-                        // Save Layout button
-                        if let Ok(menu) =
-                            session.find_by_id("wnd[0]/mbar/menu[3]/menu[2]/menu[3]".to_string())
-                        {
-                            if let Some(menu_item) = menu.downcast::<GuiMenu>() {
-                                menu_item.select()?;
-                            }
-                        }
-
-                        // User Specific
-                        if let Ok(checkbox) =
-                            session.find_by_id("wnd[1]/usr/chkG_FOR_USER".to_string())
-                        {
-                            if let Some(chk) = checkbox.downcast::<GuiCheckBox>() {
-                                chk.set_selected(true)?;
-                            }
-                        }
-
-                        // Save layout name
-                        if let Ok(textfield) =
-                            session.find_by_id("wnd[1]/usr/ctxtLTDX-VARIANT".to_string())
-                        {
-                            if let Some(txt) = textfield.downcast::<GuiTextField>() {
-                                txt.set_text(layout_name.to_string())?;
-                            }
-                        }
-
-                        // Save layout description
-                        if let Ok(textfield) =
-                            session.find_by_id("wnd[1]/usr/txtLTDXT-TEXT".to_string())
-                        {
-                            if let Some(txt) = textfield.downcast::<GuiTextField>() {
-                                txt.set_text(layout_name.to_string())?;
-                            }
-                        }
-
-                        // Enter (Save)
-                        if let Ok(window) = session.find_by_id("wnd[1]".to_string()) {
-                            if let Some(wnd) = window.downcast::<GuiFrameWindow>() {
-                                wnd.send_v_key(0)?;
-                            }
-                        }
-
-                        // LayoutExists Overwrite Y/N
-                        let err_ctrl = exist_ctrl(session, 2, "", true)?;
-                        if err_ctrl.cband {
-                            if let Ok(window) = session.find_by_id("wnd[2]".to_string()) {
-                                if let Some(wnd) = window.downcast::<GuiFrameWindow>() {
-                                    wnd.send_v_key(0)?;
-                                }
-                            }
-                        }
-                    }
-                    _ => {
-                        println!("Tcode {tcode} not implemented for layout saving");
-                    }
-                }
-            }
-
-            // Get status bar message
-            let status_msg = hit_ctrl(session, 0, "/sbar", "Text", "Get", "")?;
-            println!("Layout ({layout_name}) Successfully Setup: {status_msg}");
-
-            return Ok(true);
-        }
+    if no_save {
+        confirm_editor(session, profile).map_err(|e| to_windows_error(&e))?;
+    } else {
+        save_list(
+            session,
+            profile,
+            &save,
+            dialog,
+            layout_name,
+            layout_name,
+            true,
+        )
+        .map_err(|e| to_windows_error(&e))?;
     }
 
-    Ok(false)
+    let status_msg = status_text(session);
+    println!("Layout ({layout_name}) Successfully Setup: {status_msg}");
+    Ok(true)
 }

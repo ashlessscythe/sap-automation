@@ -9,6 +9,7 @@ pub mod app;
 pub mod cli;
 pub mod inbond_shipment;
 pub mod inbond_shipment_module;
+pub mod layout_menu;
 pub mod lt03;
 pub mod lt03_db;
 pub mod lt03_module;

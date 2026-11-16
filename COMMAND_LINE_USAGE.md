@@ -64,6 +64,28 @@ Missing flag for tcode, enter with --tcode (or set [loop].tcode in config.toml)
 | `--export-type=<0..4>` | The TCode under `--tcode` | 0=unconverted, 1=text-tabs, 2=rich-text, 3=HTML, 4=clipboard. For ZMDESNR/LX03, omit (and no config/global default) → Excel `.xlsx` menu export. |
 | `--plants=<LIST>` | Regular 149 only | Comma-separated plants (e.g. `PLT1,PLT2`). Overrides `[tcode.y_xx_99999999].plants`. Empty list / omitted flag falls back to config; empty after both → one `ALL` export. |
 
+### Layout creation (`--create-layout`, `--create-missing-layout`)
+
+Status: **built, NOT run live** (control ids come from the VBA macro). The column lists live in `[layouts.<TCODE>.<NAME>]` of
+`config.toml` (see CONFIG.md).
+
+| Flag | Notes |
+| --- | --- |
+| `--tcode <T> --create-layout <NAME>` | Create and save the ALV layout `[layouts.<T>.<NAME>]` in SAP. Works on the **current screen** of the attached session: run the report in SAP so its result list is displayed, then run the command. Checks that the session shows transaction `<T>`. Tcodes: VT11, VL06O, LT23, LX03, LX02, ZMDESNR, ZVT11, Y_DN3_47000149 (anything else is an error). Unattended, never prompts. Exit code 0 for created / overwritten / "exists, skipped; pass --overwrite to replace it", non-zero for errors (missing `[layouts...]` section, a column SAP does not have, editor not opened, ...). |
+| `--overwrite` | Needs `--create-layout`. Replace a layout that already exists in SAP. Without it an existing layout is left unchanged. |
+| `--create-missing-layout[=BOOL]` | Opt-in for export runs (single-shot, loop, sequence, `--rname`): when the layout of the run is not found and `[layouts.<TCODE>.<NAME>]` exists, create and save it and continue; otherwise the old behaviour (prompt / error). Overrides `[global] create_missing_layout`; default off. |
+
+`--create-layout` conflicts with `--run-loop`, `--run-sequence`, `--rname` and `--layout`.
+
+```powershell
+# run the VT11 report in SAP first, then (use a throwaway name for the first live test)
+sap_automation --tcode vt11 --create-layout VT11_EXAMPLE_LAYOUT
+sap_automation --tcode vt11 --create-layout VT11_EXAMPLE_LAYOUT --overwrite
+
+# export run that creates its layout when it is missing
+sap_automation --tcode vl06o --layout VL06O_EXAMPLE_LAYOUT --create-missing-layout
+```
+
 ### Loop / sequence timing
 
 | Flag | Applies to | Notes |
@@ -347,7 +369,7 @@ The full list of per-tcode flags rejected by `--run-sequence`:
 --by-date --by-delivery --by-shipment --limiter
 --date-start --date-end
 --delivery-file --delivery-col --shipment-file --shipment-col
---pre-export-back --tab-number
+--pre-export-back --tab-number --create-layout --overwrite
 ```
 
 ## Configuration Requirements

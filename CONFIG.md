@@ -29,6 +29,7 @@ default_tcode = "VT11"
 - `instance_id`: The SAP instance ID to connect to
 - `reports_dir`: Directory where reports will be saved
 - `default_tcode`: Default transaction code to use
+- `create_missing_layout` (optional, bool, default `false`): when an export run does not find its layout in SAP and a `[layouts.<TCODE>.<NAME>]` section exists, create and save it and carry on. `--create-missing-layout` overrides it.
 
 ### TCode Sections
 
@@ -224,6 +225,29 @@ history_warehouse = "WH01"       # keep History rows of this warehouse number (a
 **All site-specific names (variants, layouts, warehouse, plant codes, customer patterns) come from `config.toml`.** The built-in
 defaults are neutral placeholders (`VT11_XDOCK_VARIANT`, `PL55`, ...), so a run without the matching keys will fail in SAP or
 treat no row as special. `config.toml.example` lists every key; keep your real values in the git-ignored `config.toml`.
+
+### Layouts Section (`[layouts.<TCODE>.<NAME>]`)
+
+Column lists of ALV layouts that the program can create and save in SAP (status: **built, NOT run live**; the control ids come
+from the VBA macro). One sub-table per tcode and layout name:
+
+```toml
+[layouts.VT11.VT11_EXAMPLE_LAYOUT]
+columns = ["Shipment Number", "Delivery", "Planned shipment end"]
+description = "optional, defaults to the layout name"
+```
+
+- `TCODE`: `VT11`, `VL06O`, `LT23`, `LX03`, `LX02` (list-style editor) or `ZMDESNR`, `ZVT11`, `Y_DN3_47000149` (grid-style editor); any other
+  tcode is an error. Tcode and layout name are matched case-insensitively.
+- `columns` (required): the column titles as SAP shows them, in layout order (the order is the order of the layout). Blank entries and
+  duplicates (case-insensitive, first wins) are dropped; an empty list is an error. A column that SAP does not offer is an error and
+  **nothing is saved**.
+- `description` (optional): saved with the layout; default = the layout name.
+- LX03 / LX02 layout names are limited to 12 characters.
+- Used by `--tcode <T> --create-layout <NAME> [--overwrite]`, the main-menu item "Create / save layout" and, opt-in, by export runs that do not
+  find their layout (`--create-missing-layout`, or `[global] create_missing_layout = true`; CLI wins over config, default off).
+  An existing layout is never overwritten unless `--overwrite` is given.
+- The section survives the program writing `config.toml` back (tested).
 
 ## Migration from Legacy Format
 

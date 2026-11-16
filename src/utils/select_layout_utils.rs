@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use std::thread;
 use std::time::Duration; // Added for interactive user input
 
+use crate::utils::layout_create::{auto_create_on_missing, AutoCreate};
 use crate::utils::sap_ctrl_utils::*;
 use crate::utils::sap_wnd_utils::*;
 use crate::utils::utils::*;
@@ -41,10 +42,47 @@ pub fn select_layout(
     object_name: &str,
     layout_name: &str,
 ) -> windows::core::Result<bool> {
+    select_layout_for(session, None, n_wnd, object_name, layout_name)
+}
+
+/// What [`select_layout_for`] does after the opt-in auto-create hook.
+enum AutoStep {
+    /// Created and applied: the layout is selected.
+    Applied,
+    /// The layout exists after all: open the chooser again.
+    Retry,
+    /// Nothing created (feature off, no column list, failure): the text explains why, if on.
+    Nothing(String),
+}
+
+/// One call of the shared auto-create hook (`--create-missing-layout`); needs the tcode.
+fn auto_create_step(session: &GuiSession, tcode: Option<&str>, layout: &str) -> AutoStep {
+    let Some(tcode) = tcode else {
+        return AutoStep::Nothing(String::new());
+    };
+    match auto_create_on_missing(session, tcode, layout) {
+        AutoCreate::Applied => AutoStep::Applied,
+        AutoCreate::Retry => AutoStep::Retry,
+        other => AutoStep::Nothing(other.hint()),
+    }
+}
+
+/// [`select_layout`] that knows the tcode, so that a layout that is not found can be created
+/// from `[layouts.<TCODE>.<NAME>]` when `--create-missing-layout` / `[global]
+/// create_missing_layout` is on. Without a terminal / in unattended runs it never prompts.
+pub fn select_layout_for(
+    session: &GuiSession,
+    tcode: Option<&str>,
+    n_wnd: i32,
+    object_name: &str,
+    layout_name: &str,
+) -> windows::core::Result<bool> {
     println!("Checking if layout select window is present.");
 
     // Create a mutable copy of layout_name that we can modify in the loop
     let mut current_layout = layout_name.to_string();
+    // the opt-in auto-create runs once per layout name
+    let mut auto_tried = false;
 
     // Loop until a valid layout is found or user chooses to exit
     loop {
@@ -64,7 +102,29 @@ pub fn select_layout(
             println!("Object ({object_name}) not found.");
             // Some systems show the classic list dialog (`lbl[col,row]` labels with a Find
             // button) instead of the ALV grid; try that before giving up.
-            return select_layout_from_list(session, n_wnd, &current_layout);
+            if select_layout_from_list(session, n_wnd, &current_layout)? {
+                return Ok(true);
+            }
+            if auto_tried {
+                return Ok(false);
+            }
+            auto_tried = true;
+            match auto_create_step(session, tcode, &current_layout) {
+                AutoStep::Applied => return Ok(true),
+                AutoStep::Retry => {
+                    if let Some(t) = tcode {
+                        layout_popup(session, t)?;
+                        continue;
+                    }
+                    return Ok(false);
+                }
+                AutoStep::Nothing(hint) => {
+                    if !hint.is_empty() {
+                        println!("Layout '{current_layout}' not found{hint}");
+                    }
+                    return Ok(false);
+                }
+            }
         }
 
         // Get the object
@@ -107,8 +167,36 @@ pub fn select_layout(
             } else {
                 println!("Layout ({current_layout}) not found.");
 
+                // Opt-in: create the layout from [layouts.<TCODE>.<NAME>] before prompting
+                let mut hint = String::new();
+                if !auto_tried {
+                    auto_tried = true;
+                    match auto_create_step(session, tcode, &current_layout) {
+                        AutoStep::Applied => return Ok(true),
+                        AutoStep::Retry => {
+                            if let Some(t) = tcode {
+                                layout_popup(session, t)?;
+                                continue;
+                            }
+                        }
+                        AutoStep::Nothing(h) => hint = h,
+                    }
+                }
+
+                // Unattended / no terminal: never prompt, close the dialog and report not found
+                if !crate::utils::cli_overrides::can_prompt() {
+                    println!("Layout '{current_layout}' not found{hint}");
+                    if let Ok(window) = session.find_by_id(format!("wnd[{n_wnd}]")) {
+                        if let Some(wnd) = window.downcast::<GuiModalWindow>() {
+                            println!("Closing window since the layout was not found.");
+                            wnd.close()?;
+                        }
+                    }
+                    return Ok(false);
+                }
+
                 // Ask user for a new layout name or to exit
-                println!("Layout '{current_layout}' not found.");
+                println!("Layout '{current_layout}' not found.{hint}");
 
                 let options = vec!["Enter another layout name", "Exit layout selection"];
                 let selection = Select::new()
@@ -142,6 +230,7 @@ pub fn select_layout(
 
                     // Update current_layout and try again
                     current_layout = new_layout;
+                    auto_tried = false;
                     println!("Trying with new layout name: {current_layout}");
 
                     // Continue to next iteration of the loop
@@ -453,8 +542,8 @@ pub fn select_layout_interactive(
     // Get the appropriate object name for this tcode
     let object_name = get_layout_object_name(tcode);
 
-    // Call select_layout with the appropriate object name
-    let result = select_layout(session, 1, &object_name, layout_name)?;
+    // Call select_layout with the appropriate object name (the tcode enables auto-create)
+    let result = select_layout_for(session, Some(tcode), 1, &object_name, layout_name)?;
 
     Ok(result)
 }
@@ -551,7 +640,7 @@ pub fn check_select_layout(
 
             if err_ctl.cband {
                 if contains(&err_ctl.ctext, "change layout", Some(false)) {
-                    // Setup layout
+                    // A change-layout dialog is open: the layout is not chosen here
                     goto_setup(session, tcode, layout_row)?;
                 } else if contains(&err_ctl.ctext, "choose", Some(false)) {
                     // Choose layout
@@ -604,59 +693,26 @@ pub fn check_select_layout(
                     // Check status bar message
                     let bar_msg = hit_ctrl(session, 0, "/sbar", "Text", "Get", "")?;
                     if !contains(&bar_msg, "layout applied", Some(false)) {
-                        // If layout not found, close any popups and setup layout
+                        // Layout not found: close any popups; the opt-in auto-create may
+                        // create it from [layouts.<TCODE>.<NAME>] (nothing else is set up here)
                         close_popups(session, None, None)?;
 
-                        println!("Layout ({layout_row}) not found. Setting up layout");
+                        println!("Layout ({layout_row}) not found.");
 
-                        // Setup layout based on tcode
-                        match tcode.to_lowercase().as_str() {
-                            "zmdesnr" | "zvt11" => {
-                                if let Ok(button) =
-                                    session.find_by_id("wnd[0]/tbar[1]/btn[32]".to_string())
-                                {
-                                    if let Some(btn) = button.downcast::<GuiButton>() {
-                                        btn.press()?;
-                                    }
-                                }
-
-                                // Setup layout
-                                // This would call setup_layout from setup_layout_utils.rs
-                                println!("Setting up layout for {tcode}");
+                        match auto_create_on_missing(session, tcode, layout_row) {
+                            AutoCreate::Applied => {
+                                local_r_val.run_check = true;
                             }
-                            "vt11" => {
-                                println!("Layout ({layout_row}) not found. Setting up layout");
-
-                                if let Ok(menu) = session
-                                    .find_by_id("wnd[0]/mbar/menu[3]/menu[0]/menu[0]".to_string())
-                                {
-                                    if let Some(btn) = menu.downcast::<GuiButton>() {
-                                        btn.press()?;
-                                    }
-                                }
-
-                                // Setup layout_li
-                                // This would call setup_layout_li from setup_layout_utils.rs
-                                println!("Setting up layout_li for {tcode}");
+                            AutoCreate::Retry => {
+                                // it exists after all: choose it
+                                local_r_val.run_check =
+                                    select_layout_interactive(session, tcode, layout_row)?;
                             }
-                            _ => {
-                                if let Ok(menu) = session
-                                    .find_by_id("wnd[0]/mbar/menu[3]/menu[2]/menu[0]".to_string())
-                                {
-                                    if let Some(menu_item) = menu.downcast::<GuiComponent>() {
-                                        if let Some(btn) = menu_item.downcast::<GuiButton>() {
-                                            btn.press()?;
-                                        }
-                                    }
-                                }
-
-                                // Setup layout_li
-                                // This would call setup_layout_li from setup_layout_utils.rs
-                                println!("Setting up layout_li for {tcode}");
+                            other => {
+                                local_r_val.err =
+                                    format!("Layout ({layout_row}) not found{}", other.hint());
                             }
                         }
-
-                        local_r_val.run_check = true;
                     }
                 }
             }
@@ -750,10 +806,12 @@ pub fn check_select_layout(
     Ok(local_r_val)
 }
 
-/// Helper function for goto_setup
-fn goto_setup(_session: &GuiSession, tcode: &str, layout_row: &str) -> windows::core::Result<()> {
-    // Implementation would go here
-    println!("Going to setup for tcode: {tcode}, layout: {layout_row}");
+/// A "change layout" dialog is on screen instead of the chooser: this flow does not edit
+/// layouts here (the opt-in auto-create is [`auto_create_on_missing`], called when a layout is
+/// not found), so the dialog is only closed.
+fn goto_setup(session: &GuiSession, tcode: &str, layout_row: &str) -> windows::core::Result<()> {
+    println!("Change-layout dialog open for tcode {tcode} (layout {layout_row}): closing it");
+    close_popups(session, None, None)?;
     Ok(())
 }
 

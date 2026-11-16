@@ -1,11 +1,17 @@
 //! Layout setup helpers (VBA port); kept for parity with legacy flows.
+//!
+//! `setup_layout` is the port of the VBA function `SetupLayout` (grid-style editor). Its column
+//! picking and save dialogs now live in [`crate::utils::layout_editors`] /
+//! [`crate::utils::layout_create`]; this wrapper keeps the old signature and behaviour: columns
+//! that cannot be found are skipped (printed), and an existing layout of that name is
+//! overwritten. New code should use [`crate::utils::layout_create::create_layout`], which reports
+//! missing columns and never overwrites without being told to.
 #![allow(dead_code)]
 
 use sap_scripting::*;
-use std::thread;
-use std::time::Duration;
 
-use crate::utils::sap_ctrl_utils::*;
+use crate::utils::layout_create::{press, save_grid, status_text, to_windows_error};
+use crate::utils::layout_editors::{pick_columns_grid, RealGridScreen};
 
 /// Struct to hold layout parameters
 #[derive(Debug, Clone, Default)]
@@ -18,7 +24,8 @@ pub struct LayoutParams {
 
 /// Setup a layout with the given parameters
 ///
-/// This function is a port of the VBA function SetupLayout
+/// This function is a port of the VBA function SetupLayout. `Ok(false)` = the grid editor is not
+/// on screen.
 pub fn setup_layout(
     session: &GuiSession,
     n_wnd: i32,
@@ -30,134 +37,26 @@ pub fn setup_layout(
 ) -> windows::core::Result<bool> {
     println!("Setting up layout: {layout_name}");
 
-    let obj_name = format!("wnd[{n_wnd}]{base_obj_name}");
-    let obj_list_left = format!("{obj_name}/cntlCONTAINER2_LAYO/shellcont/shell");
-    let obj_list_right = format!("{obj_name}/cntlCONTAINER1_LAYO/shellcont/shell");
-    let obj_button_to_right = format!("{obj_name}/btnAPP_FL_SING");
-
-    // Get the left grid
-    let left_grid = session.find_by_id(obj_list_left.clone())?;
-
-    // Get the right grid
-    let right_grid = session.find_by_id(obj_list_right.clone())?;
-
-    // Try to downcast to GuiGridView
-    if let (Some(grid_left), Some(grid_right)) = (
-        left_grid.downcast::<GuiGridView>(),
-        right_grid.downcast::<GuiGridView>(),
-    ) {
-        // Set current cell row to 0
-        grid_left.set_current_cell_row(0)?;
-
-        // Move current items from left grid to right grid
-        grid_left.set_selected_rows(format!("0-{}", grid_left.row_count()? - 1))?;
-
-        // Press the button to move to right
-        if let Ok(button) = session.find_by_id(obj_button_to_right) {
-            if let Some(btn) = button.downcast::<GuiButton>() {
-                btn.press()?;
-            }
-        }
-
-        // Reset selection
-        grid_left.set_current_cell_row(-1)?;
-        grid_right.set_current_cell_row(1)?;
-
-        // Sort by column
-        grid_right.select_column("SELTEXT".to_string())?;
-        grid_right.press_column_header("SELTEXT".to_string())?;
-
-        // Add items from list to layout
-        for item in list {
-            let mut found = false;
-            for i in 0..limit {
-                if let Ok(name) = grid_right.get_cell_value(i, "SELTEXT".to_string()) {
-                    println!("Checking: {name}");
-                    if item.to_uppercase() == name.to_uppercase() {
-                        grid_right.set_current_cell_row(i)?;
-                        grid_right.double_click_current_cell()?;
-                        thread::sleep(Duration::from_millis(100));
-                        found = true;
-                        break;
-                    }
-                }
-            }
-
-            if !found {
-                println!("Item ({item}) not found, skipping");
-            }
-        }
-
-        println!("Added {} items to Layout", list.len());
-
-        // Save the layout if not no_save
-        if !no_save {
-            // Save layout button
-            if let Ok(button) = session.find_by_id("wnd[1]/tbar[0]/btn[5]".to_string()) {
-                if let Some(btn) = button.downcast::<GuiButton>() {
-                    btn.press()?;
-                }
-            }
-
-            // User-Specific
-            if let Ok(checkbox) = session.find_by_id("wnd[2]/usr/tabsG50_TABSTRIP/tabpTAB_D0501/ssubD0505_SUBSCREEN:SAPLSLVC_DIALOG:0501/chkG51_USPEC".to_string()) {
-                if let Some(chk) = checkbox.downcast::<GuiCheckBox>() {
-                    chk.set_selected(true)?;
-                }
-            }
-
-            // Default Layout Yes/No
-            if let Ok(checkbox) = session.find_by_id("wnd[2]/usr/tabsG50_TABSTRIP/tabpTAB_D0501/ssubD0505_SUBSCREEN:SAPLSLVC_DIALOG:0501/chkLTVARIANT-DEFAULTVAR".to_string()) {
-                if let Some(chk) = checkbox.downcast::<GuiCheckBox>() {
-                    chk.set_selected(false)?;
-                }
-            }
-
-            // Save as name
-            if let Ok(textfield) = session.find_by_id("wnd[2]/usr/tabsG50_TABSTRIP/tabpTAB_D0501/ssubD0505_SUBSCREEN:SAPLSLVC_DIALOG:0501/txtLTDX-VARIANT".to_string()) {
-                if let Some(txt) = textfield.downcast::<GuiTextField>() {
-                    txt.set_text(layout_name.to_string())?;
-                }
-            }
-
-            // Save as Description
-            if let Ok(textfield) = session.find_by_id("wnd[2]/usr/tabsG50_TABSTRIP/tabpTAB_D0501/ssubD0505_SUBSCREEN:SAPLSLVC_DIALOG:0501/txtLTDXT-TEXT".to_string()) {
-                if let Some(txt) = textfield.downcast::<GuiTextField>() {
-                    txt.set_text(layout_name.to_string())?;
-                }
-            }
-
-            // Green Checkmark wnd2
-            if let Ok(button) = session.find_by_id("wnd[2]/tbar[0]/btn[0]".to_string()) {
-                if let Some(btn) = button.downcast::<GuiButton>() {
-                    btn.press()?;
-                }
-            }
-
-            // LayoutExists Overwrite Y/N
-            let err_ctrl = exist_ctrl(session, 3, "", true)?;
-            if err_ctrl.cband {
-                if let Ok(button) = session.find_by_id("wnd[3]/usr/btnSPOP-OPTION1".to_string()) {
-                    if let Some(btn) = button.downcast::<GuiButton>() {
-                        btn.press()?;
-                    }
-                }
-            }
-        }
-
-        // Green Checkmark wnd1
-        if let Ok(button) = session.find_by_id("wnd[1]/tbar[0]/btn[0]".to_string()) {
-            if let Some(btn) = button.downcast::<GuiButton>() {
-                btn.press()?;
-            }
-        }
-
-        // Get status bar message
-        let status_msg = hit_ctrl(session, 0, "/sbar", "Text", "Get", "")?;
-        println!("Layout ({layout_name}) Successfully Setup: {status_msg}");
-
-        return Ok(true);
+    let mut screen = RealGridScreen::new(session, n_wnd, base_obj_name);
+    if !screen.is_open() {
+        return Ok(false);
     }
 
-    Ok(false)
+    let report = pick_columns_grid(&mut screen, list, limit).map_err(|e| to_windows_error(&e))?;
+    for item in &report.missing {
+        println!("Item ({item}) not found, skipping");
+    }
+    println!("Added {} items to Layout", report.moved.len());
+
+    if no_save {
+        // Green Checkmark wnd1
+        let _ = press(session, &format!("wnd[{n_wnd}]/tbar[0]/btn[0]"));
+    } else {
+        // user-specific, not default, name + description = layout name; legacy: overwrite = Yes
+        save_grid(session, layout_name, layout_name, true).map_err(|e| to_windows_error(&e))?;
+    }
+
+    let status_msg = status_text(session);
+    println!("Layout ({layout_name}) Successfully Setup: {status_msg}");
+    Ok(true)
 }

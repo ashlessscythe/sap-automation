@@ -13,6 +13,9 @@ timezone = "MST"
 # 4 = clipboard - no file
 # excel = excel file (menu option differs for each tcode)
 default_export_type = 0
+# true: when an export run does not find its layout in SAP and [layouts.<TCODE>.<NAME>] exists,
+# create and save that layout and carry on (CLI: --create-missing-layout). Default false.
+# create_missing_layout = false
 
 [tcode.VT11]
 variant = "testing_7"
@@ -172,3 +175,17 @@ proceed_without_gr = true           # fifo/lifo with bins without GR date: conti
 vl06o_per_shipment = false         # true: one VL06O per shipment (every delivery then knows its shipment); default: one VL06O with all
 sap_date_format = "yyyy-mm-dd"      # format of the GR date column (default: [global] date_format)
 # material_col / bin_col / qty_col / shipto_col / blocked_col: header names of the ZMDESNR export
+
+# ---------------------------------------------------------------------------
+# ALV layouts the program may create in SAP (`--tcode <T> --create-layout <NAME> [--overwrite]`,
+# the "Create / save layout" menu item, and opt-in `--create-missing-layout`).
+# [layouts.<TCODE>.<NAME>]: TCODE = VT11, VL06O, LT23, LX03, LX02, ZMDESNR, ZVT11, Y_DN3_47000149.
+# `columns` are the column TITLES as SAP shows them, in layout order. All names are PLACEHOLDERS:
+# put the real layout names and columns in the git-ignored config.toml.
+# ---------------------------------------------------------------------------
+[layouts.VT11.VT11_EXAMPLE_LAYOUT]
+columns = ["Shipment Number", "Delivery", "Planned shipment end"]
+description = "Example VT11 layout"       # optional, defaults to the layout name
+
+[layouts.ZMDESNR.ZMDESNR_EXAMPLE_LAYOUT]
+columns = ["Plant", "Material", "Serial Number"]

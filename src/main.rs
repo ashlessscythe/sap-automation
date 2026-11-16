@@ -14,6 +14,7 @@ mod abc_menu;
 mod app;
 mod inbond_shipment;
 mod inbond_shipment_module;
+mod layout_menu;
 mod lt03;
 mod lt03_db;
 mod lt03_module;
@@ -250,6 +251,13 @@ fn main() -> anyhow::Result<()> {
         };
     }
 
+    // --create-layout <NAME>: create and save an ALV layout from [layouts.<TCODE>.<NAME>] on the
+    // current screen of the attached session (unattended, never prompts).
+    if let Some(name) = cli_overrides().create_layout.clone() {
+        let tcode = cli_overrides().tcode.clone().unwrap_or_default();
+        return run_create_layout(&tcode, &name, cli_overrides().overwrite, cli.keep_awake);
+    }
+
     // Single-shot mode: --tcode without --run-loop/--run-sequence runs the
     // tcode auto flow once.
     if let Some(tcode) = cli_overrides().tcode.clone() {
@@ -339,6 +347,30 @@ fn run_unattended_rname(
     })?;
 
     println!("Unattended report execution completed successfully.");
+    Ok(())
+}
+
+/// `--create-layout`: the user has run the report in SAP so its result list is displayed.
+fn run_create_layout(
+    tcode: &str,
+    name: &str,
+    overwrite: bool,
+    keep_awake: bool,
+) -> anyhow::Result<()> {
+    println!("SAP Automation - Create Layout");
+    println!("==============================");
+
+    if keep_awake {
+        let _ = keep_awake::enable_keep_awake(true);
+    }
+
+    let (_com_instance, _wrapper, _engine, _connection, session) = init_sap_connection()?;
+
+    let outcome = sap_automation::utils::layout_create::create_layout_on_current_screen(
+        &session, tcode, name, overwrite,
+    )?;
+    // Created / Overwritten / Exists (skipped) all exit 0; errors exit non-zero
+    println!("{}", outcome.describe(name));
     Ok(())
 }
 
@@ -523,6 +555,7 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                     "Read Excel File",
                     "Log out of SAP",
                     "ABC Headless >",
+                    "Create / save layout >",
                     "Exit",
                 ]
             } else {
@@ -558,6 +591,7 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                     "Read Excel File",
                     "Log out of SAP (Not available - Login required)",
                     "ABC Headless > (Not available - Login required)",
+                    "Create / save layout > (Not available - Login required)",
                     "Exit",
                 ]
             }
@@ -594,6 +628,7 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                 "Read Excel File",
                 "Log out of SAP (Not available - SAP connection required)",
                 "ABC Headless > (Not available - SAP connection required)",
+                "Create / save layout > (Not available - SAP connection required)",
                 "Exit",
             ]
         };
@@ -1044,6 +1079,18 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                 }
             }
             31 => {
+                // Create / save an ALV layout from [layouts.<TCODE>.<NAME>] (current screen)
+                if sap_connected && is_logged_in {
+                    layout_menu::run_layout_menu(session.as_ref().unwrap());
+                } else if sap_connected {
+                    println!("You need to log in first.");
+                    thread::sleep(Duration::from_secs(2));
+                } else {
+                    println!("SAP connection not available. Cannot create layouts.");
+                    thread::sleep(Duration::from_secs(2));
+                }
+            }
+            32 => {
                 // Exit application
                 clear_screen();
                 println!("Exiting application...");

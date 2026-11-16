@@ -155,6 +155,37 @@ pub struct Cli {
     #[arg(long)]
     pub layout: Option<String>,
 
+    /// CREATE AN ALV LAYOUT in SAP from the column list of `[layouts.<TCODE>.<NAME>]` in
+    /// config.toml (needs `--tcode`; VT11, VL06O, LT23, LX03, LX02, ZMDESNR, ZVT11,
+    /// Y_DN3_47000149). Works on the CURRENT screen of the attached SAP session: run the report
+    /// in SAP so its result list is displayed, then run this command. A layout that already
+    /// exists in SAP is skipped (exit code 0) unless `--overwrite` is given. Never prompts.
+    #[arg(
+        long = "create-layout",
+        value_name = "NAME",
+        requires = "tcode",
+        conflicts_with_all = ["run_loop", "run_sequence", "rname", "layout"]
+    )]
+    pub create_layout: Option<String>,
+
+    /// With `--create-layout`: replace the layout when it already exists in SAP (default: it is
+    /// left unchanged and reported as "exists, skipped").
+    #[arg(long, requires = "create_layout")]
+    pub overwrite: bool,
+
+    /// AUTO-CREATE MISSING LAYOUTS in export runs: when the layout an export run wants is not
+    /// found in SAP and `[layouts.<TCODE>.<NAME>]` exists in config.toml, create and save it and
+    /// carry on. Bare flag, `true`, `1`, `yes` or `on` enables it. Default off (a missing layout
+    /// is then an error or a prompt as before). Overrides `[global] create_missing_layout`.
+    #[arg(
+        long = "create-missing-layout",
+        value_name = "BOOL",
+        num_args = 0..=1,
+        default_missing_value = "true",
+        value_parser = clap::builder::BoolishValueParser::new()
+    )]
+    pub create_missing_layout: Option<bool>,
+
     /// Override variant for the target TCode.
     #[arg(long)]
     pub variant: Option<String>,
@@ -488,6 +519,16 @@ impl Cli {
             ));
         }
 
+        // --create-layout: the tcode must have a layout profile (clap enforces the pairing)
+        if let Some(name) = &self.create_layout {
+            if name.trim().is_empty() {
+                return Err(anyhow!("--create-layout needs a layout name"));
+            }
+            let tcode = self.tcode.as_deref().unwrap_or_default();
+            crate::utils::layout_create::profile_for(tcode)
+                .map_err(|e| anyhow!("--create-layout: {e}"))?;
+        }
+
         Ok(CliOverrides {
             lt03,
             rname,
@@ -531,6 +572,9 @@ impl Cli {
             skip_existing: self.skip_existing,
             with_prereqs: self.with_prereqs,
             output_date,
+            create_layout: self.create_layout.clone(),
+            overwrite: self.overwrite,
+            create_missing_layout: self.create_missing_layout,
         })
     }
 }
@@ -991,6 +1035,119 @@ mod rname_tests {
             flat.matches("unless `--with-prereqs` is given").count() >= 2,
             "--no-sap and --skip-existing must point to --with-prereqs"
         );
+    }
+
+    #[test]
+    fn create_layout_flags() {
+        // happy path
+        let o = ov(&["--tcode=vt11", "--create-layout=EXAMPLE"]).unwrap();
+        assert_eq!(o.create_layout.as_deref(), Some("EXAMPLE"));
+        assert!(!o.overwrite);
+        assert_eq!(o.tcode.as_deref(), Some("VT11"));
+        let o = ov(&["--tcode=LX03", "--create-layout", "EXAMPLE", "--overwrite"]).unwrap();
+        assert!(o.overwrite);
+        let line = o.summary_line().unwrap();
+        assert!(
+            line.contains("--create-layout=EXAMPLE") && line.contains("--overwrite"),
+            "{line}"
+        );
+        // requires --tcode
+        assert!(parse(&["--create-layout=EXAMPLE"]).is_err());
+        // --overwrite requires --create-layout
+        assert!(parse(&["--tcode=vt11", "--overwrite"]).is_err());
+        assert!(parse(&["--overwrite"]).is_err());
+        // conflicts
+        for bad in [
+            "--run-loop",
+            "--run-sequence",
+            "--layout=x",
+            "--rname=mustgo",
+        ] {
+            assert!(
+                parse(&["--tcode=vt11", "--create-layout=EXAMPLE", bad]).is_err(),
+                "{bad}"
+            );
+        }
+        // unsupported tcode is a clear error
+        let e = ov(&["--tcode=mb52", "--create-layout=EXAMPLE"])
+            .unwrap_err()
+            .to_string();
+        assert!(
+            e.contains("--create-layout") && e.contains("cannot be created"),
+            "{e}"
+        );
+        // every tcode of the profile table is accepted
+        for t in crate::utils::layout_create::supported_tcodes() {
+            assert!(
+                ov(&[&format!("--tcode={t}"), "--create-layout=X"]).is_ok(),
+                "{t}"
+            );
+        }
+        // without the flags nothing is set
+        let o = ov(&["--tcode=vt11"]).unwrap();
+        assert!(o.create_layout.is_none() && !o.overwrite && o.create_missing_layout.is_none());
+    }
+
+    #[test]
+    fn create_missing_layout_flag_is_opt_in_boolish() {
+        assert!(parse(&["--tcode=vt11"])
+            .unwrap()
+            .create_missing_layout
+            .is_none());
+        assert_eq!(
+            parse(&["--tcode=vt11", "--create-missing-layout"])
+                .unwrap()
+                .create_missing_layout,
+            Some(true)
+        );
+        for (v, want) in [
+            ("true", true),
+            ("1", true),
+            ("yes", true),
+            ("false", false),
+            ("0", false),
+        ] {
+            let flag = format!("--create-missing-layout={v}");
+            assert_eq!(
+                parse(&["--tcode=vt11", &flag])
+                    .unwrap()
+                    .create_missing_layout,
+                Some(want),
+                "{v}"
+            );
+        }
+        // works with --rname runs and loops (it is not a per-tcode flag)
+        let o = ov(&[
+            "--rname=k2xx",
+            "--run-date=2026-11-05",
+            "--create-missing-layout",
+        ])
+        .unwrap();
+        assert_eq!(o.create_missing_layout, Some(true));
+        assert!(ov(&["--run-loop", "--create-missing-layout"]).is_ok());
+        assert!(o
+            .summary_line()
+            .unwrap()
+            .contains("--create-missing-layout=true"));
+    }
+
+    #[test]
+    fn help_text_documents_layout_creation() {
+        use clap::CommandFactory;
+        let help = Cli::command().render_long_help().to_string();
+        let flat = help.split_whitespace().collect::<Vec<_>>().join(" ");
+        for phrase in [
+            "--create-layout <NAME>",
+            "[layouts.<TCODE>.<NAME>]",
+            "CURRENT screen",
+            "unless `--overwrite` is given",
+            "Never prompts",
+            "--overwrite",
+            "--create-missing-layout",
+            "[global] create_missing_layout",
+        ] {
+            assert!(flat.contains(phrase), "help lacks: {phrase}");
+        }
     }
 
     #[test]

@@ -246,6 +246,18 @@ pub struct CliOverrides {
 
     /// `--output-date`: the date folder of the outputs instead of the real today.
     pub output_date: Option<NaiveDate>,
+
+    /// `--create-layout <NAME>` (needs `--tcode`): create and save the ALV layout
+    /// `[layouts.<TCODE>.<NAME>]` on the current screen of the attached session.
+    pub create_layout: Option<String>,
+
+    /// `--overwrite` (needs `--create-layout`): replace a layout that already exists in SAP.
+    pub overwrite: bool,
+
+    /// `--create-missing-layout`: when an export run does not find its layout in SAP and a
+    /// `[layouts.<TCODE>.<NAME>]` section exists, create and save it. `None` = `[global]
+    /// create_missing_layout`, else off.
+    pub create_missing_layout: Option<bool>,
 }
 
 impl CliOverrides {
@@ -328,6 +340,12 @@ impl CliOverrides {
         }
         if self.bin_filter.is_some() {
             v.push("--bin-filter");
+        }
+        if self.create_layout.is_some() {
+            v.push("--create-layout");
+        }
+        if self.overwrite {
+            v.push("--overwrite");
         }
         v
     }
@@ -464,6 +482,15 @@ impl CliOverrides {
         if let Some(d) = self.output_date {
             parts.push(format!("--output-date={}", d.format("%Y-%m-%d")));
         }
+        if let Some(v) = &self.create_layout {
+            parts.push(format!("--create-layout={v}"));
+        }
+        if self.overwrite {
+            parts.push("--overwrite".to_string());
+        }
+        if let Some(v) = self.create_missing_layout {
+            parts.push(format!("--create-missing-layout={v}"));
+        }
         if parts.is_empty() {
             None
         } else {
@@ -483,6 +510,11 @@ pub fn set_cli_overrides(overrides: CliOverrides) {
 /// Is `--use-clipboard` active? Off unless the flag was passed (true / 1 / yes / on).
 pub fn use_clipboard() -> bool {
     cli_overrides().use_clipboard.unwrap_or(false)
+}
+
+/// `--create-missing-layout` as given on the command line (`None` = not given).
+pub fn create_missing_layout_flag() -> Option<bool> {
+    cli_overrides().create_missing_layout
 }
 
 /// The LT03 flags of this run.

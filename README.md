@@ -252,6 +252,16 @@ time (one thread and one COM instance per session) and closes them again at the 
 
 Live-verified for two reports (xdock + k2xx) and for days of a range (`--conn-count`); see [COMMAND_LINE_USAGE.md](COMMAND_LINE_USAGE.md).
 
+#### Layout creation (`--create-layout`, v0.19.0)
+
+`sap_automation --tcode <T> --create-layout <NAME> [--overwrite]` creates and saves an ALV layout in SAP from the column list
+`[layouts.<T>.<NAME>]` in `config.toml`. Run the report in SAP first: it works on the **current screen** of the attached session.
+Supported: VT11, VL06O, LT23, LX03, LX02 (list-style editor), ZMDESNR, ZVT11, Y_DN3_47000149 (grid-style editor). An existing layout is
+skipped unless `--overwrite`; a column SAP does not offer is an error and nothing is saved. The main menu has the same as
+"Create / save layout >". Opt-in `--create-missing-layout` (or `[global] create_missing_layout = true`) makes export runs create a
+missing layout that has such a section. **Status: built, NOT run live; control ids come from the VBA macro.** See
+[COMMAND_LINE_USAGE.md](COMMAND_LINE_USAGE.md) and [CONFIG.md](CONFIG.md).
+
 ## Sequence Menu Option IDs
 
 These IDs match the current main menu and can be used in the sequence configuration:

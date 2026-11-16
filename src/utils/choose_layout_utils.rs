@@ -5,6 +5,7 @@ use sap_scripting::*;
 use std::thread;
 use std::time::Duration;
 
+use crate::utils::layout_create::{auto_create_on_missing, AutoCreate};
 use crate::utils::sap_ctrl_utils::*;
 use crate::utils::sap_wnd_utils::*;
 use crate::utils::utils::*;
@@ -43,6 +44,8 @@ pub fn choose_layout(
 
     // Create a mutable copy of layout_row that we can modify in the loop
     let mut current_layout = layout_row.to_string();
+    // the opt-in auto-create runs once per layout name
+    let mut auto_tried = false;
 
     // Loop until a valid layout is found or user chooses to exit
     loop {
@@ -287,15 +290,30 @@ pub fn choose_layout(
                 // Close error window if it exists
                 close_popups(session, Some(-1), Some(1))?;
 
+                // Opt-in: create the layout from [layouts.<TCODE>.<NAME>] before prompting/failing
+                let mut hint = String::new();
+                if !auto_tried {
+                    auto_tried = true;
+                    match auto_create_hook(session, tcode, &current_layout) {
+                        Hook::Done(m) => return Ok(m),
+                        Hook::Retry => {
+                            close_popups(session, None, None)?;
+                            layout_popup(session, tcode)?;
+                            continue;
+                        }
+                        Hook::Continue(h) => hint = h,
+                    }
+                }
+
                 // Ask user for a new layout name or to exit
                 use dialoguer::{Input, Select};
 
                 if !crate::utils::cli_overrides::can_prompt() {
                     println!("Layout '{current_layout}' not found.");
                     close_popups(session, None, None)?;
-                    return Err(layout_not_found_err(&current_layout));
+                    return Err(layout_not_found_err_hint(&current_layout, &hint));
                 }
-                println!("Layout '{current_layout}' not found.");
+                println!("Layout '{current_layout}' not found.{hint}");
 
                 let options = vec!["Enter another layout name", "Exit layout selection"];
                 let selection = Select::new()
@@ -321,6 +339,7 @@ pub fn choose_layout(
 
                     // Update current_layout and try again
                     current_layout = new_layout;
+                    auto_tried = false;
 
                     // Close any remaining popups before retrying
                     close_popups(session, None, None)?;
@@ -365,10 +384,38 @@ pub fn choose_layout(
 
 /// Unattended / no-terminal runs never prompt: a layout that is not found is an error.
 fn layout_not_found_err(layout: &str) -> windows::core::Error {
+    layout_not_found_err_hint(layout, "")
+}
+
+/// Same, with the explanation of the opt-in auto-create (`--create-missing-layout`), if any.
+fn layout_not_found_err_hint(layout: &str, hint: &str) -> windows::core::Error {
     windows::core::Error::new(
         windows::Win32::Foundation::E_FAIL,
-        windows::core::HSTRING::from(format!("Layout '{layout}' not found")),
+        windows::core::HSTRING::from(format!("Layout '{layout}' not found{hint}")),
     )
+}
+
+/// What a chooser does after the opt-in auto-create hook ran for a layout it did not find.
+enum Hook {
+    /// The layout was created and is applied: the chooser is done with this message.
+    Done(String),
+    /// The layout exists after all (another session created it): run the chooser once more.
+    Retry,
+    /// Nothing created; the text explains why when the feature is on (empty otherwise).
+    Continue(String),
+}
+
+/// One shared hook for every chooser: auto-create the layout when enabled and configured
+/// (`[layouts.<TCODE>.<NAME>]`), before the chooser prompts or fails.
+fn auto_create_hook(session: &GuiSession, tcode: &str, layout: &str) -> Hook {
+    match auto_create_on_missing(session, tcode, layout) {
+        AutoCreate::Applied => {
+            println!("Layout '{layout}' created in SAP and applied");
+            Hook::Done("Layout created and applied".to_string())
+        }
+        AutoCreate::Retry => Hook::Retry,
+        other => Hook::Continue(other.hint()),
+    }
 }
 
 /// Special layout selection method for 149 tcode (y_dn3_47000149)
@@ -380,6 +427,14 @@ fn layout_not_found_err(layout: &str) -> windows::core::Error {
 /// session.findById("wnd[1]/usr/ssubD0500_SUBSCREEN:SAPLSLVC_DIALOG:0501/cntlG51_CONTAINER/shellcont/shell").selectedRows = "6"
 /// session.findById("wnd[1]/usr/ssubD0500_SUBSCREEN:SAPLSLVC_DIALOG:0501/cntlG51_CONTAINER/shellcont/shell").clickCurrentCell
 pub fn choose_layout_149(session: &GuiSession, layout_name: &str) -> windows::core::Result<String> {
+    choose_layout_149_impl(session, layout_name, false)
+}
+
+fn choose_layout_149_impl(
+    session: &GuiSession,
+    layout_name: &str,
+    auto_tried: bool,
+) -> windows::core::Result<String> {
     eprintln!("DEBUG: Starting 149 layout selection for layout: {layout_name}");
 
     // Step 1: Press the layout button (wnd[0]/tbar[1]/btn[33])
@@ -448,15 +503,25 @@ pub fn choose_layout_149(session: &GuiSession, layout_name: &str) -> windows::co
             } else {
                 eprintln!("DEBUG: Layout '{layout_name}' not found in grid");
 
+                // Opt-in: create the layout from [layouts.Y_DN3_47000149.<NAME>] first
+                let mut hint = String::new();
+                if !auto_tried {
+                    match auto_create_hook(session, "Y_DN3_47000149", layout_name) {
+                        Hook::Done(m) => return Ok(m),
+                        Hook::Retry => return choose_layout_149_impl(session, layout_name, true),
+                        Hook::Continue(h) => hint = h,
+                    }
+                }
+
                 // Ask user for a new layout name or to exit
                 use dialoguer::{Input, Select};
 
                 if !crate::utils::cli_overrides::can_prompt() {
                     println!("Layout '{layout_name}' not found in the grid.");
                     close_popups(session, None, None)?;
-                    return Err(layout_not_found_err(layout_name));
+                    return Err(layout_not_found_err_hint(layout_name, &hint));
                 }
-                println!("Layout '{layout_name}' not found in the grid.");
+                println!("Layout '{layout_name}' not found in the grid.{hint}");
 
                 let options = vec!["Enter another layout name", "Exit layout selection"];
                 let selection = Select::new()
@@ -694,6 +759,14 @@ pub fn choose_layout_zvt11(
     session: &GuiSession,
     layout_name: &str,
 ) -> windows::core::Result<String> {
+    choose_layout_zvt11_impl(session, layout_name, false)
+}
+
+fn choose_layout_zvt11_impl(
+    session: &GuiSession,
+    layout_name: &str,
+    auto_tried: bool,
+) -> windows::core::Result<String> {
     eprintln!("DEBUG: Starting ZVT11 layout selection for layout: {layout_name}");
 
     // Step 1: Press the layout button (wnd[0]/tbar[1]/btn[33])
@@ -778,15 +851,25 @@ pub fn choose_layout_zvt11(
             } else {
                 eprintln!("DEBUG: Layout '{layout_name}' not found in ZVT11 grid");
 
+                // Opt-in: create the layout from [layouts.ZVT11.<NAME>] first
+                let mut hint = String::new();
+                if !auto_tried {
+                    match auto_create_hook(session, "ZVT11", layout_name) {
+                        Hook::Done(m) => return Ok(m),
+                        Hook::Retry => return choose_layout_zvt11_impl(session, layout_name, true),
+                        Hook::Continue(h) => hint = h,
+                    }
+                }
+
                 // Ask user for a new layout name or to exit
                 use dialoguer::{Input, Select};
 
                 if !crate::utils::cli_overrides::can_prompt() {
                     println!("Layout '{layout_name}' not found in the ZVT11 grid.");
                     close_popups(session, None, None)?;
-                    return Err(layout_not_found_err(layout_name));
+                    return Err(layout_not_found_err_hint(layout_name, &hint));
                 }
-                println!("Layout '{layout_name}' not found in the ZVT11 grid.");
+                println!("Layout '{layout_name}' not found in the ZVT11 grid.{hint}");
 
                 let options = vec!["Enter another layout name", "Exit layout selection"];
                 let selection = Select::new()

@@ -816,6 +816,33 @@ impl SapConfig {
                 content.push_str(&format!("{key} = \"{value}\"\n"));
             }
 
+            // Keep the non-string keys of the raw [global] table (e.g. the boolean
+            // `create_missing_layout = true`); string keys are written above and the typed
+            // keys come from the struct.
+            if let Some(raw_global) = self
+                .raw_config
+                .as_ref()
+                .and_then(|r| r.get("global"))
+                .and_then(|v| v.as_table())
+            {
+                for (key, value) in raw_global {
+                    let typed = [
+                        "instance_id",
+                        "reports_dir",
+                        "default_tcode",
+                        "default_menu_option",
+                        "date_format",
+                        "timezone",
+                        "default_export_type",
+                    ]
+                    .contains(&key.as_str());
+                    if typed || value.is_str() {
+                        continue;
+                    }
+                    content.push_str(&format!("{key} = {value}\n"));
+                }
+            }
+
             content.push('\n');
         }
 

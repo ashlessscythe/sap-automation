@@ -11,13 +11,18 @@
 //! * the `wnd[2]` "Yes" popup after pasting (`wnd[2]/usr/btnBUTTON_1`),
 //! * that the selection screen has no default date/status limits that hide TOs,
 //! * the layout chooser grid `wnd[1]/usr/cntlGRID/shellcont/shell` with a `VARIANT` column,
-//! * layout creation (`btn[32]` + `setup_layout_li` on [`LI_BASE_OBJECT`]),
+//! * layout creation (`utils::layout_create`: list-style editor; menu `menu[3]/menu[2]/menu[0]`,
+//!   fallback `btn[32]`),
 //! * the local file export menu `menu[0]/menu[1]/menu[2]` (sibling of the Excel export
 //!   `menu[0]/menu[1]/menu[1]`),
 //! * that the selection screen (`ctxtT1_LGNUM`) stays on screen when nothing is found.
 #![allow(dead_code)]
 
 use crate::utils::export_outcome::{classify_after_execute, ClassifyOptions, ExportOutcome};
+use crate::utils::layout_create::{
+    apply_columns, auto_create_on_missing, create_layout, AutoCreate, CreateOpts, CreateOutcome,
+};
+use crate::utils::layout_store::{normalize_columns, LayoutSpec};
 use sap_scripting::*;
 use windows::core::Result;
 
@@ -26,7 +31,6 @@ use crate::utils::sap_export_utils::{export_to_target, ExportTarget};
 use crate::utils::sap_file_utils::{get_tcode_file_path, save_sap_file};
 use crate::utils::sap_tcode_utils::assert_tcode;
 use crate::utils::sap_wnd_utils::{answer_popup_yes, check_export_window};
-use crate::utils::setup_layout_li_utils::setup_layout_li;
 
 /// Layout `to_mg_lt23_layoutrows` of the macro (spec 3.5), used when the layout must be created.
 pub const TO_MG_COLUMNS: &[&str] = &[
@@ -184,11 +188,19 @@ fn paste_transfer_orders(session: &GuiSession, tos: &[String]) -> Result<bool> {
     Ok(true)
 }
 
-/// Select (or create) the layout. Ok(false) when it could not be applied.
-fn select_layout(session: &GuiSession, params: &LT23Params, layout: &str) -> Result<bool> {
+/// Result of looking for the layout in the chooser grid.
+enum Chosen {
+    Selected,
+    /// The chooser could not be used or the selection did not close it.
+    Failed,
+    NotFound,
+}
+
+/// Open the chooser (`btn[33]`) and select `layout` when the grid lists it.
+fn choose_in_grid(session: &GuiSession, layout: &str) -> Result<Chosen> {
     if !press(session, "wnd[0]/tbar[1]/btn[33]")? {
         println!("LT23: layout button btn[33] not found");
-        return Ok(false);
+        return Ok(Chosen::Failed);
     }
     let grid = session
         .find_by_id(LAYOUT_GRID.to_string())
@@ -197,7 +209,7 @@ fn select_layout(session: &GuiSession, params: &LT23Params, layout: &str) -> Res
     let Some(grid) = grid else {
         println!("LT23: layout chooser grid {LAYOUT_GRID} not found");
         close_wnd1(session);
-        return Ok(false);
+        return Ok(Chosen::Failed);
     };
     let rows = grid.row_count()?;
     let names: Vec<String> = (0..rows)
@@ -214,50 +226,73 @@ fn select_layout(session: &GuiSession, params: &LT23Params, layout: &str) -> Res
         if still_open {
             println!("LT23: layout chooser still open after selecting '{layout}'");
             close_wnd1(session);
-            return Ok(false);
+            return Ok(Chosen::Failed);
         }
         println!("LT23: layout '{layout}' selected");
-        return Ok(true);
+        return Ok(Chosen::Selected);
     }
     println!("LT23: layout '{layout}' not found among {rows} layouts");
     close_wnd1(session);
+    Ok(Chosen::NotFound)
+}
+
+/// Select (or create) the layout. Ok(false) when it could not be applied.
+///
+/// A layout that is not found is created when `params.create_layout_columns` is set (saved as a
+/// variant when `params.save_layout`, otherwise applied on the fly), or, opt-in, from
+/// `[layouts.LT23.<name>]` (`--create-missing-layout`). UNVERIFIED live.
+fn select_layout(session: &GuiSession, params: &LT23Params, layout: &str) -> Result<bool> {
+    match choose_in_grid(session, layout)? {
+        Chosen::Selected => return Ok(true),
+        Chosen::Failed => return Ok(false),
+        Chosen::NotFound => {}
+    }
     let Some(columns) = &params.create_layout_columns else {
-        return Ok(false);
+        // opt-in: [layouts.LT23.<layout>] (--create-missing-layout)
+        return match auto_create_on_missing(session, "LT23", layout) {
+            AutoCreate::Applied => Ok(true),
+            AutoCreate::Retry => Ok(matches!(choose_in_grid(session, layout)?, Chosen::Selected)),
+            AutoCreate::Failed(m) => {
+                println!("LT23: could not create layout '{layout}': {m}");
+                Ok(false)
+            }
+            AutoCreate::Skipped(hint) => {
+                if let Some(h) = hint {
+                    println!("LT23: layout '{layout}' not found ({h})");
+                }
+                Ok(false)
+            }
+        };
     };
-    // Create it: change layout (btn[32]) + LI column editor
-    if !press(session, "wnd[0]/tbar[1]/btn[32]")? {
-        println!("LT23: change-layout button btn[32] not found");
-        return Ok(false);
-    }
-    let ok = setup_layout_li(
-        session,
-        "LT23",
-        1,
-        LI_BASE_OBJECT,
-        layout,
-        columns,
-        200,
-        !params.save_layout,
-    )?;
-    if !ok {
-        println!("LT23: layout creation reported failure");
-        close_wnd1(session);
-        return Ok(false);
-    }
-    if !params.save_layout {
-        // not saved: confirm the column selection with Enter
-        if let Ok(w) = session.find_by_id("wnd[1]".to_string()) {
-            if let Some(f) = w.downcast::<GuiFrameWindow>() {
-                f.send_v_key(0)?;
+    // Create it with the list-style column editor (menu, fallback btn[32])
+    if params.save_layout {
+        let spec = LayoutSpec {
+            tcode: "LT23".to_string(),
+            name: layout.to_string(),
+            columns: normalize_columns(columns),
+            description: layout.to_string(),
+        };
+        match create_layout(session, "LT23", &spec, CreateOpts::default()) {
+            Ok(CreateOutcome::Created) | Ok(CreateOutcome::Overwritten) => Ok(true),
+            Ok(CreateOutcome::Exists) => {
+                println!("LT23: layout '{layout}' exists now but was not selected");
+                Ok(false)
+            }
+            Err(e) => {
+                println!("LT23: layout creation failed: {e:#}");
+                Ok(false)
+            }
+        }
+    } else {
+        // not saved: the columns are applied to the displayed list only
+        match apply_columns(session, "LT23", columns) {
+            Ok(_) => Ok(true),
+            Err(e) => {
+                println!("LT23: layout columns could not be applied: {e:#}");
+                Ok(false)
             }
         }
     }
-    if exist_ctrl(session, 1, "", true)?.cband {
-        println!("LT23: a dialog is still open after layout creation");
-        close_wnd1(session);
-        return Ok(false);
-    }
-    Ok(true)
 }
 
 /// Run LT23 for `params.transfer_orders` (spec 3.5).

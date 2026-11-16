@@ -159,6 +159,35 @@ Control ids come from the macro and a recording / screenshot (`wnd[0]` is a `Gui
 and exports; no join, formulas or formatting (a future program does that). Dedupe only by (material, plant). Layout/variant/export type apply to MM60 only; omit export type for the Excel `.xlsx` export. Fixtures: `tests/fixtures/mm60/`
 (anonymised, byte-exact), test `mm60_golden`. Prompts (e.g. "enter another layout name") only when `utils::cli_overrides::can_prompt()`: never in unattended runs (`--tcode`/loop/sequence/`--rname`), where a missing layout is an error.
 
+## Layout creation (`--create-layout`, built 2026-11-16, v0.19.0)
+
+**Status: built, NOT run live by the owner. All control ids come from the VBA macro** (`Control_id_.bas`: `check_select_layout` `setup:` branch,
+`SetupLayout`, `SetupLayout_li`; read-only reference in `c:\temp\repo\bas_files\abc`). `sap_automation --tcode <T> --create-layout <NAME> [--overwrite]`
+creates + saves an ALV layout on the CURRENT screen of the attached session (the report's result list must be displayed; it checks
+`session.info().transaction()`); also the main-menu item "Create / save layout >" (`src/layout_menu.rs`, index 31, Exit moved to 32; not a sequence
+option) and opt-in `--create-missing-layout` / `[global] create_missing_layout` (CLI > config > off).
+
+Modules (all under `src/utils/`, registered once in `mod.rs`): `layout_store` (pure: `[layouts.<TCODE>.<NAME>]` with `columns` + `description`, case-insensitive
+lookup, validation; `config_ops::save_to_path` keeps `[layouts.*]` through the preserved-sections writer and now also keeps non-string `[global]`
+keys such as the boolean `create_missing_layout`; round-trip test), `layout_editors` (the column pickers behind the seams `ListScreen` / `GridScreen`
+with fakes in `layout_editors::fakes`; `RealListScreen` over `GuiTableControl` re-finds the table on every access, scrollbar via
+`GuiScrollbar::from(get_idispatch())`; `RealGridScreen` over two `GuiGridView`s), `layout_create` (profile table per tcode, `create_core` over the seam
+`CreateGui`, `create_layout(session, tcode, &LayoutSpec, CreateOpts{overwrite})`, `apply_columns` (no save), `layout_exists_in_sap`, `auto_create_on_missing`).
+`setup_layout` / `setup_layout_li` are now thin wrappers (legacy: skip missing columns, overwrite = yes). Rules: an existing layout is skipped unless
+`--overwrite`; SAP's overwrite popup is answered No without it (`decide_overwrite`); a requested column SAP does not offer cancels the editor and saves
+nothing; a column already displayed after clearing (key column that cannot be removed) counts as present; the name field is read back after typing (a name SAP
+cut is an error); one creation at a time per process (`CREATE_LOCK`, existence re-checked under it); the session is always left on the result list.
+Auto-create hooks (one helper `auto_create_on_missing`) sit in the not-found branches of `choose_layout` (generic, 149, zvt11), `select_layout_for`
+(grid + list chooser, used by `check_select_layout`) and `lt23::select_layout`; when the feature is on but no section exists the not-found error says so.
+
+Live checklist (use a THROWAWAY layout name, one grid tcode and one list tcode first): 1. grid tcode ZMDESNR or ZVT11: editor opens (`btn[32]` /
+menu fallback), left grid cleared, right sorted by `SELTEXT`, columns land in order, save dialog (`btn[5]`, `wnd[2]` fields, overwrite popup `wnd[3]`),
+editor closes; run `--overwrite` once and the same name without it (must say "exists, skipped"). 2. list tcode VT11 or VL06O: editor opens, clearing the left table
+over several pages, sort button `btn%#AUTOTEXT002`, right-table scan and move, key columns (Shipment Number / Delivery) reported as present, Enter, menu save
+dialog A (`chkG_FOR_USER`, `ctxtLTDX-VARIANT`), overwrite popup in `wnd[2]`. 3. LX03: save via `btn[36]`, dialog B, 12-character limit. 4. LT23 and LX02, the 149
+report, `--create-missing-layout` in an export run. Unverified: the choose-layout dialogs of the existence check (grid ids, classic-list Find flow), the
+`VARIANT` column name, whether row selection persists while scrolling the table control, `GetAbsoluteRow` for selection, the sort button, status texts.
+
 ## Data hygiene (no site data in the repo)
 
 - **No real SAP data, names, plants, variants or layouts are committed.** Site-specific names come from the git-ignored `config.toml`

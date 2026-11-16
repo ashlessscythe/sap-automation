@@ -80,7 +80,10 @@ pub trait ListScreen {
     fn scroll_position(&mut self, side: Side) -> Result<i32>;
     /// Scroll so that `position` is the first visible row (SAP clamps at the end).
     fn set_scroll_position(&mut self, side: Side, position: i32) -> Result<()>;
-    fn select_row(&mut self, side: Side, visible_row: i32) -> Result<()>;
+    /// Select a visible row. `Ok(false)` = the row cannot be selected (locked column).
+    fn select_row(&mut self, side: Side, visible_row: i32) -> Result<bool>;
+    /// Take a visible row out of the selection again.
+    fn deselect_row(&mut self, side: Side, visible_row: i32) -> Result<()>;
     /// Press the move button: `to == Right` moves the selected displayed rows away, `to == Left`
     /// moves the selected column-set rows into the layout.
     fn move_selected(&mut self, to: Side) -> Result<()>;
@@ -142,28 +145,79 @@ pub fn filled_texts<S: ListScreen>(s: &mut S, side: Side) -> Result<Vec<String>>
 }
 
 /// Empty the displayed list: select every filled row (all pages), press move-right, repeat until
-/// nothing is left or a round moved nothing (key columns that cannot be removed) or the round
-/// cap is hit. Returns the texts that stay displayed.
+/// nothing is left or the round cap is hit. Rows that cannot be selected (locked key columns
+/// such as `Delivery` in the VL06O item view) are left out of the selection. When a round moves
+/// nothing (SAP refuses the whole move because a locked row is part of it), the rest is removed
+/// one row at a time ([`clear_one_by_one`]). Returns the texts that stay displayed.
 pub fn clear_left<S: ListScreen>(s: &mut S) -> Result<Vec<String>> {
     let mut previous: Option<usize> = None;
     for _ in 0..MAX_CLEAR_ROUNDS {
         let mut texts: Vec<String> = Vec::new();
+        let mut selected = 0usize;
         scan_side(s, Side::Left, &mut |sc, _abs, vis, t| {
-            sc.select_row(Side::Left, vis)?;
+            if sc.select_row(Side::Left, vis)? {
+                selected += 1;
+            }
             texts.push(t.to_string());
             Ok(false)
         })?;
         s.set_scroll_position(Side::Left, 0)?;
-        if texts.is_empty() {
-            return Ok(texts);
+        if texts.is_empty() || selected == 0 {
+            return Ok(texts); // empty, or only locked rows are left
         }
         if previous == Some(texts.len()) {
-            return Ok(texts); // nothing moved last round: the rest cannot be removed
+            return clear_one_by_one(s); // nothing moved last round
         }
         previous = Some(texts.len());
         s.move_selected(Side::Right)?;
     }
     filled_texts(s, Side::Left)
+}
+
+/// Remove the displayed rows one at a time from the top; a row that is still there after its
+/// own move is locked and stays. Returns the texts that stay displayed.
+pub fn clear_one_by_one<S: ListScreen>(s: &mut S) -> Result<Vec<String>> {
+    // drop whatever the failed bulk round left selected
+    scan_side(s, Side::Left, &mut |sc, _abs, vis, _t| {
+        sc.deselect_row(Side::Left, vis)?;
+        Ok(false)
+    })?;
+    let mut kept: Vec<String> = Vec::new();
+    let mut i = 0i32;
+    for _ in 0..(MAX_PAGES * 10) {
+        s.set_scroll_position(Side::Left, i)?;
+        let vis = i - s.scroll_position(Side::Left)?;
+        if vis < 0 || vis >= s.visible_rows(Side::Left)?.max(1) {
+            break;
+        }
+        let text = s.row_text(Side::Left, vis)?;
+        if is_blank_cell(&text) {
+            break;
+        }
+        let text = text.trim().to_string();
+        if !s.select_row(Side::Left, vis)? {
+            println!("Column ({text}) is locked in the layout, left in place");
+            kept.push(text);
+            i += 1;
+            continue;
+        }
+        s.move_selected(Side::Right)?;
+        s.set_scroll_position(Side::Left, i)?;
+        let vis = i - s.scroll_position(Side::Left)?;
+        let after = if vis >= 0 {
+            s.row_text(Side::Left, vis)?
+        } else {
+            String::new()
+        };
+        if same_column(&after, &text) {
+            println!("Column ({text}) cannot be removed from the layout, left in place");
+            s.deselect_row(Side::Left, vis)?;
+            kept.push(text);
+            i += 1;
+        }
+    }
+    s.set_scroll_position(Side::Left, 0)?;
+    Ok(kept)
 }
 
 /// Move the column `wanted` from the column set to the displayed list. `Ok(false)` = not found
@@ -172,7 +226,9 @@ pub fn move_one<S: ListScreen>(s: &mut S, wanted: &str) -> Result<bool> {
     let mut found = false;
     scan_side(s, Side::Right, &mut |sc, _abs, vis, t| {
         if same_column(t, wanted) {
-            sc.select_row(Side::Right, vis)?;
+            if !sc.select_row(Side::Right, vis)? {
+                return Ok(true); // there but not selectable: reported as not found
+            }
             sc.move_selected(Side::Left)?;
             found = true;
             return Ok(true);
@@ -366,11 +422,24 @@ impl ListScreen for RealListScreen<'_> {
         Ok(())
     }
 
-    fn select_row(&mut self, side: Side, visible_row: i32) -> Result<()> {
+    fn select_row(&mut self, side: Side, visible_row: i32) -> Result<bool> {
         let pos = self.scroll_position(side)?;
         let t = self.table(side)?;
         let row = t.get_absolute_row(pos + visible_row)?;
-        row.set_selected(true)?;
+        if !row.selectable().unwrap_or(true) {
+            return Ok(false);
+        }
+        Ok(row.set_selected(true).is_ok())
+    }
+
+    fn deselect_row(&mut self, side: Side, visible_row: i32) -> Result<()> {
+        let pos = self.scroll_position(side)?;
+        let t = self.table(side)?;
+        if let Ok(row) = t.get_absolute_row(pos + visible_row) {
+            if row.selected().unwrap_or(false) {
+                let _ = row.set_selected(false);
+            }
+        }
         Ok(())
     }
 
@@ -383,6 +452,17 @@ impl ListScreen for RealListScreen<'_> {
         };
         press_button(self.session, &id)?;
         thread::sleep(Duration::from_millis(250));
+        // SAP may answer a refused move (locked column) with a message popup: confirm it
+        if let Ok(w) = self.session.find_by_id(format!("wnd[{}]", self.wnd + 1)) {
+            if let Some(m) = w.downcast::<GuiModalWindow>() {
+                println!(
+                    "Message after moving columns: {}",
+                    m.text().unwrap_or_default()
+                );
+                let _ = m.send_v_key(0);
+                thread::sleep(Duration::from_millis(150));
+            }
+        }
         Ok(())
     }
 
@@ -505,6 +585,10 @@ pub mod fakes {
         pub vrc: i32,
         pub filler: usize,
         pub locked: HashSet<String>,
+        /// Left rows that cannot even be selected.
+        pub unselectable: HashSet<String>,
+        /// A move-right whose selection holds a locked row moves nothing at all.
+        pub reject_locked_moves: bool,
         pub pos: [i32; 2],
         sel: [BTreeSet<String>; 2],
         pub sorted: bool,
@@ -527,6 +611,8 @@ pub mod fakes {
                 vrc,
                 filler: 0,
                 locked: HashSet::new(),
+                unselectable: HashSet::new(),
+                reject_locked_moves: false,
                 pos: [0, 0],
                 sel: [BTreeSet::new(), BTreeSet::new()],
                 sorted: false,
@@ -577,14 +663,25 @@ pub mod fakes {
             Ok(())
         }
 
-        fn select_row(&mut self, side: Side, visible_row: i32) -> Result<()> {
+        fn select_row(&mut self, side: Side, visible_row: i32) -> Result<bool> {
             let abs = (self.pos[ix(side)] + visible_row) as usize;
             let name = self
                 .rows(side)
                 .get(abs)
                 .cloned()
                 .ok_or_else(|| anyhow!("select_row: no row {abs}"))?;
+            if side == Side::Left && self.unselectable.contains(&name) {
+                return Ok(false);
+            }
             self.sel[ix(side)].insert(name);
+            Ok(true)
+        }
+
+        fn deselect_row(&mut self, side: Side, visible_row: i32) -> Result<()> {
+            let abs = (self.pos[ix(side)] + visible_row) as usize;
+            if let Some(name) = self.rows(side).get(abs).cloned() {
+                self.sel[ix(side)].remove(&name);
+            }
             Ok(())
         }
 
@@ -594,9 +691,17 @@ pub mod fakes {
             } else {
                 Side::Right
             };
+            let locked = self.locked.clone();
+            if to == Side::Right
+                && self.reject_locked_moves
+                && self.sel[ix(from)].iter().any(|r| locked.contains(r))
+            {
+                // SAP refuses the whole move and keeps the selection
+                self.moves_right += 1;
+                return Ok(());
+            }
             let picked = std::mem::take(&mut self.sel[ix(from)]);
             let mut moved = Vec::new();
-            let locked = self.locked.clone();
             let src = match from {
                 Side::Left => &mut self.left,
                 Side::Right => &mut self.right,
@@ -781,8 +886,8 @@ mod tests {
         f.locked.insert("Key B".to_string());
         let rest = clear_left(&mut f).unwrap();
         assert_eq!(rest, ["Key A", "Key B"]);
-        // first round moved nothing, second round saw no progress
-        assert!(f.moves_right <= 2);
+        // one bulk round that moved nothing, then one attempt per row
+        assert!(f.moves_right <= 3);
     }
 
     #[test]
@@ -828,5 +933,47 @@ mod tests {
         let r = pick_columns_grid(&mut g, &v(&["Col 05"]), 10).unwrap();
         assert_eq!(r.moved, ["Col 05"]);
         assert_eq!(refs(&g.left), ["Col 05"]);
+    }
+
+    fn strs(v: &[&str]) -> Vec<String> {
+        v.iter().map(|s| s.to_string()).collect()
+    }
+
+    /// VL06O item view: `Delivery` is locked and SAP refuses a move that includes it.
+    #[test]
+    fn locked_row_that_blocks_the_bulk_move_is_cleared_around() {
+        let mut f = FakeList::new(
+            &["Delivery", "Old A", "Old B", "Old C", "Old D"],
+            &["Material", "Plant"],
+            3,
+        );
+        f.locked.insert("Delivery".to_string());
+        f.reject_locked_moves = true;
+        let r = pick_columns_list(&mut f, &strs(&["Delivery", "Plant", "Material"])).unwrap();
+        assert_eq!(f.left, strs(&["Delivery", "Plant", "Material"]));
+        assert_eq!(r.already_present, strs(&["Delivery"]));
+        assert_eq!(r.moved, strs(&["Plant", "Material"]));
+        assert!(r.missing.is_empty() && r.kept_extra.is_empty());
+    }
+
+    #[test]
+    fn unselectable_row_is_left_out_of_the_selection() {
+        let mut f = FakeList::new(&["Delivery", "Old A", "Old B"], &["Plant"], 2);
+        f.locked.insert("Delivery".to_string());
+        f.unselectable.insert("Delivery".to_string());
+        f.reject_locked_moves = true;
+        let r = pick_columns_list(&mut f, &strs(&["Plant"])).unwrap();
+        assert_eq!(f.left, strs(&["Delivery", "Plant"]));
+        assert_eq!(r.kept_extra, strs(&["Delivery"]));
+        assert_eq!(f.moves_right, 1, "one bulk move, no fallback needed");
+    }
+
+    #[test]
+    fn locked_row_in_the_middle_with_refused_bulk_move() {
+        let mut f = FakeList::new(&["Old A", "Key", "Old B", "Old C"], &[], 2);
+        f.locked.insert("Key".to_string());
+        f.reject_locked_moves = true;
+        assert_eq!(clear_left(&mut f).unwrap(), strs(&["Key"]));
+        assert_eq!(f.left, strs(&["Key"]));
     }
 }

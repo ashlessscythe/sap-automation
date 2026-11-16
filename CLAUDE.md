@@ -161,7 +161,7 @@ and exports; no join, formulas or formatting (a future program does that). Dedup
 
 ## Layout creation (`--create-layout`, built 2026-11-16, v0.19.0)
 
-**Status: built, NOT run live by the owner. All control ids come from the VBA macro** (`Control_id_.bas`: `check_select_layout` `setup:` branch,
+**Status: VL06O layout creation (item view, locked `Delivery` column) has been run live by the owner (2026-11-16, v0.19.1); the other tcodes have NOT been run live. All control ids come from the VBA macro** (`Control_id_.bas`: `check_select_layout` `setup:` branch,
 `SetupLayout`, `SetupLayout_li`; read-only reference in `c:\temp\repo\bas_files\abc`). `sap_automation --tcode <T> --create-layout <NAME> [--overwrite]`
 creates + saves an ALV layout on the CURRENT screen of the attached session (the report's result list must be displayed; it checks
 `session.info().transaction()`); also the main-menu item "Create / save layout >" (`src/layout_menu.rs`, index 31, Exit moved to 32; not a sequence
@@ -179,6 +179,13 @@ nothing; a column already displayed after clearing (key column that cannot be re
 cut is an error); one creation at a time per process (`CREATE_LOCK`, existence re-checked under it); the session is always left on the result list.
 Auto-create hooks (one helper `auto_create_on_missing`) sit in the not-found branches of `choose_layout` (generic, 149, zvt11), `select_layout_for`
 (grid + list chooser, used by `check_select_layout`) and `lt23::select_layout`; when the feature is on but no section exists the not-found error says so.
+
+VL06O view (2026-11-16, after the owner's first live try): the item view and the header view have different columns and separate layouts, so
+`[layouts.VL06O.<NAME>]` takes `view = "item" | "header"` (`LayoutSpec.view`, `LayoutView`). `create_layout` detects the view on screen from the toggle
+button label (`detect_vl06o_view`: `tbar[1]/btn[18]`, else a toolbar scan; the button names the OTHER view, `view_from_toggle_text`) and `check_view` makes a
+mismatch an error, an undetectable view a warning. The label while the item view is shown is UNVERIFIED. Locked rows (owner: `Delivery` in the VL06O item view
+cannot be moved out): `ListScreen::select_row` returns `false` for a non-selectable row, and when a bulk move-right moves nothing `clear_left` falls back to
+`clear_one_by_one` (one row per press; a row still there after its own move is kept). A message popup after a move is confirmed with Enter.
 
 Live checklist (use a THROWAWAY layout name, one grid tcode and one list tcode first): 1. grid tcode ZMDESNR or ZVT11: editor opens (`btn[32]` /
 menu fallback), left grid cleared, right sorted by `SELTEXT`, columns land in order, save dialog (`btn[5]`, `wnd[2]` fields, overwrite popup `wnd[3]`),

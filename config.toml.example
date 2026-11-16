@@ -187,5 +187,10 @@ sap_date_format = "yyyy-mm-dd"      # format of the GR date column (default: [gl
 columns = ["Shipment Number", "Delivery", "Planned shipment end"]
 description = "Example VT11 layout"       # optional, defaults to the layout name
 
+# VL06O only: the item view and the header view have different columns and separate layouts.
+[layouts.VL06O.VL06O_EXAMPLE_LAYOUT]
+columns = ["Delivery", "Ship-to party", "Plant"]
+view = "item"                             # optional: "item" or "header"
+
 [layouts.ZMDESNR.ZMDESNR_EXAMPLE_LAYOUT]
 columns = ["Plant", "Material", "Serial Number"]

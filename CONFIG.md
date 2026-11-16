@@ -243,6 +243,12 @@ description = "optional, defaults to the layout name"
   duplicates (case-insensitive, first wins) are dropped; an empty list is an error. A column that SAP does not offer is an error and
   **nothing is saved**.
 - `description` (optional): saved with the layout; default = the layout name.
+- `view` (optional, `VL06O` only): `"item"` or `"header"`. The item view and the header view of VL06O have different columns and
+  separate layouts. When set, the program checks which view the list shows (from the view toggle button of the toolbar) and stops
+  with an error on a mismatch; when it cannot tell, it prints a warning and carries on. The export flows of this program use the
+  item view. Without the key the layout is created for whatever view is on screen.
+- Locked columns (for example `Delivery` in the VL06O item view) cannot be removed from a layout: they are left in place and may be
+  listed in `columns` (they count as present).
 - LX03 / LX02 layout names are limited to 12 characters.
 - Used by `--tcode <T> --create-layout <NAME> [--overwrite]`, the main-menu item "Create / save layout" and, opt-in, by export runs that do not
   find their layout (`--create-missing-layout`, or `[global] create_missing_layout = true`; CLI wins over config, default off).

@@ -271,6 +271,7 @@ fn select_layout(session: &GuiSession, params: &LT23Params, layout: &str) -> Res
             name: layout.to_string(),
             columns: normalize_columns(columns),
             description: layout.to_string(),
+            view: None,
         };
         match create_layout(session, "LT23", &spec, CreateOpts::default()) {
             Ok(CreateOutcome::Created) | Ok(CreateOutcome::Overwritten) => Ok(true),

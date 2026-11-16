@@ -7,6 +7,7 @@
 //! [layouts.VT11.MY_LAYOUT]
 //! columns = ["Shipment Number", "Delivery", "Planned shipment end"]
 //! description = "optional, defaults to the layout name"
+//! view = "item"   # optional, VL06O only: "item" or "header" (the two views have different columns)
 //! ```
 //!
 //! Column order is the order of the layout, so it is preserved. Blank entries are dropped,
@@ -16,6 +17,31 @@
 use std::fmt;
 
 use toml::Value;
+
+/// Which list view a layout belongs to (VL06O: the item view and the header view have different
+/// column sets and separate layouts).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LayoutView {
+    Item,
+    Header,
+}
+
+impl LayoutView {
+    pub fn parse(text: &str) -> Option<Self> {
+        match text.trim().to_ascii_lowercase().as_str() {
+            "item" | "items" => Some(Self::Item),
+            "header" | "head" => Some(Self::Header),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Item => "item",
+            Self::Header => "header",
+        }
+    }
+}
 
 /// One configured layout.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -28,6 +54,8 @@ pub struct LayoutSpec {
     pub columns: Vec<String>,
     /// Description saved with the layout (defaults to the name).
     pub description: String,
+    /// `view = "item" | "header"`: the list view the layout is for (checked for VL06O).
+    pub view: Option<LayoutView>,
 }
 
 /// Why a lookup did not produce a usable layout.
@@ -126,11 +154,12 @@ impl LayoutStore {
             for (name, section) in per_tcode {
                 let name_t = name.trim().to_string();
                 match parse_section(section) {
-                    Ok((columns, description)) => store.entries.push(LayoutSpec {
+                    Ok((columns, description, view)) => store.entries.push(LayoutSpec {
                         tcode: tcode_u.clone(),
                         description: description.unwrap_or_else(|| name_t.clone()),
                         name: name_t,
                         columns,
+                        view,
                     }),
                     Err(problem) => store.invalid.push(Invalid {
                         tcode: tcode_u.clone(),
@@ -220,7 +249,9 @@ impl LayoutStore {
     }
 }
 
-fn parse_section(section: &Value) -> Result<(Vec<String>, Option<String>), String> {
+type Section = (Vec<String>, Option<String>, Option<LayoutView>);
+
+fn parse_section(section: &Value) -> Result<Section, String> {
     let table = section
         .as_table()
         .ok_or_else(|| "expected a table with `columns = [...]`".to_string())?;
@@ -248,7 +279,18 @@ fn parse_section(section: &Value) -> Result<(Vec<String>, Option<String>), Strin
             None => return Err("`description` must be a string".to_string()),
         },
     };
-    Ok((columns, description))
+    let view =
+        match table.get("view") {
+            None => None,
+            Some(v) => match v.as_str() {
+                Some(s) if s.trim().is_empty() => None,
+                Some(s) => Some(LayoutView::parse(s).ok_or_else(|| {
+                    format!("`view` must be \"item\" or \"header\" (got \"{s}\")")
+                })?),
+                None => return Err("`view` must be a string".to_string()),
+            },
+        };
+    Ok((columns, description, view))
 }
 
 /// `[global] create_missing_layout` of the raw config root (bool, or the strings `true`/`1`/`yes`/
@@ -409,5 +451,24 @@ description = "x"
             Some(true),
             "[global] create_missing_layout lost by a save:\n{written}"
         );
+    }
+
+    #[test]
+    fn view_is_parsed_and_validated() {
+        let s = LayoutStore::from_toml_str(concat!(
+            "[layouts.VL06O.A]\ncolumns = [\"Delivery\"]\nview = \"Item\"\n",
+            "[layouts.VL06O.B]\ncolumns = [\"Delivery\"]\nview = \"header\"\n",
+            "[layouts.VL06O.C]\ncolumns = [\"Delivery\"]\n",
+            "[layouts.VL06O.D]\ncolumns = [\"Delivery\"]\nview = \"sideways\"\n",
+        ))
+        .unwrap();
+        assert_eq!(s.get("VL06O", "A").unwrap().view, Some(LayoutView::Item));
+        assert_eq!(s.get("VL06O", "B").unwrap().view, Some(LayoutView::Header));
+        assert_eq!(s.get("VL06O", "C").unwrap().view, None);
+        assert!(s.get("VL06O", "D").is_none());
+        assert!(matches!(
+            s.lookup("VL06O", "D"),
+            Err(LookupError::Invalid { .. })
+        ));
     }
 }

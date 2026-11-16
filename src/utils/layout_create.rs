@@ -27,7 +27,7 @@ use crate::utils::layout_editors::{
     pick_columns_grid, pick_columns_list, PickReport, RealGridScreen, RealListScreen,
     GRID_ROW_LIMIT,
 };
-use crate::utils::layout_store::{LayoutSpec, LayoutStore};
+use crate::utils::layout_store::{LayoutSpec, LayoutStore, LayoutView};
 use crate::utils::sap_ctrl_utils::{exist_ctrl, hit_ctrl};
 
 /// Object path of the grid-style layout editor below `wnd[1]`.
@@ -500,11 +500,77 @@ pub fn create_layout(
     }
     let _guard = CREATE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     ensure_no_dialog(session)?;
+    if profile.tcode == "VL06O" {
+        let detected = detect_vl06o_view(session);
+        if let Some(note) = check_view(&spec.name, spec.view, detected)? {
+            println!("{note}");
+        }
+    }
     let mut gui = RealCreateGui { session, profile };
     let outcome = create_core(&mut gui, profile.tcode, spec, opts.overwrite)?;
     let status = status_text(session);
     println!("{} (status bar: {status})", outcome.describe(&spec.name));
     Ok(outcome)
+}
+
+/// The view a VL06O list is in, from the label of its view toggle button: the button offers the
+/// OTHER view ("Item View" is shown in the header view and the other way round).
+pub fn view_from_toggle_text(text: &str) -> Option<LayoutView> {
+    let t = text.to_ascii_lowercase();
+    match (t.contains("item"), t.contains("header")) {
+        (true, false) => Some(LayoutView::Header),
+        (false, true) => Some(LayoutView::Item),
+        _ => None,
+    }
+}
+
+/// Compare the configured view of a layout with the view on screen. `Err` on a mismatch (the
+/// two views have different columns and separate layouts), otherwise an optional note to print.
+pub fn check_view(
+    name: &str,
+    wanted: Option<LayoutView>,
+    detected: Option<LayoutView>,
+) -> Result<Option<String>> {
+    match (wanted, detected) {
+        (Some(w), Some(d)) if w != d => Err(anyhow!(
+            "VL06O shows the {} view but layout '{name}' is configured with view = \"{}\": \
+             switch the list to the {} view and run again",
+            d.as_str(),
+            w.as_str(),
+            w.as_str()
+        )),
+        (Some(w), Some(_)) => Ok(Some(format!("VL06O {} view confirmed", w.as_str()))),
+        (Some(w), None) => Ok(Some(format!(
+            "Warning: could not tell whether VL06O shows the item or the header view; \
+             layout '{name}' expects the {} view",
+            w.as_str()
+        ))),
+        (None, Some(d)) => Ok(Some(format!(
+            "Note: layout '{name}' has no `view` key; it is created for the {} view on screen",
+            d.as_str()
+        ))),
+        (None, None) => Ok(None),
+    }
+}
+
+/// Which view the VL06O result list shows. The toggle is `wnd[0]/tbar[1]/btn[18]` ("Item View")
+/// in the header view; the rest of the application toolbar is scanned as a fallback.
+/// UNVERIFIED live: the label of the button while the item view is displayed.
+fn detect_vl06o_view(session: &GuiSession) -> Option<LayoutView> {
+    let label = |n: i32| -> Option<String> {
+        let b = find(session, &format!("wnd[0]/tbar[1]/btn[{n}]"))?.downcast::<GuiButton>()?;
+        Some(format!(
+            "{} {}",
+            b.text().unwrap_or_default(),
+            b.tooltip().unwrap_or_default()
+        ))
+    };
+    let is_view_label = |t: &str| t.to_ascii_lowercase().contains("view");
+    std::iter::once(18)
+        .chain(0..=45)
+        .filter_map(label)
+        .filter(|t| is_view_label(t))
+        .find_map(|t| view_from_toggle_text(&t))
 }
 
 /// Does the layout exist in SAP? Opens the choose-layout dialog, looks, closes it again.
@@ -1373,6 +1439,7 @@ mod tests {
             name: "EXAMPLE".to_string(),
             columns: vec!["A".to_string(), "B".to_string()],
             description: "EXAMPLE".to_string(),
+            view: None,
         }
     }
 
@@ -1453,5 +1520,39 @@ mod tests {
             .contains("no [layouts.X.Y] section"));
         assert!(AutoCreate::Failed("boom".into()).hint().contains("boom"));
         assert_eq!(AutoCreate::Applied.hint(), "");
+    }
+
+    #[test]
+    fn vl06o_view_from_the_toggle_label() {
+        assert_eq!(view_from_toggle_text("Item View"), Some(LayoutView::Header));
+        assert_eq!(
+            view_from_toggle_text(" header view (F6)"),
+            Some(LayoutView::Item)
+        );
+        assert_eq!(view_from_toggle_text("Refresh"), None);
+        assert_eq!(view_from_toggle_text("Item / Header view"), None);
+    }
+
+    #[test]
+    fn vl06o_view_mismatch_is_an_error() {
+        let (item, header) = (Some(LayoutView::Item), Some(LayoutView::Header));
+        let e = check_view("L", item, header).unwrap_err().to_string();
+        assert!(
+            e.contains("header view") && e.contains("view = \"item\""),
+            "{e}"
+        );
+        assert!(check_view("L", item, item)
+            .unwrap()
+            .unwrap()
+            .contains("confirmed"));
+        assert!(check_view("L", item, None)
+            .unwrap()
+            .unwrap()
+            .contains("Warning"));
+        assert!(check_view("L", None, header)
+            .unwrap()
+            .unwrap()
+            .contains("no `view` key"));
+        assert!(check_view("L", None, None).unwrap().is_none());
     }
 }

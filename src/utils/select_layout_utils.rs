@@ -399,6 +399,27 @@ fn close_popups_above(session: &GuiSession, n_wnd: i32) -> windows::core::Result
     Ok(())
 }
 
+/// Open the choose-layout dialog through the menu `menu_id` (a `GuiMenu`), falling back to the
+/// toolbar button `btn[33]`. Does nothing when a dialog (`wnd[1]`) is already open: callers such
+/// as `zmdesnr::apply_layout` press `btn[33]` themselves first, and a menu of `wnd[0]` cannot be
+/// used while a modal dialog is up.
+fn open_chooser_if_closed(session: &GuiSession, menu_id: &str) -> windows::core::Result<()> {
+    if exist_ctrl(session, 1, "", true)?.cband {
+        return Ok(());
+    }
+    let menu = session
+        .find_by_id(menu_id.to_string())
+        .ok()
+        .and_then(|c| c.downcast::<GuiMenu>());
+    match menu {
+        Some(m) => m.select()?,
+        None => {
+            press_button(session, "wnd[0]/tbar[1]/btn[33]");
+        }
+    }
+    Ok(())
+}
+
 /// Trigger layout popup based on transaction code
 ///
 /// This function is a port of the VBA function layout_popup
@@ -430,25 +451,7 @@ pub fn layout_popup(session: &GuiSession, tcode: &str) -> windows::core::Result<
             }
         }
         "zmdesnr" => {
-            // Open via mbar
-            println!("DEBUG: pressing layout button for zmdesnr");
-            if let Ok(button) =
-                session.find_by_id("wnd[0]/mbar/menu[4]/menu[0]/menu[1]".to_string())
-            {
-                if let Some(btn) = button.downcast::<GuiButton>() {
-                    btn.press()?;
-                }
-            } else {
-                // Check if button exists in toolbar
-                let err_ctl = exist_ctrl(session, 0, "/tbar[1]/btn[33]", true)?;
-                if err_ctl.cband {
-                    if let Ok(button) = session.find_by_id("wnd[0]/tbar[1]/btn[33]".to_string()) {
-                        if let Some(btn) = button.downcast::<GuiButton>() {
-                            btn.press()?;
-                        }
-                    }
-                }
-            }
+            open_chooser_if_closed(session, "wnd[0]/mbar/menu[4]/menu[0]/menu[1]")?;
         }
         "mb52" => {
             // Check if button exists
@@ -588,16 +591,7 @@ pub fn check_select_layout(
                 }
             }
             "vt11" => {
-                // Choose Layout Button
-                if let Ok(menu) =
-                    session.find_by_id("wnd[0]/mbar/menu[3]/menu[0]/menu[1]".to_string())
-                {
-                    if let Some(menu_item) = menu.downcast::<GuiComponent>() {
-                        if let Some(btn) = menu_item.downcast::<GuiButton>() {
-                            btn.press()?;
-                        }
-                    }
-                }
+                open_chooser_if_closed(session, "wnd[0]/mbar/menu[3]/menu[0]/menu[1]")?;
             }
             "mb52" | "vl06o" => {
                 // Check if button exists
@@ -608,15 +602,7 @@ pub fn check_select_layout(
                 }
             }
             "zmdesnr" => {
-                // open via mbar
-                println!("DEBUG:pressing layout button for zmdesnr");
-                if let Ok(button) =
-                    session.find_by_id("wnd[0]/mbar/menu[4]/menu[0]/menu[1]".to_string())
-                {
-                    if let Some(btn) = button.downcast::<GuiButton>() {
-                        btn.press()?;
-                    }
-                }
+                open_chooser_if_closed(session, "wnd[0]/mbar/menu[4]/menu[0]/menu[1]")?;
             }
             _ => {}
         }

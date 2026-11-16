@@ -38,6 +38,15 @@ pub fn same_column(a: &str, b: &str) -> bool {
     a.trim().to_uppercase() == b.trim().to_uppercase()
 }
 
+/// A column title for messages (`""` = the column with a blank title).
+pub fn show_column(col: &str) -> String {
+    if col.trim().is_empty() {
+        "(blank title)".to_string()
+    } else {
+        col.trim().to_string()
+    }
+}
+
 /// What a column picker did.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct PickReport {
@@ -247,6 +256,11 @@ pub fn pick_columns_list<S: ListScreen>(s: &mut S, wanted: &[String]) -> Result<
     s.sort_available()?;
     let mut report = PickReport::default();
     for col in wanted {
+        if col.trim().is_empty() {
+            println!("A column with a blank title cannot be picked in this (list-style) editor");
+            report.missing.push(show_column(col));
+            continue;
+        }
         if remaining.iter().any(|r| same_column(r, col)) {
             println!("Column ({col}) is already in the layout");
             report.already_present.push(col.clone());
@@ -306,12 +320,12 @@ pub fn pick_columns_grid<S: GridScreen>(
         match hit {
             Some(i) => {
                 s.add_right_row(i)?;
-                println!("Column ({col}) moved to the layout");
-                report.moved.push(col.clone());
+                println!("Column ({}) moved to the layout", show_column(col));
+                report.moved.push(show_column(col));
             }
             None => {
-                println!("Column ({col}) not found");
-                report.missing.push(col.clone());
+                println!("Column ({}) not found", show_column(col));
+                report.missing.push(show_column(col));
             }
         }
     }
@@ -552,15 +566,29 @@ impl GridScreen for RealGridScreen<'_> {
     }
 
     fn right_text(&mut self, row: i32) -> Result<String> {
-        Ok(self
-            .grid(self.right_id())?
-            .get_cell_value(row, "SELTEXT".to_string())?)
+        let right = self.grid(self.right_id())?;
+        let read = |g: &GuiGridView| g.get_cell_value(row, "SELTEXT".to_string());
+        match read(&right) {
+            Ok(t) if !t.trim().is_empty() => Ok(t),
+            // rows below the visible window are not served until the grid is scrolled there
+            _ => {
+                let _ = right.set_first_visible_row(row);
+                Ok(read(&right)?)
+            }
+        }
     }
 
+    /// As recorded live on ZVT11: scroll to the row, select it, press "show selected fields"
+    /// (`btnAPP_WL_SING`).
     fn add_right_row(&mut self, row: i32) -> Result<()> {
         let right = self.grid(self.right_id())?;
+        let _ = right.set_first_visible_row(row);
         right.set_current_cell_row(row)?;
-        right.double_click_current_cell()?;
+        right.set_selected_rows(row.to_string())?;
+        press_button(
+            self.session,
+            &format!("wnd[{}]{}/btnAPP_WL_SING", self.wnd, self.base),
+        )?;
         thread::sleep(Duration::from_millis(150));
         Ok(())
     }
@@ -975,5 +1003,34 @@ mod tests {
         f.reject_locked_moves = true;
         assert_eq!(clear_left(&mut f).unwrap(), strs(&["Key"]));
         assert_eq!(f.left, strs(&["Key"]));
+    }
+
+    /// ZMDESNR: the customer column has a blank title in the column set; `""` asks for it.
+    #[test]
+    fn grid_editor_picks_blank_titled_columns() {
+        let mut f = FakeGrid {
+            left: strs(&["Old"]),
+            right: strs(&["Plant", "", "Material", ""]),
+            sorted: false,
+        };
+        let r = pick_columns_grid(&mut f, &strs(&["Material", "", "Plant", ""]), 200).unwrap();
+        assert_eq!(f.left, strs(&["Material", "", "Plant", ""]));
+        assert!(r.missing.is_empty());
+        assert_eq!(r.moved[1], "(blank title)");
+        // a third blank column does not exist
+        let mut f = FakeGrid {
+            left: vec![],
+            right: strs(&["Plant"]),
+            sorted: false,
+        };
+        let r = pick_columns_grid(&mut f, &strs(&["Plant", ""]), 200).unwrap();
+        assert_eq!(r.missing, ["(blank title)"]);
+    }
+
+    #[test]
+    fn list_editor_reports_a_blank_title_as_missing() {
+        let mut f = FakeList::new(&["Old"], &["Plant"], 5);
+        let r = pick_columns_list(&mut f, &strs(&["Plant", ""])).unwrap();
+        assert_eq!(r.missing, ["(blank title)"]);
     }
 }

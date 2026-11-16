@@ -66,7 +66,7 @@ Missing flag for tcode, enter with --tcode (or set [loop].tcode in config.toml)
 
 ### Layout creation (`--create-layout`, `--create-missing-layout`)
 
-Status: **built, NOT run live** (control ids come from the VBA macro). The column lists live in `[layouts.<TCODE>.<NAME>]` of
+Status: run live by the owner (2026-11-16) on VL06O (list-style editor, item view), ZVT11 and ZMDESNR (grid-style editor, including auto-create inside a `--rname` run); VT11, LT23, LX03/LX02, the 149 report and the VL06O header view have not been run live yet. The column lists live in `[layouts.<TCODE>.<NAME>]` of
 `config.toml` (see CONFIG.md).
 
 | Flag | Notes |

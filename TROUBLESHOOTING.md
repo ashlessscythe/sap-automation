@@ -218,6 +218,20 @@ match close_excel_windows(Some(file_name)) {
 - `--no-sap` never connects to SAP, so it works with SAP GUI closed; `--output-format=xlsx` is not supported with it.
 - The date folder in the output path is the day of the run, not the report date. Use `--output-date` to reuse a past run's folder.
 
+### 8. Layout Creation (`--create-layout`, `--create-missing-layout`)
+
+| Message / symptom | Meaning and fix |
+|---|---|
+| `layout '<name>' not found among N layouts: ...` and the run stops | The layout is not in SAP's chooser (the names it shows are listed). Add `[layouts.<TCODE>.<name>]` to `config.toml` and pass `--create-missing-layout` (or set `[global] create_missing_layout = true`) to have the run create it. Auto-create is off by default. |
+| `to create it from [layouts.<TCODE>.<name>] pass --create-missing-layout ...` | The section exists but auto-create is off. |
+| `no [layouts.<TCODE>.<name>] section in config.toml` | Auto-create is on but there is no column list for that layout; the message lists the layouts configured for the tcode. Only `config.toml` is read. |
+| `exists, skipped; pass --overwrite to replace it` | The layout is already in SAP. Nothing was changed; this is not an error. |
+| A column is reported as not found and nothing is saved | The title must match what SAP shows in the column list (case does not matter). A layout is never saved with columns missing. |
+| A column has no title in SAP's column list | Put an empty entry `""` at its position in `columns` (grid-style editor only: ZMDESNR, ZVT11, 149). |
+| `VL06O shows the header view but layout '<name>' is configured with view = "item"` | The item view and the header view have different columns and separate layouts. Switch the list to the configured view and run again. |
+| `Column (<name>) is locked in the layout, left in place` | SAP does not allow removing that column (for example `Delivery` in the VL06O item view). It stays in the layout; listing it in `columns` is fine. |
+| `a dialog is open` before anything happens | Close the open SAP popup; the command needs the report's result list on screen. |
+
 ## Advanced Troubleshooting
 
 ### Memory Issues

@@ -625,6 +625,29 @@ pub fn get_scrollbar_position(session: &GuiSession, wnd_idx: i32, table_id: &str
     }
 }
 
+/// Values of `column` for every row of an ALV grid, in row order ("" where a cell cannot be
+/// read). A grid only serves the rows around its visible window: cells further down read as
+/// empty or fail until the grid is scrolled there, so it is paged while reading and scrolled
+/// back to the top afterwards.
+pub fn grid_column_values(grid: &GuiGridView, column: &str) -> Vec<String> {
+    let rows = grid.row_count().unwrap_or(0);
+    let page = grid.visible_row_count().unwrap_or(0).max(1);
+    let mut out = Vec::with_capacity(rows.max(0) as usize);
+    for i in 0..rows {
+        if i > 0 && i % page == 0 {
+            let _ = grid.set_first_visible_row(i);
+        }
+        out.push(
+            grid.get_cell_value(i, column.to_string())
+                .unwrap_or_default(),
+        );
+    }
+    if rows > page {
+        let _ = grid.set_first_visible_row(0);
+    }
+    out
+}
+
 #[cfg(test)]
 mod clipboard_tests {
     use super::*;

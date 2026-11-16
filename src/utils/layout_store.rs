@@ -10,8 +10,9 @@
 //! view = "item"   # optional, VL06O only: "item" or "header" (the two views have different columns)
 //! ```
 //!
-//! Column order is the order of the layout, so it is preserved. Blank entries are dropped,
-//! duplicates (case-insensitive) are dropped keeping the first.
+//! Column order is the order of the layout, so it is preserved. Duplicates (case-insensitive)
+//! are dropped keeping the first. An empty entry `""` is kept: it stands for a column whose
+//! title is blank in the SAP column list (grid-style editor only), one such column per entry.
 #![allow(dead_code)]
 
 use std::fmt;
@@ -50,7 +51,8 @@ pub struct LayoutSpec {
     pub tcode: String,
     /// Layout name as written in the section key.
     pub name: String,
-    /// Column titles in layout order (validated: non-empty, no blanks, no duplicates).
+    /// Column titles in layout order (validated: non-empty list, no duplicates; `""` = a
+    /// column with a blank title).
     pub columns: Vec<String>,
     /// Description saved with the layout (defaults to the name).
     pub description: String,
@@ -101,15 +103,13 @@ impl fmt::Display for LookupError {
 
 impl std::error::Error for LookupError {}
 
-/// Trim, drop blanks and case-insensitive duplicates (first wins), keep the order.
+/// Trim and drop case-insensitive duplicates (first wins), keep the order. Blank entries are
+/// kept as `""` and never count as duplicates: each one asks for one blank-titled column.
 pub fn normalize_columns<S: AsRef<str>>(raw: &[S]) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for c in raw {
         let c = c.as_ref().trim();
-        if c.is_empty() {
-            continue;
-        }
-        if out.iter().any(|e| e.eq_ignore_ascii_case(c)) {
+        if !c.is_empty() && out.iter().any(|e| e.eq_ignore_ascii_case(c)) {
             continue;
         }
         out.push(c.to_string());
@@ -268,7 +268,7 @@ fn parse_section(section: &Value) -> Result<Section, String> {
         }
     }
     let columns = normalize_columns(&raw);
-    if columns.is_empty() {
+    if columns.iter().all(|c| c.is_empty()) {
         return Err("`columns` is empty".to_string());
     }
     let description = match table.get("description") {
@@ -341,10 +341,10 @@ description = "x"
     fn parses_and_validates_columns() {
         let s = store();
         let one = s.get("VT11", "EXAMPLE_ONE").unwrap();
-        // blanks dropped, case-insensitive duplicate dropped, order kept
+        // case-insensitive duplicate dropped, order kept, the blank entry kept (blank title)
         assert_eq!(
             one.columns,
-            ["Shipment Number", "Delivery", "Planned shipment end"]
+            ["Shipment Number", "Delivery", "", "Planned shipment end"]
         );
         assert_eq!(one.description, "Example one");
         // description defaults to the name
@@ -405,7 +405,9 @@ description = "x"
 
     #[test]
     fn normalize_keeps_order() {
-        assert_eq!(normalize_columns(&["b", "a", "B", " "]), ["b", "a"]);
+        assert_eq!(normalize_columns(&["b", "a", "B"]), ["b", "a"]);
+        // a blank entry is a column with a blank title: kept, and not a duplicate of another
+        assert_eq!(normalize_columns(&["b", " ", "a", ""]), ["b", "", "a", ""]);
     }
 
     #[test]
@@ -444,7 +446,7 @@ description = "x"
         assert_eq!(before, after, "layouts changed by a save:\n{written}");
         assert_eq!(
             after.get("VT11", "EXAMPLE_ONE").unwrap().columns,
-            ["Shipment Number", "Delivery", "Planned shipment end"]
+            ["Shipment Number", "Delivery", "", "Planned shipment end"]
         );
         assert_eq!(
             global_create_missing_layout(reloaded.raw_config.as_ref()),

@@ -228,8 +228,7 @@ treat no row as special. `config.toml.example` lists every key; keep your real v
 
 ### Layouts Section (`[layouts.<TCODE>.<NAME>]`)
 
-Column lists of ALV layouts that the program can create and save in SAP (status: **built, NOT run live**; the control ids come
-from the VBA macro). One sub-table per tcode and layout name:
+Column lists of ALV layouts that the program can create and save in SAP (status: run live by the owner (2026-11-16) on VL06O (list-style editor, item view), ZVT11 and ZMDESNR (grid-style editor, including auto-create inside a `--rname` run); VT11, LT23, LX03/LX02, the 149 report and the VL06O header view have not been run live yet). One sub-table per tcode and layout name:
 
 ```toml
 [layouts.VT11.VT11_EXAMPLE_LAYOUT]
@@ -239,8 +238,11 @@ description = "optional, defaults to the layout name"
 
 - `TCODE`: `VT11`, `VL06O`, `LT23`, `LX03`, `LX02` (list-style editor) or `ZMDESNR`, `ZVT11`, `Y_DN3_47000149` (grid-style editor); any other
   tcode is an error. Tcode and layout name are matched case-insensitively.
-- `columns` (required): the column titles as SAP shows them, in layout order (the order is the order of the layout). Blank entries and
-  duplicates (case-insensitive, first wins) are dropped; an empty list is an error. A column that SAP does not offer is an error and
+- `columns` (required): the column titles as SAP shows them, in layout order (the order is the order of the layout). Duplicates
+  (case-insensitive, first wins) are dropped; an empty list is an error. An empty entry `""` stands for a column whose title is blank
+  in SAP's column list (for example the customer column of ZMDESNR): put `""` at the position where that column belongs, one `""` per
+  blank-titled column. Grid-style editor only (`ZMDESNR`, `ZVT11`, `Y_DN3_47000149`); with several blank-titled columns they are taken
+  in the order SAP lists them. A column that SAP does not offer is an error and
   **nothing is saved**.
 - `description` (optional): saved with the layout; default = the layout name.
 - `view` (optional, `VL06O` only): `"item"` or `"header"`. The item view and the header view of VL06O have different columns and

@@ -612,13 +612,23 @@ fn closed_fail(msg: &str) -> Result<ExportOutcome> {
     Ok(ExportOutcome::Error(format!("ZVT11 Closed: {msg}")))
 }
 
-/// Select `layout` in the chooser behind `btn[33]` without any console prompt. Ok(false) when
-/// it could not be applied (the chooser is closed again).
-fn select_closed_layout(session: &GuiSession, layout: &str) -> Result<bool> {
+/// Outcome of one pass over the layout chooser.
+enum ClosedChoice {
+    Selected,
+    /// Not in the chooser; the names it shows (for the log).
+    NotFound(Vec<String>),
+    Failed,
+}
+
+/// One pass: open the chooser behind `btn[33]`, look for `layout` in the name columns (the grid
+/// is paged while reading, rows below the visible window are not served otherwise), select it.
+/// The chooser is closed again unless the layout was selected.
+fn choose_closed_layout(session: &GuiSession, layout: &str) -> Result<ClosedChoice> {
+    use crate::utils::sap_ctrl_utils::grid_column_values;
     use crate::zmdetpc::{close_wnd1, press};
     if !press(session, "wnd[0]/tbar[1]/btn[33]")? {
         println!("ZVT11 Closed: layout button btn[33] not found");
-        return Ok(false);
+        return Ok(ClosedChoice::Failed);
     }
     std::thread::sleep(std::time::Duration::from_millis(1000));
     let grid = session
@@ -628,33 +638,73 @@ fn select_closed_layout(session: &GuiSession, layout: &str) -> Result<bool> {
     let Some(grid) = grid else {
         println!("ZVT11 Closed: layout chooser grid {CLOSED_LAYOUT_GRID} not found");
         close_wnd1(session);
-        return Ok(false);
+        return Ok(ClosedChoice::Failed);
     };
-    let rows = grid.row_count()?;
+    let mut seen: Vec<String> = Vec::new();
     for column in CLOSED_LAYOUT_COLUMNS {
-        let names: Vec<String> = (0..rows)
-            .map(|i| {
-                grid.get_cell_value(i, column.to_string())
-                    .unwrap_or_default()
-            })
-            .collect();
+        let names = grid_column_values(&grid, column);
+        if seen.is_empty() {
+            seen = names
+                .iter()
+                .map(|n| n.trim().to_string())
+                .filter(|n| !n.is_empty())
+                .collect();
+        }
         let Some(i) = crate::lt23::find_layout_row(&names, layout) else {
             continue;
         };
+        // as recorded live: current cell, scroll to the row, select it, click
         let _ = grid.set_current_cell(i as i32, column.to_string());
+        let _ = grid.set_first_visible_row(i as i32);
         grid.set_selected_rows(i.to_string())?;
         grid.click_current_cell()?;
         if exist_ctrl(session, 1, "", true)?.cband {
             println!("ZVT11 Closed: layout chooser still open after selecting '{layout}'");
             close_wnd1(session);
-            return Ok(false);
+            return Ok(ClosedChoice::Failed);
         }
         println!("ZVT11 Closed: layout '{layout}' selected");
-        return Ok(true);
+        return Ok(ClosedChoice::Selected);
     }
-    println!("ZVT11 Closed: layout '{layout}' not found among {rows} layouts");
     close_wnd1(session);
-    Ok(false)
+    Ok(ClosedChoice::NotFound(seen))
+}
+
+/// Select `layout` in the chooser behind `btn[33]` without any console prompt. When it is not
+/// there and auto-create is on (`--create-missing-layout` / `[global] create_missing_layout`)
+/// with a `[layouts.ZVT11.<layout>]` section, the layout is created and saved. Ok(false) when it
+/// could not be applied (the chooser is closed again).
+fn select_closed_layout(session: &GuiSession, layout: &str) -> Result<bool> {
+    use crate::utils::layout_create::{auto_create_enabled, auto_create_on_missing, AutoCreate};
+    let seen = match choose_closed_layout(session, layout)? {
+        ClosedChoice::Selected => return Ok(true),
+        ClosedChoice::Failed => return Ok(false),
+        ClosedChoice::NotFound(seen) => seen,
+    };
+    println!(
+        "ZVT11 Closed: layout '{layout}' not found among {} layouts: {}",
+        seen.len(),
+        seen.join(", ")
+    );
+    match auto_create_on_missing(session, "ZVT11", layout) {
+        AutoCreate::Applied => Ok(true),
+        AutoCreate::Retry => Ok(matches!(
+            choose_closed_layout(session, layout)?,
+            ClosedChoice::Selected
+        )),
+        other => {
+            let hint = other.hint();
+            if !hint.is_empty() {
+                println!("ZVT11 Closed: layout '{layout}' was not created{hint}");
+            } else if !auto_create_enabled() {
+                println!(
+                    "ZVT11 Closed: to create it from [layouts.ZVT11.{layout}] pass \
+                     --create-missing-layout or set [global] create_missing_layout = true"
+                );
+            }
+            Ok(false)
+        }
+    }
 }
 
 /// Run ZVT11 Closed for `params.deliveries` (spec 3.2) and export to the target.

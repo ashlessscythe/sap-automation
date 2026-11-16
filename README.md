@@ -252,14 +252,16 @@ time (one thread and one COM instance per session) and closes them again at the 
 
 Live-verified for two reports (xdock + k2xx) and for days of a range (`--conn-count`); see [COMMAND_LINE_USAGE.md](COMMAND_LINE_USAGE.md).
 
-#### Layout creation (`--create-layout`, v0.19.0)
+#### Layout creation (`--create-layout`, v0.19.2)
 
 `sap_automation --tcode <T> --create-layout <NAME> [--overwrite]` creates and saves an ALV layout in SAP from the column list
 `[layouts.<T>.<NAME>]` in `config.toml`. Run the report in SAP first: it works on the **current screen** of the attached session.
 Supported: VT11, VL06O, LT23, LX03, LX02 (list-style editor), ZMDESNR, ZVT11, Y_DN3_47000149 (grid-style editor). An existing layout is
 skipped unless `--overwrite`; a column SAP does not offer is an error and nothing is saved. The main menu has the same as
 "Create / save layout >". Opt-in `--create-missing-layout` (or `[global] create_missing_layout = true`) makes export runs create a
-missing layout that has such a section. **Status: built, NOT run live; control ids come from the VBA macro.** See
+missing layout that has such a section. A VL06O section may say `view = "item"` or `"header"` (the two views have different
+columns and separate layouts), locked columns such as `Delivery` are left in place, and an empty entry `""` in `columns` picks a
+column whose title is blank in SAP (grid-style editor). **Status: run live by the owner (2026-11-16) on VL06O (list-style editor, item view), ZVT11 and ZMDESNR (grid-style editor, including auto-create inside a `--rname` run); VT11, LT23, LX03/LX02, the 149 report and the VL06O header view have not been run live yet.** See
 [COMMAND_LINE_USAGE.md](COMMAND_LINE_USAGE.md) and [CONFIG.md](CONFIG.md).
 
 ## Sequence Menu Option IDs

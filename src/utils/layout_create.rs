@@ -817,23 +817,12 @@ pub(crate) fn confirm_editor(session: &GuiSession, profile: &Profile) -> Result<
 /// Names shown by the grid-style choose dialog (column `VARIANT`; `TEXT` when `VARIANT` cannot be
 /// read at all).
 fn read_chooser_grid_names(grid: &GuiGridView) -> Vec<String> {
-    let rows = grid.row_count().unwrap_or(0);
-    let mut variants = Vec::new();
-    let mut texts = Vec::new();
-    let mut variant_ok = false;
-    for i in 0..rows {
-        if let Ok(v) = grid.get_cell_value(i, "VARIANT".to_string()) {
-            variant_ok = true;
-            variants.push(v);
-        }
-        if let Ok(t) = grid.get_cell_value(i, "TEXT".to_string()) {
-            texts.push(t);
-        }
-    }
-    if variant_ok {
+    use crate::utils::sap_ctrl_utils::grid_column_values;
+    let variants = grid_column_values(grid, "VARIANT");
+    if variants.iter().any(|v| !v.trim().is_empty()) {
         variants
     } else {
-        texts
+        grid_column_values(grid, "TEXT")
     }
 }
 

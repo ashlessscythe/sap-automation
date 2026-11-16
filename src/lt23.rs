@@ -212,12 +212,7 @@ fn choose_in_grid(session: &GuiSession, layout: &str) -> Result<Chosen> {
         return Ok(Chosen::Failed);
     };
     let rows = grid.row_count()?;
-    let names: Vec<String> = (0..rows)
-        .map(|i| {
-            grid.get_cell_value(i, "VARIANT".to_string())
-                .unwrap_or_default()
-        })
-        .collect();
+    let names = crate::utils::sap_ctrl_utils::grid_column_values(&grid, "VARIANT");
     if let Some(i) = find_layout_row(&names, layout) {
         grid.set_selected_rows(i.to_string())?;
         grid.set_current_cell_row(i as i32)?;

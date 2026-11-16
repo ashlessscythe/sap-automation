@@ -161,7 +161,9 @@ and exports; no join, formulas or formatting (a future program does that). Dedup
 
 ## Layout creation (`--create-layout`, built 2026-11-16, v0.19.0)
 
-**Status: VL06O layout creation (item view, locked `Delivery` column) has been run live by the owner (2026-11-16, v0.19.1); the other tcodes have NOT been run live. All control ids come from the VBA macro** (`Control_id_.bas`: `check_select_layout` `setup:` branch,
+**Status (v0.19.2): run live by the owner 2026-11-16 on VL06O (list editor, item view, locked `Delivery`), ZVT11 (grid editor, k2xx `ZVT11 Closed` chooser with
+auto-create inside a `--rname` run) and ZMDESNR (grid editor, blank-titled column). NOT run live: VT11, LT23, LX03/LX02, the 149 report, the VL06O header view. Control ids come from the
+VBA macro and the owner's recordings** (`Control_id_.bas`: `check_select_layout` `setup:` branch,
 `SetupLayout`, `SetupLayout_li`; read-only reference in `c:\temp\repo\bas_files\abc`). `sap_automation --tcode <T> --create-layout <NAME> [--overwrite]`
 creates + saves an ALV layout on the CURRENT screen of the attached session (the report's result list must be displayed; it checks
 `session.info().transaction()`); also the main-menu item "Create / save layout >" (`src/layout_menu.rs`, index 31, Exit moved to 32; not a sequence
@@ -186,6 +188,13 @@ button label (`detect_vl06o_view`: `tbar[1]/btn[18]`, else a toolbar scan; the b
 mismatch an error, an undetectable view a warning. The label while the item view is shown is UNVERIFIED. Locked rows (owner: `Delivery` in the VL06O item view
 cannot be moved out): `ListScreen::select_row` returns `false` for a non-selectable row, and when a bulk move-right moves nothing `clear_left` falls back to
 `clear_one_by_one` (one row per press; a row still there after its own move is kept). A message popup after a move is confirmed with Enter.
+
+ZVT11 (2026-11-16, owner recordings): the k2xx `ZVT11 Closed` chooser (`zvt11::select_closed_layout`) now pages the grid while reading names
+(`sap_ctrl_utils::grid_column_values`: an ALV grid only serves rows near its visible window; also used by the existence check and LT23), lists the
+names it saw when the layout is missing and calls `auto_create_on_missing` (it had no hook before). Grid editor per the owner's recording: a column is
+added by scrolling to its row, selecting it and pressing `btnAPP_WL_SING` (was a double-click); save dialog ids confirmed by the recording. Run live by the owner.
+Blank titles: an entry `""` in `columns` picks a column whose `SELTEXT` is blank (ZMDESNR's customer column); `normalize_columns` keeps blank entries (never
+deduplicated, an all-blank list is invalid), messages show `(blank title)` (`show_column`); the list editor reports `""` as missing (a blank row ends its table).
 
 Live checklist (use a THROWAWAY layout name, one grid tcode and one list tcode first): 1. grid tcode ZMDESNR or ZVT11: editor opens (`btn[32]` /
 menu fallback), left grid cleared, right sorted by `SELTEXT`, columns land in order, save dialog (`btn[5]`, `wnd[2]` fields, overwrite popup `wnd[3]`),

@@ -1,7 +1,7 @@
 //! LT03 (create transfer order for a delivery) over the SAP GUI: the real [`Lt03Screen`].
 //!
 //! Control ids, column indices and key sequences are taken from the `manual_to` macro, where they
-//! ran live. They are UNVERIFIED in this port until the first live run:
+//! ran live; the port has since been run live by the owner (dry run and real TO creation). Originally unverified:
 //! * table `TBL` and its columns (SELMG 0, LGPLA 2, VERME 4, WDATU 9), the info fields
 //!   `RL03T-AUSME/OFFME/VERME` and `LTAP-MATNR`;
 //! * paging with Page Down / Page Up (VKeys 82 / 81) and the delivery-overview probe

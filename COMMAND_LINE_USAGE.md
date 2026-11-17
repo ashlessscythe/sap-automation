@@ -487,8 +487,8 @@ de-duplicated by (material, plant) only. `--lx03-file=<slug|path>` pins the sour
 Per shipment: VL06O -> ZMDESNR by material (stock DB) -> LT03 per delivery. Settings are in
 `[abc.manual_to]` (see `config.toml.example`); the flags below win over config. Never prompts.
 
-> **Status:** `--dry-run` has been tested live. Creating real transfer orders (without `--dry-run`) has
-> **not** been run live yet: try one delivery first.
+> **Status:** run live by the owner: `--dry-run` and real transfer order creation (without `--dry-run`).
+> For a new site or setup, still try one delivery first.
 
 Defaults: `fifo`, `--age-cutoff` 30 days, `--allow-relabel` on, `--skip-blacklist` on, blacklist policy
 `allow_material_skip_bins`. They are printed at the start of every run and written to the first line of `log.tsv`.

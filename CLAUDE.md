@@ -116,9 +116,7 @@ Cross-cutting, all inert outside parallel runs: (1) per-thread session tag `sap_
 ## LT03 / manual_to (`--tcode lt03`)
 
 Port of the `manual_to` macro's LT03 flow (VBA in `C:\temp\repo\bas_files\manual_to`, `lt03_.bas`): shipments -> VL06O -> ZMDESNR by
-material (`ZMDESNRParams.materials`, tab 2 `S_MATNR`) -> LT03 per delivery. Built 2026-11-13 (v0.18.0). **Status: `--dry-run` has been run
-live by the owner (VL06O, ZMDESNR by material, stock table read, planner, exit back to the start screen). Real transfer order creation
-(entering quantities, saving the TO, the save popup / TO status text) has NOT been run live yet**; do one delivery first.
+material (`ZMDESNRParams.materials`, tab 2 `S_MATNR`) -> LT03 per delivery. Built 2026-11-13 (v0.18.0). **Status: run live by the owner, both `--dry-run` (VL06O, ZMDESNR by material, stock table read, planner, exit back to the start screen) and real transfer order creation (entering quantities, saving the TO, the save popup / TO status text).** Still do one delivery first on a new setup.
 
 Modules: `lt03_plan` (pure planner, no SAP/clock/console), `lt03_db` (stock DB / VL06O / shipment-list readers, columns matched by header
 name ignoring underscores), `lt03_runner` (`Lt03Screen` seam + `run_delivery`, tested with a fake screen in `lt03_runner::fakes`), `lt03`
@@ -158,8 +156,7 @@ next to `--show-last`, before any SAP connection) rebuilds it from disk only: `l
 folder with `<prefix>summary.json`; "summarized" = its `summary.html` exists), one run = written directly, several = list + `dialoguer`
 pick when `can_prompt()`, else `pick_unattended` (all without a summary, else the newest). The page is pure `render_html(&RunData, generated)`
 from `summary.json` (deliveries, picks; `gr_date` per pick since v0.20.0), `log.tsv` and every other `.tsv` of the same kind in the
-folder (source tables); everything is HTML-escaped, CSS/JS inline, no external resources. Tried on the owner's real run folders
-(old day-folder layout); a run with the new `run_HHMMSS` folders has NOT been run live yet.
+folder (source tables); everything is HTML-escaped, CSS/JS inline, no external resources. Run live by the owner on the new `run_HHMMSS` folders (summary included) and tried on the old day-folder layout.
 
 **API for the GUI (v0.21.0, `--json`, offline-tested, NOT run live):** the GUI wraps the executable (no separate service), so the CLI is the API; contract documented in COMMAND_LINE_USAGE.md ("Driving LT03 from a GUI or script"). `--json` (`Lt03Cli.json`): the LAST stdout line is one JSON object: `result_json(st, rep, dir, files)` (= `RunReport::summary_json` + `schema`, `version`, `run_id`, `run_dir`, `settings` (`settings_json`), `files`); `write_outputs_ctx` writes the same into `summary.json`; `--show-last` / `--summarize` print their own `kind` objects; errors print `{"ok":false,"error"}` via `lt03_module::print_json_error` called from `main`'s wrapper (`main` -> `real_main`; a `JSON_PRINTED` flag stops a second line after a result line). Every `[abc.manual_to]` setting now has a flag (`--shipto-strategy`, `--vl06o-per-shipment`, `--proceed-without-gr`, `--lt03-warehouse`, `--lt03-vl06o-*`, `--lt03-zmdesnr-*`), resolved CLI > config > default in `resolve_manual_to`. **Pitfall (bit `--show-last`/`--summarize` before 0.21.0):** `main.rs` stores the CLI overrides in the LIB's static, so bin-only code must reach `cli_overrides()`-reading code through `sap_automation::...` (the bin copy of `lt03_module` sees defaults). Keep the JSON shape additive (`schema` 1): a GUI depends on it.
 

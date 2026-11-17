@@ -401,6 +401,72 @@ pub struct Cli {
     #[arg(long = "show-last")]
     pub show_last: bool,
 
+    /// LT03 ONLY: write the HTML summary (results, picks, log and the source tables in one file)
+    /// of a run that is already on disk; does not touch SAP. `--summarize` looks at today's
+    /// `MANUAL_TO` folder, `--summarize=YYYY-MM-DD` at that day's. With several runs of the day
+    /// the list is shown (summarized / not yet summarized) and you pick one; without a terminal
+    /// every run that has no summary yet is summarized. Every new run writes its summary itself.
+    #[arg(
+        long,
+        value_name = "YYYY-MM-DD",
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "today"
+    )]
+    pub summarize: Option<String>,
+
+    /// LT03 ONLY: ship-to of a delivery with several ship-tos: `first` (default) or `majority`.
+    /// Overrides `[abc.manual_to].shipto_strategy`.
+    #[arg(long, value_name = "STRATEGY")]
+    pub shipto_strategy: Option<String>,
+
+    /// LT03 ONLY: one VL06O per shipment (every delivery then knows its shipment) instead of one
+    /// VL06O with all shipments. Overrides `[abc.manual_to].vl06o_per_shipment`.
+    #[arg(
+        long,
+        value_name = "BOOL",
+        num_args = 0..=1,
+        default_missing_value = "true",
+        value_parser = clap::builder::BoolishValueParser::new()
+    )]
+    pub vl06o_per_shipment: Option<bool>,
+
+    /// LT03 ONLY: fifo/lifo with bins that have no goods receipt date: continue sequentially
+    /// (default, never asks). Overrides `[abc.manual_to].proceed_without_gr`.
+    #[arg(
+        long,
+        value_name = "BOOL",
+        num_args = 0..=1,
+        default_missing_value = "true",
+        value_parser = clap::builder::BoolishValueParser::new()
+    )]
+    pub proceed_without_gr: Option<bool>,
+
+    /// LT03 ONLY: warehouse number of LT03 (LTAK-LGNUM). Overrides `[abc.manual_to].warehouse`.
+    #[arg(long = "lt03-warehouse", value_name = "WH")]
+    pub lt03_warehouse: Option<String>,
+
+    /// LT03 ONLY: SAP variant / layout of the VL06O step. Override `[abc.manual_to].vl06o_*`.
+    #[arg(long = "lt03-vl06o-variant", value_name = "NAME")]
+    pub lt03_vl06o_variant: Option<String>,
+    #[arg(long = "lt03-vl06o-layout", value_name = "NAME")]
+    pub lt03_vl06o_layout: Option<String>,
+
+    /// LT03 ONLY: SAP variant / layout of the ZMDESNR (by material) step. Override
+    /// `[abc.manual_to].zmdesnr_*`.
+    #[arg(long = "lt03-zmdesnr-variant", value_name = "NAME")]
+    pub lt03_zmdesnr_variant: Option<String>,
+    #[arg(long = "lt03-zmdesnr-layout", value_name = "NAME")]
+    pub lt03_zmdesnr_layout: Option<String>,
+
+    /// LT03 ONLY: machine-readable outcome. The LAST line printed to stdout is one JSON object
+    /// (`{"schema":1,"tcode":"LT03","ok":...}`): the run summary with the run folder, the
+    /// effective settings and the files written; on an error `{"ok":false,"error":"..."}`.
+    /// Everything before it is the normal human-readable output. Exit code is unchanged
+    /// (0 = ok, non-zero = failure).
+    #[arg(long = "json")]
+    pub json: bool,
+
     /// LT03 ONLY: resume: deliveries with a green result today are not run again.
     #[arg(long = "lt03-resume")]
     pub lt03_resume: bool,
@@ -490,6 +556,20 @@ impl Cli {
             blacklist_material_policy: self.blacklist_material_policy.clone(),
             resume: self.lt03_resume,
             show_last: self.show_last,
+            json: self.json,
+            shipto_strategy: self.shipto_strategy.clone(),
+            vl06o_per_shipment: self.vl06o_per_shipment,
+            proceed_without_gr: self.proceed_without_gr,
+            warehouse: self.lt03_warehouse.clone(),
+            vl06o_variant: self.lt03_vl06o_variant.clone(),
+            vl06o_layout: self.lt03_vl06o_layout.clone(),
+            zmdesnr_variant: self.lt03_zmdesnr_variant.clone(),
+            zmdesnr_layout: self.lt03_zmdesnr_layout.clone(),
+            summarize: self.summarize.is_some(),
+            summarize_date: match self.summarize.as_deref().map(str::trim) {
+                None | Some("") | Some("today") => None,
+                Some(d) => parse_iso_date_opt("--summarize", Some(d))?,
+            },
         };
         let is_lt03 = self
             .tcode
@@ -501,6 +581,13 @@ impl Cli {
                 "{} only work with --tcode lt03",
                 lt03_flags.join(", ")
             ));
+        }
+        if let Some(s) = &lt03.shipto_strategy {
+            if !["first", "majority"].contains(&s.trim().to_ascii_lowercase().as_str()) {
+                return Err(anyhow!(
+                    "--shipto-strategy must be `first` or `majority` (got `{s}`)"
+                ));
+            }
         }
         if let Some(s) = &lt03.bin_pick_strategy {
             crate::lt03_plan::Strategy::parse(s)?;
@@ -786,6 +873,41 @@ mod rname_tests {
         assert_eq!(o.lt03.skip_blacklist, Some(false));
         // without the flags nothing is set
         assert!(ov(&["--tcode=lt03"]).unwrap().lt03.flag_names().is_empty());
+        // --summarize: today, or a day given with `=`
+        let o = ov(&["--tcode=lt03", "--summarize"]).unwrap();
+        assert!(o.lt03.summarize && o.lt03.summarize_date.is_none());
+        let o = ov(&["--summarize=2026-11-13", "--tcode", "lt03"]).unwrap();
+        assert_eq!(
+            o.lt03.summarize_date,
+            chrono::NaiveDate::from_ymd_opt(2026, 11, 13)
+        );
+        assert!(ov(&["--tcode=lt03", "--summarize=13.11.2026"]).is_err());
+        assert!(ov(&["--summarize"]).is_err());
+        // settings that had no flag before
+        let o = ov(&[
+            "--tcode=lt03",
+            "--shipto-strategy=Majority",
+            "--vl06o-per-shipment",
+            "--proceed-without-gr=false",
+            "--lt03-warehouse=W9",
+            "--lt03-vl06o-variant=V1",
+            "--lt03-vl06o-layout=L1",
+            "--lt03-zmdesnr-variant=V2",
+            "--lt03-zmdesnr-layout=L2",
+        ])
+        .unwrap();
+        assert_eq!(o.lt03.shipto_strategy.as_deref(), Some("Majority"));
+        assert_eq!(o.lt03.vl06o_per_shipment, Some(true));
+        assert_eq!(o.lt03.proceed_without_gr, Some(false));
+        assert_eq!(o.lt03.warehouse.as_deref(), Some("W9"));
+        assert_eq!(o.lt03.zmdesnr_layout.as_deref(), Some("L2"));
+        assert!(ov(&["--tcode=lt03", "--shipto-strategy=most"]).is_err());
+        assert!(ov(&["--tcode=vt11", "--lt03-warehouse=W9"]).is_err());
+        // --json is LT03 only
+        assert!(ov(&["--tcode=lt03", "--json"]).unwrap().lt03.json);
+        assert!(ov(&["--tcode=vt11", "--json"]).is_err());
+        assert!(!ov(&["--tcode=lt03"]).unwrap().lt03.json);
+        assert!(!ov(&["--tcode=lt03"]).unwrap().lt03.summarize);
         // the flags are LT03 only
         assert!(ov(&["--tcode=vt11", "--dry-run"]).is_err());
         assert!(ov(&["--shipments=1"]).is_err());

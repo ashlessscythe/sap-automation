@@ -65,6 +65,26 @@ pub struct Lt03Cli {
     pub resume: bool,
     /// `--show-last`: open the table of the last dry run again (no SAP).
     pub show_last: bool,
+    /// `--summarize[=YYYY-MM-DD]`: write the HTML summary of a run on disk (no SAP).
+    pub summarize: bool,
+    /// The day of `--summarize=YYYY-MM-DD` (`None` = today).
+    pub summarize_date: Option<chrono::NaiveDate>,
+    /// `--shipto-strategy`: first | majority (ship-to of a delivery with several).
+    pub shipto_strategy: Option<String>,
+    /// `--vl06o-per-shipment`: one VL06O per shipment instead of one with all.
+    pub vl06o_per_shipment: Option<bool>,
+    /// `--proceed-without-gr`: fifo/lifo with bins without GR date continue sequentially.
+    pub proceed_without_gr: Option<bool>,
+    /// `--lt03-warehouse`: LT03 warehouse number.
+    pub warehouse: Option<String>,
+    /// `--lt03-vl06o-variant` / `--lt03-vl06o-layout` / `--lt03-zmdesnr-variant` /
+    /// `--lt03-zmdesnr-layout`: the SAP variants and layouts of the two report steps.
+    pub vl06o_variant: Option<String>,
+    pub vl06o_layout: Option<String>,
+    pub zmdesnr_variant: Option<String>,
+    pub zmdesnr_layout: Option<String>,
+    /// `--json`: the last stdout line is one JSON object with the outcome (for wrappers / a GUI).
+    pub json: bool,
 }
 
 impl Lt03Cli {
@@ -103,6 +123,26 @@ impl Lt03Cli {
         }
         if self.show_last {
             v.push("--show-last");
+        }
+        if self.summarize {
+            v.push("--summarize");
+        }
+        if self.json {
+            v.push("--json");
+        }
+        for (set, name) in [
+            (self.shipto_strategy.is_some(), "--shipto-strategy"),
+            (self.vl06o_per_shipment.is_some(), "--vl06o-per-shipment"),
+            (self.proceed_without_gr.is_some(), "--proceed-without-gr"),
+            (self.warehouse.is_some(), "--lt03-warehouse"),
+            (self.vl06o_variant.is_some(), "--lt03-vl06o-variant"),
+            (self.vl06o_layout.is_some(), "--lt03-vl06o-layout"),
+            (self.zmdesnr_variant.is_some(), "--lt03-zmdesnr-variant"),
+            (self.zmdesnr_layout.is_some(), "--lt03-zmdesnr-layout"),
+        ] {
+            if set {
+                v.push(name);
+            }
         }
         v
     }

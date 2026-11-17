@@ -351,7 +351,7 @@ pub fn run_loop_parallel(
 /// written once at the end, like a single-session run.
 pub fn run_lt03_parallel(conn_count: Option<usize>) -> Result<()> {
     use crate::lt03_module::{
-        finish_run, output_dir, plan_units, read_done_deliveries, run_unit,
+        finish_run, output_dir, plan_units, read_done_deliveries_day, run_unit,
         settings_from_environment, shipments_from_environment, RealManualTo, RunReport, UnitReport,
         UnitStatus,
     };
@@ -381,7 +381,7 @@ pub fn run_lt03_parallel(conn_count: Option<usize>) -> Result<()> {
         }
     };
     let skip = Arc::new(if st.resume && !st.lt.dry_run {
-        read_done_deliveries(&output_dir(&st.reports_dir, st.lt.today))
+        read_done_deliveries_day(&output_dir(&st.reports_dir, st.lt.today))
     } else {
         HashSet::new()
     });

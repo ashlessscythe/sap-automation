@@ -514,15 +514,79 @@ sap_automation --tcode lt03 --show-last
 sap_automation --tcode lt03 --shipments=1,2,3 --conn-count=2
 sap_automation --tcode lt03 --shipments=1,2,3 --multi-conn
 
-# resume: skip deliveries that already have a created TO in today's result.tsv
+# resume: skip deliveries that already have a created TO in any of today's runs
 sap_automation --tcode lt03 --shipments-file shipments.txt --lt03-resume
+
+# HTML summary of a run that is already on disk (no SAP): today's runs, or the runs of a given day
+sap_automation --tcode lt03 --summarize
+sap_automation --tcode lt03 --summarize=2026-11-13
 ```
 
-Outputs go to `<reports_dir>\MANUAL_TO\<yyyy-mm-dd>\`: `log.tsv` (what was planned/entered/skipped),
+Every run has its own folder `<reports_dir>\MANUAL_TO\<yyyy-mm-dd>\run_HHMMSS\` (v0.20.0; before that the
+files were written to the day folder and a second run of the day replaced the first; such runs are still
+found). It holds: `log.tsv` (what was planned/entered/skipped),
 `result.tsv` (one row per delivery: created, no_items, in_process, nothing_picked, failed),
 `summary.json` (machine-readable), the VL06O and stock (`to_sn`) tables of the run, and, for `--dry-run`,
 `dryrun_picks.tsv` (every file gets a `dryrun_` prefix). The exit code is non-zero when a delivery or shipment
 failed (no data / nothing to pick is not a failure).
+
+**Summary page.** Every run also writes `summary.html` (`dryrun_summary.html` for a dry run) into its folder:
+one self-contained file with the totals, the run settings, the deliveries with their status and SAP message
+(transfer order number), every pick (relabel / repack / skipped marked), the full log and the source tables
+(VL06O, `to_sn`) as collapsible sections; every table can be filtered and sorted by clicking a column, and the
+page prints cleanly. After a real run at a terminal it is opened in the browser (set `SAP_NO_OPEN=1` to stop
+that). `--summarize` builds the same page later from the files on disk: with one run of the day it is written
+right away; with several the runs are listed as `summarized` / `not yet summarized` and you pick one (or
+"all not yet summarized"). Without a terminal (scheduled task, pipe) every run that has no summary yet is
+summarized, and when all have one the newest is rebuilt. `--summarize=YYYY-MM-DD` does the same for another
+day. A run counts as summarized when its `summary.html` exists; delete the file to list it as open again.
+
+#### Driving LT03 from a GUI or script (API)
+
+LT03 is meant to be driven by another program (the GUI wraps this executable; there is no separate API
+process). The contract:
+
+* **Start it** with piped stdin/stdout/stderr (no console window needed): `sap_automation.exe --tcode lt03
+  --json <flags>`. With no terminal attached nothing ever prompts, no viewer opens and no browser is launched
+  (`SAP_NO_OPEN=1` also stops the browser when it *is* a terminal; `SAP_NO_STATUS=1` turns off the parallel status panel).
+  Shipments: `--shipments=a,b`, `--shipments-file <path>`, or `--shipments-file -` and write them to stdin (then close it).
+* **Every setting has a flag** (CLI > `[abc.manual_to]` > default), so the GUI never has to edit `config.toml`:
+  `--bin-pick-strategy`, `--age-cutoff`, `--allow-relabel[=bool]`, `--skip-blacklist[=bool]`,
+  `--blacklist-material-policy`, `--shipto-strategy=first|majority`, `--proceed-without-gr[=bool]`,
+  `--vl06o-per-shipment[=bool]`, `--lt03-warehouse`, `--lt03-vl06o-variant`, `--lt03-vl06o-layout`,
+  `--lt03-zmdesnr-variant`, `--lt03-zmdesnr-layout`, plus `--dry-run`, `--lt03-resume`, `--conn-count=N` /
+  `--multi-conn`, `--output-date`. (Only the ZMDESNR column header names `material_col`, `bin_col`, ... stay config-only.)
+  The effective values are echoed in the result (`settings`). Flags that are not LT03's are rejected with a message.
+* **Result.** With `--json` the **last line on stdout** is one JSON object (`schema` 1). Everything above it is the
+  human-readable log and may be shown to the user live; take the last line that starts with `{`. Exit code: `0` = ok,
+  `1` = a delivery/shipment failed or an error stopped the run ("no data" / "nothing to pick" are not failures).
+
+  Run (real or `--dry-run`):
+  ```json
+  {"schema":1,"tcode":"LT03","version":"0.21.0","date":"2026-11-17","dry_run":false,"ok":true,"failures":0,
+   "run_id":"run_093012","run_dir":"C:\\reports\\MANUAL_TO\\2026-11-17\\run_093012",
+   "settings":{"bin_pick_strategy":"fifo","age_cutoff_days":30,"allow_relabel":true,"skip_blacklist":true,
+               "blacklist_material_policy":"allow_material_skip_bins","shipto_strategy":"first","proceed_without_gr":true,
+               "warehouse":"WH01","dry_run":false,"resume":false,"vl06o_per_shipment":false,"vl06o_variant":"...",
+               "vl06o_layout":"...","zmdesnr_variant":"...","zmdesnr_layout":"...","reports_dir":"..."},
+   "files":["...\\log.tsv","...\\result.tsv","...\\summary.json","...\\summary.html"],
+   "units":[{"unit":"all","shipments":["24483092"],"status":"done","message":"",
+     "deliveries":[{"delivery":"D1","shipment":"24483092","ship_to":"S1","status":"created","detail":"TO 123",
+       "materials":[{"material":"M1","open_qty":150.0,"skipped":null,
+         "picks":[{"bin":"B1","qty":100.0,"reason":"whole bin","relabel":false,"repack":false,"gr_date":"2026-11-01"}]}]}]}]}
+  ```
+  `status` of a unit: `done` | `no_data` | `failed`; of a delivery: `created`, `planned` (dry run), `no_items`,
+  `in_process`, `nothing_picked`, `failed`. The same object (without `files` of the HTML, which is written afterwards) is
+  `summary.json` in the run folder, so a GUI can also read finished runs from disk (`<reports_dir>\MANUAL_TO\<date>\run_*\`).
+  `--show-last --json` gives `{"kind":"show_last","ok":true,"picks_file":...,"run_dir":...,"shipments":[...],"picks":[[...]]}`
+  and `--summarize[=date] --json` gives `{"kind":"summarize","ok":true,"day":...,"written":[...html files]}`; neither
+  touches SAP.
+  **Errors** (bad flag, no shipments, SAP not reachable, ...) end in `{"schema":1,"tcode":"LT03","ok":false,"error":"..."}`
+  and exit code 1; clap's own usage errors (unknown flag) go to stderr before any JSON.
+* **Progress.** Parse the log lines on stdout for live progress (they are plain text, one event per line); with
+  `--conn-count` / `--multi-conn` each line carries the `[sN]` session tag.
+* **One thing at a time per SAP session:** the GUI should not start two LT03 processes against the same SAP session
+  (use `--conn-count` instead; it opens its own sessions and closes them).
 
 A pick is flagged `relabel` when its bin is not on the delivery's ship-to whitelist and `repack` when its quantity
 is not a multiple of the pallet size (the most common bin quantity of the material). The shipment column of the

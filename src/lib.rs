@@ -15,6 +15,7 @@ pub mod lt03_db;
 pub mod lt03_module;
 pub mod lt03_plan;
 pub mod lt03_runner;
+pub mod lt03_summary;
 pub mod lt23;
 pub mod lx03;
 pub mod lx03_module;

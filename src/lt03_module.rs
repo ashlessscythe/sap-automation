@@ -47,6 +47,9 @@ pub struct ManualToSettings {
     /// at a time) instead of one VL06O with all shipments. The default is one run with all of
     /// them; the shipment then comes from a shipment column of the VL06O layout, when it has one.
     pub vl06o_per_shipment: bool,
+    /// Subfolder of this run under the day folder (`run_HHMMSS`), so several runs of a day keep
+    /// their own files. Empty = the day folder itself (the layout before v0.20.0; tests).
+    pub run_id: String,
 }
 
 /// Neutral placeholders (site names live in the git-ignored `config.toml`).
@@ -96,8 +99,16 @@ pub fn resolve_manual_to(
     cli: &Lt03Cli,
     today: NaiveDate,
 ) -> Result<ManualToSettings> {
-    let base = crate::abc::dispatch::resolve_mustgo(input);
+    let mut base = crate::abc::dispatch::resolve_mustgo(input);
     let sec = &input.section;
+    if let Some(w) = cli
+        .warehouse
+        .as_deref()
+        .map(str::trim)
+        .filter(|w| !w.is_empty())
+    {
+        base.cfg.warehouse = w.to_string();
+    }
     let mut lt = Lt03Config::new(&base.cfg.warehouse, today);
 
     let strategy = cli
@@ -124,7 +135,10 @@ pub fn resolve_manual_to(
             .or_else(|| ps(sec, "blacklist_material_policy"))
             .unwrap_or_else(|| BlacklistPolicy::AllowMaterialSkipBins.name().to_string()),
     );
-    lt.proceed_without_gr = pb(sec, "proceed_without_gr").unwrap_or(true);
+    lt.proceed_without_gr = cli
+        .proceed_without_gr
+        .or_else(|| pb(sec, "proceed_without_gr"))
+        .unwrap_or(true);
     lt.sap_date_format = ps(sec, "sap_date_format")
         .or_else(|| input.global_date_format.clone())
         .filter(|v| !v.trim().is_empty())
@@ -148,22 +162,43 @@ pub fn resolve_manual_to(
         reports_dir: base.reports_dir,
         sap: base.cfg,
         vl06o_variant: Some(
-            ps(sec, "vl06o_variant").unwrap_or_else(|| DEFAULT_VL06O_VARIANT.to_string()),
+            cli.vl06o_variant
+                .clone()
+                .or_else(|| ps(sec, "vl06o_variant"))
+                .unwrap_or_else(|| DEFAULT_VL06O_VARIANT.to_string()),
         ),
         vl06o_layout: Some(
-            ps(sec, "vl06o_layout").unwrap_or_else(|| DEFAULT_VL06O_LAYOUT.to_string()),
+            cli.vl06o_layout
+                .clone()
+                .or_else(|| ps(sec, "vl06o_layout"))
+                .unwrap_or_else(|| DEFAULT_VL06O_LAYOUT.to_string()),
         ),
         zmdesnr_variant: Some(
-            ps(sec, "zmdesnr_variant").unwrap_or_else(|| DEFAULT_ZMDESNR_VARIANT.to_string()),
+            cli.zmdesnr_variant
+                .clone()
+                .or_else(|| ps(sec, "zmdesnr_variant"))
+                .unwrap_or_else(|| DEFAULT_ZMDESNR_VARIANT.to_string()),
         ),
         zmdesnr_layout: Some(
-            ps(sec, "zmdesnr_layout").unwrap_or_else(|| DEFAULT_ZMDESNR_LAYOUT.to_string()),
+            cli.zmdesnr_layout
+                .clone()
+                .or_else(|| ps(sec, "zmdesnr_layout"))
+                .unwrap_or_else(|| DEFAULT_ZMDESNR_LAYOUT.to_string()),
         ),
         lt,
-        shipto_strategy: ShipToStrategy::parse(&ps(sec, "shipto_strategy").unwrap_or_default()),
+        shipto_strategy: ShipToStrategy::parse(
+            &cli.shipto_strategy
+                .clone()
+                .or_else(|| ps(sec, "shipto_strategy"))
+                .unwrap_or_default(),
+        ),
         db_cols: cols,
         resume: cli.resume,
-        vl06o_per_shipment: pb(sec, "vl06o_per_shipment").unwrap_or(false),
+        vl06o_per_shipment: cli
+            .vl06o_per_shipment
+            .or_else(|| pb(sec, "vl06o_per_shipment"))
+            .unwrap_or(false),
+        run_id: String::new(),
     })
 }
 
@@ -409,7 +444,7 @@ impl std::error::Error for NoData {}
 /// Keep what SAP returned next to the results (the export files themselves are deleted after they
 /// loaded): `<dir>\<prefix><unit>_<name>.tsv`. Best effort, never fails the run.
 fn save_table(st: &ManualToSettings, unit_tag: &str, name: &str, t: &Table) {
-    let dir = output_dir(&st.reports_dir, st.lt.today);
+    let dir = run_dir(st);
     if std::fs::create_dir_all(&dir).is_err() {
         return;
     }
@@ -804,6 +839,7 @@ impl RunReport {
                             MaterialOutcome::Picked(p) => p.iter().map(|p| json!({
                                 "bin": p.bin, "qty": p.qty, "reason": p.reason,
                                 "relabel": p.relabel(), "repack": p.repack,
+                                "gr_date": p.gr_date.map(|g| g.to_string()),
                             })).collect::<Vec<_>>(),
                             _ => Vec::new(),
                         },
@@ -829,6 +865,56 @@ pub fn output_dir(reports_dir: &Path, today: NaiveDate) -> PathBuf {
         .join(today.format("%Y-%m-%d").to_string())
 }
 
+/// Folder of THIS run: `<day folder>\run_HHMMSS`, or the day folder when the run has no id.
+pub fn run_dir(st: &ManualToSettings) -> PathBuf {
+    let day = output_dir(&st.reports_dir, st.lt.today);
+    if st.run_id.is_empty() {
+        day
+    } else {
+        day.join(&st.run_id)
+    }
+}
+
+/// A run folder name that is free in `day_dir`: `run_HHMMSS`, then `run_HHMMSS_2`, ...
+pub fn new_run_id(day_dir: &Path, now: chrono::NaiveTime) -> String {
+    let base = format!("run_{}", now.format("%H%M%S"));
+    let mut id = base.clone();
+    let mut n = 2;
+    while day_dir.join(&id).exists() {
+        id = format!("{base}_{n}");
+        n += 1;
+    }
+    id
+}
+
+/// The folders of a day that can hold run files: the day folder itself (runs before v0.20.0)
+/// and its `run_*` subfolders in name (= time) order.
+pub fn run_folders(day_dir: &Path) -> Vec<PathBuf> {
+    let mut subs: Vec<PathBuf> = std::fs::read_dir(day_dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            p.is_dir()
+                && p.file_name()
+                    .is_some_and(|n| n.to_string_lossy().starts_with("run_"))
+        })
+        .collect();
+    subs.sort();
+    let mut all = vec![day_dir.to_path_buf()];
+    all.extend(subs);
+    all
+}
+
+/// Deliveries created by any run of the day (resume): the day folder and every run folder.
+pub fn read_done_deliveries_day(day_dir: &Path) -> HashSet<String> {
+    run_folders(day_dir)
+        .iter()
+        .flat_map(|d| read_done_deliveries(d))
+        .collect()
+}
+
 fn file_prefix(dry_run: bool) -> &'static str {
     if dry_run {
         "dryrun_"
@@ -837,7 +923,7 @@ fn file_prefix(dry_run: bool) -> &'static str {
     }
 }
 
-/// Deliveries already created today (resume).
+/// Deliveries already created by the run in `dir` (see [`read_done_deliveries_day`]).
 pub fn read_done_deliveries(dir: &Path) -> HashSet<String> {
     let text = std::fs::read_to_string(dir.join("result.tsv")).unwrap_or_default();
     text.lines()
@@ -849,8 +935,93 @@ pub fn read_done_deliveries(dir: &Path) -> HashSet<String> {
         .collect()
 }
 
+/// The effective settings as JSON (part of `summary.json` and of the `--json` line).
+pub fn settings_json(st: &ManualToSettings) -> serde_json::Value {
+    serde_json::json!({
+        "bin_pick_strategy": st.lt.strategy.name(),
+        "age_cutoff_days": st.lt.age_cutoff_days,
+        "allow_relabel": st.lt.allow_relabel,
+        "skip_blacklist": st.lt.skip_blacklist,
+        "blacklist_material_policy": st.lt.blacklist_policy.name(),
+        "shipto_strategy": match st.shipto_strategy {
+            ShipToStrategy::First => "first",
+            ShipToStrategy::Majority => "majority",
+        },
+        "proceed_without_gr": st.lt.proceed_without_gr,
+        "warehouse": st.lt.warehouse,
+        "dry_run": st.lt.dry_run,
+        "resume": st.resume,
+        "vl06o_per_shipment": st.vl06o_per_shipment,
+        "vl06o_variant": st.vl06o_variant,
+        "vl06o_layout": st.vl06o_layout,
+        "zmdesnr_variant": st.zmdesnr_variant,
+        "zmdesnr_layout": st.zmdesnr_layout,
+        "reports_dir": st.reports_dir.display().to_string(),
+    })
+}
+
+/// `summary_json` plus what a wrapper needs: schema, version, run folder, settings, files.
+pub fn result_json(
+    st: &ManualToSettings,
+    rep: &RunReport,
+    dir: &Path,
+    files: &[PathBuf],
+) -> serde_json::Value {
+    let mut v = rep.summary_json();
+    if let Some(o) = v.as_object_mut() {
+        o.insert("schema".into(), 1.into());
+        o.insert("version".into(), env!("CARGO_PKG_VERSION").into());
+        o.insert("run_id".into(), st.run_id.clone().into());
+        o.insert("run_dir".into(), dir.display().to_string().into());
+        o.insert("settings".into(), settings_json(st));
+        o.insert(
+            "files".into(),
+            files
+                .iter()
+                .map(|f| f.display().to_string())
+                .collect::<Vec<_>>()
+                .into(),
+        );
+    }
+    v
+}
+
+/// Set once the `--json` line of a run was printed (so the error wrapper does not add a second).
+static JSON_PRINTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Print the one-line JSON outcome (only with `--json`).
+pub fn print_json_line(v: &serde_json::Value) {
+    if crate::utils::cli_overrides::lt03().json {
+        println!("{}", serde_json::to_string(v).unwrap_or_default());
+        JSON_PRINTED.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+/// For `main`: with `--json`, an error that no result line covered becomes
+/// `{"schema":1,"tcode":"LT03","ok":false,"error":"..."}` as the last stdout line.
+pub fn print_json_error(e: &anyhow::Error) {
+    if crate::utils::cli_overrides::lt03().json
+        && !JSON_PRINTED.load(std::sync::atomic::Ordering::SeqCst)
+    {
+        println!(
+            "{}",
+            serde_json::json!({"schema": 1, "tcode": "LT03", "ok": false, "error": format!("{e:#}")})
+        );
+    }
+}
+
 /// Write log, result, picks (dry run) and summary json; returns the files.
 pub fn write_outputs(dir: &Path, rep: &RunReport, log: &RunLog) -> Result<Vec<PathBuf>> {
+    write_outputs_ctx(dir, rep, log, None)
+}
+
+/// [`write_outputs`]; with the settings the `summary.json` also carries the run context.
+pub fn write_outputs_ctx(
+    dir: &Path,
+    rep: &RunReport,
+    log: &RunLog,
+    st: Option<&ManualToSettings>,
+) -> Result<Vec<PathBuf>> {
     std::fs::create_dir_all(dir).with_context(|| format!("cannot create {}", dir.display()))?;
     let pre = file_prefix(rep.dry_run);
     let mut files = Vec::new();
@@ -865,9 +1036,26 @@ pub fn write_outputs(dir: &Path, rep: &RunReport, log: &RunLog) -> Result<Vec<Pa
     if rep.dry_run {
         put("dryrun_picks.tsv".to_string(), rep.picks_tsv())?;
     }
+    let mut summary = match st {
+        Some(st) => result_json(st, rep, dir, &[]),
+        None => rep.summary_json(),
+    };
+    if st.is_some() {
+        // the files of this call, summary.json included (the names are fixed)
+        let mut names = vec![format!("{pre}log.tsv"), format!("{pre}result.tsv")];
+        if rep.dry_run {
+            names.push("dryrun_picks.tsv".to_string());
+        }
+        names.push(format!("{pre}summary.json"));
+        summary["files"] = names
+            .iter()
+            .map(|n| dir.join(n).display().to_string())
+            .collect::<Vec<_>>()
+            .into();
+    }
     put(
         format!("{pre}summary.json"),
-        serde_json::to_string_pretty(&rep.summary_json())?,
+        serde_json::to_string_pretty(&summary)?,
     )?;
     Ok(files)
 }
@@ -937,17 +1125,24 @@ fn view_rows(rows: &[Vec<String>], deliveries: usize, shipments: &[String], titl
     }
 }
 
-/// The newest `dryrun_picks.tsv` under `<reports_dir>\MANUAL_TO\<date>\` (latest date folder).
+/// The newest `dryrun_picks.tsv` under `<reports_dir>\MANUAL_TO\<date>\`: the latest date folder
+/// that has one, and in it the latest run folder (the day folder itself counts as the oldest).
 pub fn find_last_picks(reports_dir: &Path) -> Option<PathBuf> {
     let root = reports_dir.join("MANUAL_TO");
     let mut days: Vec<PathBuf> = std::fs::read_dir(&root)
         .ok()?
         .flatten()
         .map(|e| e.path())
-        .filter(|p| p.join("dryrun_picks.tsv").is_file())
+        .filter(|p| p.is_dir())
         .collect();
     days.sort();
-    days.pop().map(|d| d.join("dryrun_picks.tsv"))
+    days.iter().rev().find_map(|day| {
+        run_folders(day)
+            .into_iter()
+            .rev()
+            .map(|d| d.join("dryrun_picks.tsv"))
+            .find(|f| f.is_file())
+    })
 }
 
 /// Rows of a `dryrun_picks.tsv` (header skipped, short rows padded).
@@ -1009,6 +1204,13 @@ pub fn show_last_table() -> Result<()> {
         println!("\n{ships}\n");
     }
     println!("{}", RunReport::format_table(&headers, &shown));
+    print_json_line(&serde_json::json!({
+        "schema": 1, "tcode": "LT03", "kind": "show_last", "ok": true,
+        "picks_file": file.display().to_string(),
+        "run_dir": file.parent().map(|p| p.display().to_string()),
+        "shipments": shipments,
+        "picks": rows,
+    }));
     Ok(())
 }
 
@@ -1023,9 +1225,22 @@ pub fn finish_run(st: &ManualToSettings, rep: &RunReport, log: &RunLog) -> Resul
         }
         println!("{}", rep.picks_table());
     }
-    let dir = output_dir(&st.reports_dir, rep.today);
-    for f in write_outputs(&dir, rep, log)? {
+    let dir = run_dir(st);
+    let mut files = write_outputs_ctx(&dir, rep, log, Some(st))?;
+    for f in &files {
         println!("wrote {}", f.display());
+    }
+    // the HTML summary of the run (best effort: it never changes the outcome of the run)
+    let run = crate::lt03_summary::RunRef::new(&dir, rep.dry_run);
+    match crate::lt03_summary::summarize(&run) {
+        Ok(f) => {
+            println!("wrote {}", f.display());
+            files.push(f.clone());
+            if !rep.dry_run {
+                crate::lt03_summary::open_if_terminal(&f);
+            }
+        }
+        Err(e) => println!("summary not written: {e:#}"),
     }
     for u in &rep.units {
         match &u.status {
@@ -1041,6 +1256,7 @@ pub fn finish_run(st: &ManualToSettings, rep: &RunReport, log: &RunLog) -> Resul
         if rep.dry_run { "dry run" } else { "run" },
         rep.failures()
     );
+    print_json_line(&result_json(st, rep, &dir, &files));
     if rep.ok() {
         Ok(())
     } else {
@@ -1050,11 +1266,17 @@ pub fn finish_run(st: &ManualToSettings, rep: &RunReport, log: &RunLog) -> Resul
 
 /// Settings from the environment (CLI overrides, `config.toml`).
 pub fn settings_from_environment() -> Result<ManualToSettings> {
-    resolve_manual_to(
+    let mut st = resolve_manual_to(
         &crate::abc::dispatch::environment_input("manual_to"),
         crate::utils::cli_overrides::lt03(),
         crate::utils::cli_overrides::effective_today(),
-    )
+    )?;
+    // every run gets its own folder (nothing is created until the run writes a file)
+    st.run_id = new_run_id(
+        &output_dir(&st.reports_dir, st.lt.today),
+        chrono::Local::now().time(),
+    );
+    Ok(st)
 }
 
 /// Shipments from the environment: CLI flags, stdin, clipboard, newest VT11 export.
@@ -1085,9 +1307,8 @@ pub fn run_lt03_auto(session: &GuiSession) -> Result<()> {
     let st = settings_from_environment()?;
     let shipments = shipments_from_environment(&st)?;
     println!("{} shipment(s): {}", shipments.len(), shipments.join(", "));
-    let dir = output_dir(&st.reports_dir, st.lt.today);
     let skip = if st.resume && !st.lt.dry_run {
-        read_done_deliveries(&dir)
+        read_done_deliveries_day(&output_dir(&st.reports_dir, st.lt.today))
     } else {
         HashSet::new()
     };
@@ -1353,6 +1574,29 @@ mod tests {
         assert_eq!(s.lt.strategy, Strategy::Fifo);
         assert_eq!(s.lt.age_cutoff_days, 0);
         assert!(!s.lt.allow_relabel);
+        // the settings that used to be config-only can be given on the command line too
+        let cli = Lt03Cli {
+            warehouse: Some("W1".into()),
+            shipto_strategy: Some("majority".into()),
+            vl06o_per_shipment: Some(true),
+            proceed_without_gr: Some(false),
+            vl06o_variant: Some("V1".into()),
+            vl06o_layout: Some("L1".into()),
+            zmdesnr_variant: Some("V2".into()),
+            zmdesnr_layout: Some("L2".into()),
+            ..Lt03Cli::default()
+        };
+        let s = resolve_manual_to(&input, &cli, d).unwrap();
+        assert_eq!(
+            (s.lt.warehouse.as_str(), s.sap.warehouse.as_str()),
+            ("W1", "W1")
+        );
+        assert_eq!(s.shipto_strategy, ShipToStrategy::Majority);
+        assert!(s.vl06o_per_shipment && !s.lt.proceed_without_gr);
+        assert_eq!(s.vl06o_variant.as_deref(), Some("V1"));
+        assert_eq!(s.vl06o_layout.as_deref(), Some("L1"));
+        assert_eq!(s.zmdesnr_variant.as_deref(), Some("V2"));
+        assert_eq!(s.zmdesnr_layout.as_deref(), Some("L2"));
         let bad = Lt03Cli {
             bin_pick_strategy: Some("random".into()),
             ..Lt03Cli::default()
@@ -1459,6 +1703,13 @@ mod tests {
         assert!(f.to_string_lossy().contains("2026-11-13"), "{f:?}");
         let rows = parse_picks_tsv(&std::fs::read_to_string(&f).unwrap());
         assert_eq!(rows, run.pick_rows());
+        // run folders of the day win over the day folder, the latest one first
+        let day = output_dir(&root, NaiveDate::from_ymd_opt(2026, 11, 13).unwrap());
+        for id in ["run_090000", "run_101500"] {
+            write_outputs(&day.join(id), &run, &log).unwrap();
+        }
+        let f = find_last_picks(&root).unwrap();
+        assert!(f.to_string_lossy().contains("run_101500"), "{f:?}");
         assert!(find_last_picks(&root.join("nothing")).is_none());
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -1610,6 +1861,60 @@ mod tests {
         let files = write_outputs(&dir, &run, &log).unwrap();
         assert_eq!(files.len(), 3);
         assert_eq!(read_done_deliveries(&dir), ["D1".to_string()].into());
+        // resume looks at every run folder of the day; a run id that is taken gets a suffix
+        let day = std::env::temp_dir().join(format!("lt03_day_{}", std::process::id()));
+        let t = chrono::NaiveTime::from_hms_opt(9, 5, 7).unwrap();
+        assert_eq!(new_run_id(&day, t), "run_090507");
+        write_outputs(&day.join("run_090507"), &run, &log).unwrap();
+        assert_eq!(new_run_id(&day, t), "run_090507_2");
+        assert_eq!(read_done_deliveries_day(&day), ["D1".to_string()].into());
+        let mut st2 = st.clone();
+        st2.run_id = "run_090507".into();
+        assert!(run_dir(&st2).ends_with("run_090507"));
+        let _ = std::fs::remove_dir_all(&day);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn summary_json_carries_the_run_context_for_wrappers() {
+        let mut st = settings(false);
+        st.run_id = "run_101010".into();
+        let mut sap = fake(vl(), sn());
+        let unit = Unit {
+            tag: "s1".into(),
+            shipments: vec!["1".into()],
+        };
+        let mut log = RunLog::default();
+        let rep = run_unit(&mut sap, &st, &unit, &HashSet::new(), &mut log);
+        let run = RunReport {
+            units: vec![rep],
+            dry_run: false,
+            today: st.lt.today,
+        };
+        let dir = std::env::temp_dir().join(format!("lt03_ctx_{}", std::process::id()));
+        let files = write_outputs_ctx(&dir, &run, &log, Some(&st)).unwrap();
+        assert_eq!(files.len(), 3);
+        let v: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(dir.join("summary.json")).unwrap())
+                .unwrap();
+        assert_eq!(v["schema"], 1);
+        assert_eq!(v["tcode"], "LT03");
+        assert_eq!(v["run_id"], "run_101010");
+        assert_eq!(v["run_dir"], dir.display().to_string());
+        assert_eq!(v["settings"]["bin_pick_strategy"], st.lt.strategy.name());
+        assert_eq!(v["settings"]["dry_run"], false);
+        let listed: Vec<String> = v["files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|f| f.as_str().unwrap().to_string())
+            .collect();
+        assert_eq!(listed.len(), 3);
+        assert!(listed.iter().all(|f| std::path::Path::new(f).is_file()));
+        // the console line is the same object (plus the files written)
+        let line = result_json(&st, &run, &dir, &files);
+        assert_eq!(line["ok"], v["ok"]);
+        assert_eq!(line["files"].as_array().unwrap().len(), 3);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

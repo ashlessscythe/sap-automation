@@ -20,6 +20,7 @@ mod lt03_db;
 mod lt03_module;
 mod lt03_plan;
 mod lt03_runner;
+mod lt03_summary;
 mod lt23;
 mod lx03;
 mod lx03_module;
@@ -62,6 +63,15 @@ use zmdesnr_module::{run_zmdesnr_auto, run_zmdesnr_module};
 use zvt11_module::{run_zvt11_auto, run_zvt11_module};
 
 fn main() -> anyhow::Result<()> {
+    let r = real_main();
+    // `--json` (LT03): an error that no result line covered still ends in one JSON line
+    if let Err(e) = &r {
+        sap_automation::lt03_module::print_json_error(e);
+    }
+    r
+}
+
+fn real_main() -> anyhow::Result<()> {
     // Parse command line arguments
     let cli = Cli::parse();
 
@@ -158,7 +168,11 @@ fn main() -> anyhow::Result<()> {
 
     // LT03: show the table of the last dry run again (no SAP, no shipments needed)
     if cli_overrides().lt03.show_last {
-        return lt03_module::show_last_table();
+        return sap_automation::lt03_module::show_last_table();
+    }
+    // LT03: HTML summary of a run that is already on disk (no SAP, no shipments needed)
+    if cli_overrides().lt03.summarize {
+        return sap_automation::lt03_summary::run_summarize(cli_overrides().lt03.summarize_date);
     }
 
     // --run-sequence is config-driven: per-tcode flags are not allowed.

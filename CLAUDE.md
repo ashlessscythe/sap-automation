@@ -138,7 +138,9 @@ Defaults (CLI > `[abc.manual_to]` > default): `fifo`, `age_cutoff` 30, `allow_re
 `blacklist_material_policy` `allow_material_skip_bins`, `shipto_strategy` first, `proceed_without_gr` true (never asks), warehouse
 placeholder. The effective settings are printed and written as the first `log.tsv` line (`Run Settings`) of every run.
 
-Headless: never prompts, files in `<reports_dir>\MANUAL_TO\<date>\` (`log.tsv`, `result.tsv`, `summary.json`, the VL06O / `to_sn` tables of
+Headless: never prompts, files in `<reports_dir>\MANUAL_TO\<date>\run_HHMMSS\` (v0.20.0: one folder per run, `ManualToSettings.run_id` set
+in `settings_from_environment`, `run_dir(st)`; an empty `run_id` = the day folder, which is the pre-0.20 layout and what tests use;
+`run_folders(day)` = day folder + `run_*`, used by `--lt03-resume` via `read_done_deliveries_day` and by `--show-last`) (`log.tsv`, `result.tsv`, `summary.json`, the VL06O / `to_sn` tables of
 the run as `<unit>_vl06o.tsv` / `<unit>_to_sn.tsv`; `dryrun_` prefix for `--dry-run`), non-zero exit on failures (no data / no items to
 pick are not failures). The VL06O step checks that SAP's shipment list starts with the first requested shipment (scrolled back to the
 top first). One VL06O with all shipments is the default; `vl06o_per_shipment = true` runs it per shipment. The shipment column of the
@@ -148,6 +150,18 @@ files is filled when the VL06O layout has a `Shipment Number` column (or in per-
 until the start screen (delivery field present, `tabsFUNC_TABSTRIP` absent) is back, and shows a scrollable table (sticky header,
 shipments line, status line; relabel yellow, repack magenta, skipped red; no shipment column on screen) before printing the plain table.
 `--show-last` re-opens the last dry run from `dryrun_picks.tsv` / `dryrun_summary.json` without SAP.
+
+HTML summary (built 2026-11-16, v0.20.0; `src/lt03_summary.rs`, registered in lib.rs AND main.rs): `finish_run` writes
+`<prefix>summary.html` into the run folder after every run (best effort; opened with `cmd /C start` after a REAL run when stdin+stdout are
+terminals, `SAP_NO_OPEN` disables). `--tcode lt03 --summarize[=YYYY-MM-DD]` (`Lt03Cli.summarize` / `summarize_date`, handled in `main.rs`
+next to `--show-last`, before any SAP connection) rebuilds it from disk only: `list_runs(day_dir)` -> `RunRef{dir, dry_run}` (a run = a
+folder with `<prefix>summary.json`; "summarized" = its `summary.html` exists), one run = written directly, several = list + `dialoguer`
+pick when `can_prompt()`, else `pick_unattended` (all without a summary, else the newest). The page is pure `render_html(&RunData, generated)`
+from `summary.json` (deliveries, picks; `gr_date` per pick since v0.20.0), `log.tsv` and every other `.tsv` of the same kind in the
+folder (source tables); everything is HTML-escaped, CSS/JS inline, no external resources. Tried on the owner's real run folders
+(old day-folder layout); a run with the new `run_HHMMSS` folders has NOT been run live yet.
+
+**API for the GUI (v0.21.0, `--json`, offline-tested, NOT run live):** the GUI wraps the executable (no separate service), so the CLI is the API; contract documented in COMMAND_LINE_USAGE.md ("Driving LT03 from a GUI or script"). `--json` (`Lt03Cli.json`): the LAST stdout line is one JSON object: `result_json(st, rep, dir, files)` (= `RunReport::summary_json` + `schema`, `version`, `run_id`, `run_dir`, `settings` (`settings_json`), `files`); `write_outputs_ctx` writes the same into `summary.json`; `--show-last` / `--summarize` print their own `kind` objects; errors print `{"ok":false,"error"}` via `lt03_module::print_json_error` called from `main`'s wrapper (`main` -> `real_main`; a `JSON_PRINTED` flag stops a second line after a result line). Every `[abc.manual_to]` setting now has a flag (`--shipto-strategy`, `--vl06o-per-shipment`, `--proceed-without-gr`, `--lt03-warehouse`, `--lt03-vl06o-*`, `--lt03-zmdesnr-*`), resolved CLI > config > default in `resolve_manual_to`. **Pitfall (bit `--show-last`/`--summarize` before 0.21.0):** `main.rs` stores the CLI overrides in the LIB's static, so bin-only code must reach `cli_overrides()`-reading code through `sap_automation::...` (the bin copy of `lt03_module` sees defaults). Keep the JSON shape additive (`schema` 1): a GUI depends on it.
 
 Control ids come from the macro and a recording / screenshot (`wnd[0]` is a `GuiMainWindow`, keys go through it). `resources/*.xlsx` /
 `*.txt` and `/reports/` are git-ignored (real data); anonymise before any fixture.

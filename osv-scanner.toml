@@ -1,0 +1,14 @@
+# osv-scanner config (picked up next to Cargo.lock by the CI scan).
+# Both advisories are "unmaintained" notices, not vulnerabilities: every version is affected and
+# there is no fixed version. chrono is used throughout the crate; a migration (jiff / time) is a
+# separate project. They resurface after the date below so the decision is revisited.
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0543"
+ignoreUntil = 2027-05-17T00:00:00Z
+reason = "chrono unmaintained, no fix available; migration to jiff/time is planned work"
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0555"
+ignoreUntil = 2027-05-17T00:00:00Z
+reason = "chrono-tz unmaintained (follows chrono), no fix available"

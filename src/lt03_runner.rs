@@ -50,6 +50,31 @@ pub enum OpenOutcome {
     InProcess(String),
 }
 
+/// One pick of the two-pass flow, with what the read pass saw in the row so the pick pass can
+/// check the row before typing into it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PickTarget {
+    pub abs_row: usize,
+    pub bin: String,
+    /// Available quantity of the row as read.
+    pub avail: f64,
+    /// Selected quantity of the row as read (what must still be there before typing).
+    pub sel_before: f64,
+    pub qty: f64,
+}
+
+/// Result of one strict (checked) pick entry.
+#[derive(Debug, Clone, PartialEq)]
+pub enum EnterOutcome {
+    Entered,
+    /// The row did not look like the read pass said (or the value did not stick): nothing was
+    /// confirmed for this row and the caller cancels the material.
+    Mismatch(String),
+}
+
+/// Tolerance when comparing quantities read back from SAP.
+const QTY_EPS: f64 = 1e-6;
+
 /// What the SAP side must provide for one delivery. All methods act on the current screen.
 pub trait Lt03Screen {
     /// Start LT03, enter warehouse + delivery, Enter, check the status bar and (when ready) switch
@@ -63,6 +88,22 @@ pub trait Lt03Screen {
     /// Type `qty` into the selected-quantity cell of the row `abs_row` (bin `bin` is verified)
     /// and press Enter. `false` when the row/bin could not be found.
     fn enter_pick(&mut self, abs_row: usize, bin: &str, qty: f64) -> Result<bool>;
+    /// Two-pass mode: called once before the picks of a material (go to the top of the table).
+    fn begin_pick_pass(&mut self) -> Result<()> {
+        Ok(())
+    }
+    /// Two-pass mode: enter one pick without searching. The row must already be (or be scrolled
+    /// to) the exact `abs_row`, show the same bin, available and selected quantity as the read
+    /// pass, and the typed value must read back unchanged; anything else is a
+    /// [`EnterOutcome::Mismatch`] and nothing is entered for that row. The default maps the legacy
+    /// [`Self::enter_pick`] (no extra checks).
+    fn enter_pick_strict(&mut self, t: &PickTarget) -> Result<EnterOutcome> {
+        Ok(if self.enter_pick(t.abs_row, &t.bin, t.qty)? {
+            EnterOutcome::Entered
+        } else {
+            EnterOutcome::Mismatch("row or bin not found".to_string())
+        })
+    }
     /// Open quantity of the current material (re-read after picks).
     fn open_qty(&mut self) -> Result<f64>;
     /// Happy path: next material (the entered picks stay).
@@ -188,6 +229,10 @@ pub struct Lt03Config {
     pub sap_date_format: String,
     /// Plan only: nothing is entered, nothing is saved.
     pub dry_run: bool,
+    /// Safer pick entry (`--lt03-two-pass`): read the table once, plan, then enter the picks in
+    /// row order with a check of every row, and re-read the table to verify before the material
+    /// is kept. Any mismatch cancels that material only.
+    pub two_pass: bool,
     pub today: NaiveDate,
 }
 
@@ -203,9 +248,48 @@ impl Lt03Config {
             proceed_without_gr: true,
             sap_date_format: "yyyy-mm-dd".to_string(),
             dry_run: false,
+            two_pass: false,
             today,
         }
     }
+}
+
+/// Compare the table after the picks with the read pass: same rows, picked rows show exactly the
+/// planned quantity, every other row still shows what it showed before. `Err` says what differs.
+pub fn verify_selection(
+    before: &[RawRow],
+    picks: &[Pick],
+    after: &[RawRow],
+) -> std::result::Result<(), String> {
+    if before.len() != after.len() {
+        return Err(format!(
+            "stock table changed while picking ({} rows before, {} after)",
+            before.len(),
+            after.len()
+        ));
+    }
+    for b in before {
+        let Some(a) = after
+            .iter()
+            .find(|a| a.abs_row == b.abs_row && a.bin == b.bin)
+        else {
+            return Err(format!(
+                "row {} (bin {}) is not in the table any more",
+                b.abs_row, b.bin
+            ));
+        };
+        let expected = picks
+            .iter()
+            .find(|p| p.abs_row == b.abs_row && p.bin == b.bin)
+            .map_or(b.sel, |p| p.qty);
+        if (a.sel - expected).abs() > QTY_EPS {
+            return Err(format!(
+                "bin {} (row {}) shows {} selected, expected {}",
+                b.bin, b.abs_row, a.sel, expected
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// Outcome of one material.
@@ -377,6 +461,50 @@ impl Run<'_> {
             self.cfg.blacklist_policy.name()
         ));
         s
+    }
+
+    /// The "Bin Selection" log line of one pick.
+    #[allow(clippy::too_many_arguments)]
+    fn log_pick(
+        &mut self,
+        mat: &str,
+        p: &Pick,
+        gr_active: bool,
+        has_wl: bool,
+        mode: &str,
+        fmt: &str,
+        dry: bool,
+    ) {
+        let gr = match (gr_active, p.gr_date) {
+            (true, Some(d)) => format!(" GR={}", d.format(fmt)),
+            _ => String::new(),
+        };
+        let color = if p.relabel() || p.repack {
+            LogColor::Yellow
+        } else {
+            LogColor::None
+        };
+        let mut tags = String::new();
+        if p.relabel() {
+            tags.push_str(" [RELABEL]");
+        }
+        if p.repack {
+            tags.push_str(" [REPACK]");
+        }
+        self.log(
+            mat,
+            Some(p.qty),
+            &p.bin,
+            "Bin Selection",
+            format!(
+                "{}Selected {} from bin {}{}{gr}{tags} - Planned pick (snapshot){mode}",
+                if dry { "[DRY RUN] " } else { "" },
+                p.qty,
+                p.bin,
+                bin_status(has_wl, p.is_wl),
+            ),
+            color,
+        );
     }
 
     /// One material. Returns its outcome; the caller moves on (next / skip).
@@ -563,41 +691,84 @@ impl Run<'_> {
         let fmt = chrono_format(&self.cfg.sap_date_format);
         let dry = self.cfg.dry_run;
         let mut done: Vec<Pick> = Vec::new();
-        for p in &plan.picks {
-            if !dry && !screen.enter_pick(p.abs_row, &p.bin, p.qty)? {
-                continue; // row not found: left out, the open-quantity check below catches it
+        if self.cfg.two_pass && !dry {
+            // pass 2: picks in row order, every row checked first; pass 3: re-read and verify.
+            // Nothing is logged as selected until the verification passed.
+            let mut ordered: Vec<&Pick> = plan.picks.iter().collect();
+            ordered.sort_by_key(|p| p.abs_row);
+            screen.begin_pick_pass()?;
+            let mut entered: Vec<Pick> = Vec::new();
+            for p in ordered {
+                let Some(row) = raw
+                    .iter()
+                    .find(|r| r.abs_row == p.abs_row && r.bin == p.bin)
+                else {
+                    return skip(
+                        self,
+                        open_qty,
+                        format!(
+                            "Material {mat}: planned bin {} (row {}) is not in the stock read - edits cancelled, material skipped",
+                            p.bin, p.abs_row
+                        ),
+                        "Pick Pass Aborted",
+                    );
+                };
+                let target = PickTarget {
+                    abs_row: p.abs_row,
+                    bin: p.bin.clone(),
+                    avail: row.avail,
+                    sel_before: row.sel,
+                    qty: p.qty,
+                };
+                match screen.enter_pick_strict(&target)? {
+                    EnterOutcome::Entered => entered.push(p.clone()),
+                    EnterOutcome::Mismatch(why) => {
+                        return skip(
+                            self,
+                            open_qty,
+                            format!(
+                                "Material {mat}: pick of {} from bin {} (row {}) stopped: {why} - edits cancelled, material skipped",
+                                p.qty, p.bin, p.abs_row
+                            ),
+                            "Pick Pass Aborted",
+                        );
+                    }
+                }
             }
-            let gr = match (prepared.gr_active, p.gr_date) {
-                (true, Some(d)) => format!(" GR={}", d.format(&fmt)),
-                _ => String::new(),
-            };
-            let color = if p.relabel() || p.repack {
-                LogColor::Yellow
-            } else {
-                LogColor::None
-            };
-            let mut tags = String::new();
-            if p.relabel() {
-                tags.push_str(" [RELABEL]");
-            }
-            if p.repack {
-                tags.push_str(" [REPACK]");
+            let after = screen.read_stock()?;
+            if let Err(why) = verify_selection(&raw, &entered, &after) {
+                return skip(
+                    self,
+                    open_qty,
+                    format!(
+                        "Material {mat}: verification after picking failed: {why} - edits cancelled, material skipped"
+                    ),
+                    "Pick Verification Failed",
+                );
             }
             self.log(
                 &mat,
-                Some(p.qty),
-                &p.bin,
-                "Bin Selection",
+                Some(open_qty),
+                "",
+                "Pick Verified",
                 format!(
-                    "{}Selected {} from bin {}{}{gr}{tags} - Planned pick (snapshot){mode}",
-                    if dry { "[DRY RUN] " } else { "" },
-                    p.qty,
-                    p.bin,
-                    bin_status(has_wl, p.is_wl),
+                    "{} pick(s) entered in row order and re-read from SAP: all match the plan",
+                    entered.len()
                 ),
-                color,
+                LogColor::None,
             );
-            done.push(p.clone());
+            for p in &entered {
+                self.log_pick(&mat, p, prepared.gr_active, has_wl, &mode, &fmt, false);
+            }
+            done = entered;
+        } else {
+            for p in &plan.picks {
+                if !dry && !screen.enter_pick(p.abs_row, &p.bin, p.qty)? {
+                    continue; // row not found: left out, the open-quantity check below catches it
+                }
+                self.log_pick(&mat, p, prepared.gr_active, has_wl, &mode, &fmt, dry);
+                done.push(p.clone());
+            }
         }
         if dry {
             return Ok((MaterialOutcome::Picked(done), open_qty));
@@ -756,6 +927,17 @@ pub(crate) mod fakes {
         pub entered: Vec<(usize, String, f64)>,
         pub saved: Option<bool>,
         pub calls: Vec<&'static str>,
+        /// Selected quantities typed for the current material (shown by `read_stock`).
+        pub applied: Vec<(usize, f64)>,
+        /// Order in which `enter_pick_strict` was called (abs rows).
+        pub strict_order: Vec<usize>,
+        pub begin_calls: usize,
+        /// `enter_pick_strict` reports a mismatch for this row.
+        pub mismatch_row: Option<usize>,
+        /// The re-read shows this selected quantity for this row (a value that did not stick).
+        pub corrupt: Option<(usize, f64)>,
+        /// Number of `read_stock` calls.
+        pub reads: usize,
     }
 
     pub fn mat(m: &str, open: f64, rows: &[(usize, &str, f64, &str)]) -> Mat {
@@ -788,6 +970,12 @@ pub(crate) mod fakes {
                 entered: Vec::new(),
                 saved: None,
                 calls: Vec::new(),
+                applied: Vec::new(),
+                strict_order: Vec::new(),
+                begin_calls: 0,
+                mismatch_row: None,
+                corrupt: None,
+                reads: 0,
             }
         }
     }
@@ -800,12 +988,47 @@ pub(crate) mod fakes {
             Ok(self.mats.get(self.idx).map(|m| m.info.clone()))
         }
         fn read_stock(&mut self) -> Result<Vec<RawRow>> {
-            Ok(self.mats[self.idx].rows.clone())
+            self.reads += 1;
+            let mut rows = self.mats[self.idx].rows.clone();
+            for r in &mut rows {
+                if let Some((_, q)) = self.applied.iter().rev().find(|(a, _)| *a == r.abs_row) {
+                    r.sel = *q;
+                }
+                if let Some((a, q)) = self.corrupt {
+                    if a == r.abs_row && self.reads > 1 {
+                        r.sel = q;
+                    }
+                }
+            }
+            Ok(rows)
         }
         fn enter_pick(&mut self, abs_row: usize, bin: &str, qty: f64) -> Result<bool> {
             self.entered.push((abs_row, bin.into(), qty));
+            self.applied.push((abs_row, qty));
             self.mats[self.idx].info.open -= qty;
             Ok(true)
+        }
+        fn begin_pick_pass(&mut self) -> Result<()> {
+            self.begin_calls += 1;
+            Ok(())
+        }
+        fn enter_pick_strict(&mut self, t: &PickTarget) -> Result<EnterOutcome> {
+            self.strict_order.push(t.abs_row);
+            let row = self.mats[self.idx]
+                .rows
+                .iter()
+                .find(|r| r.abs_row == t.abs_row)
+                .cloned();
+            let ok = row.is_some_and(|r| {
+                r.bin == t.bin
+                    && (r.avail - t.avail).abs() < QTY_EPS
+                    && (r.sel - t.sel_before).abs() < QTY_EPS
+            });
+            if !ok || self.mismatch_row == Some(t.abs_row) {
+                return Ok(EnterOutcome::Mismatch("row shows something else".into()));
+            }
+            self.enter_pick(t.abs_row, &t.bin, t.qty)?;
+            Ok(EnterOutcome::Entered)
         }
         fn open_qty(&mut self) -> Result<f64> {
             Ok(self.mats[self.idx].info.open)
@@ -813,11 +1036,15 @@ pub(crate) mod fakes {
         fn next_material(&mut self) -> Result<()> {
             self.calls.push("next");
             self.idx += 1;
+            self.applied.clear();
+            self.reads = 0;
             Ok(())
         }
         fn skip_material(&mut self) -> Result<()> {
             self.calls.push("skip");
             self.idx += 1;
+            self.applied.clear();
+            self.reads = 0;
             Ok(())
         }
         fn at_overview(&mut self) -> Result<bool> {
@@ -908,6 +1135,136 @@ mod tests {
             .lines
             .iter()
             .any(|l| l.action == "Bin Selection" && l.details.contains("(Whitelist)")));
+    }
+
+    fn two_pass_cfg() -> Lt03Config {
+        let mut c = cfg();
+        c.two_pass = true;
+        c
+    }
+
+    #[test]
+    fn two_pass_enters_in_row_order_and_verifies() {
+        // rows listed out of order: the pick pass still walks the table top to bottom
+        let mut s = Fake::new(vec![mat(
+            "M1",
+            200.0,
+            &[(1, "B2", 100.0, ""), (0, "B1", 100.0, "")],
+        )]);
+        let mut log = RunLog::default();
+        let r = run_delivery(&mut s, &two_pass_cfg(), &db(), "D1", Some("S1"), &mut log);
+        assert!(
+            matches!(r.status, DeliveryStatus::Created(_)),
+            "{:?}",
+            r.status
+        );
+        assert_eq!(s.strict_order, [0, 1]);
+        assert_eq!(s.begin_calls, 1);
+        assert_eq!(s.calls, ["next"]);
+        assert_eq!(s.saved, Some(true));
+        assert!(log.lines.iter().any(|l| l.action == "Pick Verified"));
+        assert_eq!(
+            log.lines
+                .iter()
+                .filter(|l| l.action == "Bin Selection")
+                .count(),
+            2
+        );
+    }
+
+    #[test]
+    fn two_pass_mismatch_cancels_only_that_material() {
+        let mut s = Fake::new(vec![
+            mat("M1", 200.0, &[(0, "B1", 100.0, ""), (1, "B2", 100.0, "")]),
+            mat("M2", 50.0, &[(0, "C1", 50.0, "")]),
+        ]);
+        s.mismatch_row = Some(1);
+        let mut log = RunLog::default();
+        let r = run_delivery(&mut s, &two_pass_cfg(), &db(), "D1", Some("S1"), &mut log);
+        assert_eq!(s.calls, ["skip", "next"]);
+        assert!(matches!(
+            r.materials[0].outcome,
+            MaterialOutcome::Skipped(_)
+        ));
+        assert!(matches!(r.materials[1].outcome, MaterialOutcome::Picked(_)));
+        assert!(log
+            .lines
+            .iter()
+            .any(|l| l.action == "Pick Pass Aborted" && l.color == LogColor::Red));
+        // nothing of the cancelled material is logged as selected
+        assert!(!log
+            .lines
+            .iter()
+            .any(|l| l.action == "Bin Selection" && l.bin == "B1"));
+        // the other material is still saved
+        assert!(matches!(r.status, DeliveryStatus::Created(_)));
+        assert_eq!(s.saved, Some(true));
+    }
+
+    #[test]
+    fn two_pass_verification_failure_cancels_the_material() {
+        let mut s = Fake::new(vec![mat(
+            "M1",
+            200.0,
+            &[(0, "B1", 100.0, ""), (1, "B2", 100.0, "")],
+        )]);
+        s.corrupt = Some((0, 5.0)); // the value did not stick in row 0
+        let mut log = RunLog::default();
+        let r = run_delivery(&mut s, &two_pass_cfg(), &db(), "D1", Some("S1"), &mut log);
+        assert_eq!(s.calls, ["skip"]);
+        assert_eq!(r.status, DeliveryStatus::NothingPicked);
+        assert!(log
+            .lines
+            .iter()
+            .any(|l| l.action == "Pick Verification Failed" && l.color == LogColor::Red));
+        assert!(!log.lines.iter().any(|l| l.action == "Bin Selection"));
+    }
+
+    #[test]
+    fn two_pass_dry_run_enters_nothing() {
+        let mut s = Fake::new(vec![mat("M1", 100.0, &[(0, "B1", 100.0, "")])]);
+        let mut c = two_pass_cfg();
+        c.dry_run = true;
+        let mut log = RunLog::default();
+        let r = run_delivery(&mut s, &c, &db(), "D1", Some("S1"), &mut log);
+        assert_eq!(r.status, DeliveryStatus::Planned);
+        assert!(s.entered.is_empty());
+        assert_eq!(s.begin_calls, 0);
+    }
+
+    #[test]
+    fn verify_selection_checks_every_row() {
+        let row = |a: usize, b: &str, sel: f64| RawRow {
+            abs_row: a,
+            bin: b.into(),
+            avail: 100.0,
+            sel,
+            gr_text: String::new(),
+        };
+        let pick = |a: usize, b: &str, q: f64| Pick {
+            bin: b.into(),
+            qty: q,
+            is_wl: true,
+            gr_date: None,
+            abs_row: a,
+            reason: String::new(),
+            repack: false,
+        };
+        let before = vec![row(0, "B1", 0.0), row(1, "B2", 0.0)];
+        let picks = vec![pick(0, "B1", 100.0)];
+        let ok = vec![row(0, "B1", 100.0), row(1, "B2", 0.0)];
+        assert_eq!(verify_selection(&before, &picks, &ok), Ok(()));
+        // an extra row got a value
+        let extra = vec![row(0, "B1", 100.0), row(1, "B2", 3.0)];
+        assert!(verify_selection(&before, &picks, &extra).is_err());
+        // the picked row shows another value
+        let wrong = vec![row(0, "B1", 99.0), row(1, "B2", 0.0)];
+        assert!(verify_selection(&before, &picks, &wrong).is_err());
+        // rows moved / disappeared
+        let fewer = vec![row(0, "B1", 100.0)];
+        assert!(verify_selection(&before, &picks, &fewer).is_err());
+        let moved = vec![row(0, "B1", 100.0), row(2, "B2", 0.0)];
+        assert!(verify_selection(&before, &picks, &moved).is_err());
     }
 
     #[test]

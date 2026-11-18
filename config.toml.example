@@ -172,6 +172,7 @@ skip_blacklist = true               # apply the blocked-stock rules of the ZMDES
 blacklist_material_policy = "allow_material_skip_bins"   # default; or skip_if_any (skip the whole material)
 shipto_strategy = "first"           # ship-to of a delivery with several: first | majority
 proceed_without_gr = true           # fifo/lifo with bins without GR date: continue sequentially (never asks)
+two_pass = false                    # true: pick in row order, check every row, re-read and verify (cancels only a failing material)
 vl06o_per_shipment = false         # true: one VL06O per shipment (every delivery then knows its shipment); default: one VL06O with all
 sap_date_format = "yyyy-mm-dd"      # format of the GR date column (default: [global] date_format)
 # Every key above except the *_col ones also has a CLI flag (--lt03-warehouse, --lt03-vl06o-variant, --shipto-strategy, ...)

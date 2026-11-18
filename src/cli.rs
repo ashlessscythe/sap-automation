@@ -442,6 +442,21 @@ pub struct Cli {
     )]
     pub proceed_without_gr: Option<bool>,
 
+    /// LT03 ONLY: safer pick entry. The stock table is read once and the picks planned; then the
+    /// picks are entered in row order (no scrolling back and forth), every row is checked first
+    /// (bin, available and selected quantity as read, typed value read back), and the table is
+    /// re-read to verify before the material is kept. Any mismatch cancels that material only
+    /// (logged `Pick Pass Aborted` / `Pick Verification Failed`). Default off. Overrides
+    /// `[abc.manual_to].two_pass`.
+    #[arg(
+        long = "lt03-two-pass",
+        value_name = "BOOL",
+        num_args = 0..=1,
+        default_missing_value = "true",
+        value_parser = clap::builder::BoolishValueParser::new()
+    )]
+    pub lt03_two_pass: Option<bool>,
+
     /// LT03 ONLY: how SAP shows dates, e.g. `mm/dd/yyyy` (the GR date column). A date that starts
     /// with a four-digit year is always read as year-month-day. Overrides
     /// `[abc.manual_to].sap_date_format` (default: `[global] date_format`).
@@ -566,6 +581,7 @@ impl Cli {
             shipto_strategy: self.shipto_strategy.clone(),
             vl06o_per_shipment: self.vl06o_per_shipment,
             proceed_without_gr: self.proceed_without_gr,
+            two_pass: self.lt03_two_pass,
             sap_date_format: self.lt03_sap_date_format.clone(),
             warehouse: self.lt03_warehouse.clone(),
             vl06o_variant: self.lt03_vl06o_variant.clone(),
@@ -910,6 +926,23 @@ mod rname_tests {
         assert_eq!(o.lt03.warehouse.as_deref(), Some("W9"));
         assert_eq!(o.lt03.sap_date_format.as_deref(), Some("mm/dd/yyyy"));
         assert_eq!(o.lt03.zmdesnr_layout.as_deref(), Some("L2"));
+        // two-pass entry is opt-in and LT03 only
+        assert_eq!(ov(&["--tcode=lt03"]).unwrap().lt03.two_pass, None);
+        assert_eq!(
+            ov(&["--tcode=lt03", "--lt03-two-pass"])
+                .unwrap()
+                .lt03
+                .two_pass,
+            Some(true)
+        );
+        assert_eq!(
+            ov(&["--tcode=lt03", "--lt03-two-pass=false"])
+                .unwrap()
+                .lt03
+                .two_pass,
+            Some(false)
+        );
+        assert!(ov(&["--tcode=vt11", "--lt03-two-pass"]).is_err());
         assert!(ov(&["--tcode=lt03", "--shipto-strategy=most"]).is_err());
         assert!(ov(&["--tcode=vt11", "--lt03-warehouse=W9"]).is_err());
         // --json is LT03 only

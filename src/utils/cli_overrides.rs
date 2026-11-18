@@ -75,6 +75,8 @@ pub struct Lt03Cli {
     pub vl06o_per_shipment: Option<bool>,
     /// `--proceed-without-gr`: fifo/lifo with bins without GR date continue sequentially.
     pub proceed_without_gr: Option<bool>,
+    /// `--lt03-two-pass`: read, plan, then enter the picks in row order with row checks and verify.
+    pub two_pass: Option<bool>,
     /// `--lt03-sap-date-format`: how SAP shows dates (GR date column).
     pub sap_date_format: Option<String>,
     /// `--lt03-warehouse`: LT03 warehouse number.
@@ -136,6 +138,7 @@ impl Lt03Cli {
             (self.shipto_strategy.is_some(), "--shipto-strategy"),
             (self.vl06o_per_shipment.is_some(), "--vl06o-per-shipment"),
             (self.proceed_without_gr.is_some(), "--proceed-without-gr"),
+            (self.two_pass.is_some(), "--lt03-two-pass"),
             (self.sap_date_format.is_some(), "--lt03-sap-date-format"),
             (self.warehouse.is_some(), "--lt03-warehouse"),
             (self.vl06o_variant.is_some(), "--lt03-vl06o-variant"),

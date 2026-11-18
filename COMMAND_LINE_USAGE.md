@@ -558,6 +558,14 @@ process). The contract:
   `--multi-conn`, `--output-date`. (Only the ZMDESNR column header names `material_col`, `bin_col`, ... stay config-only.)
   The SAP date format (GR date) resolves `--lt03-sap-date-format` > `[abc.manual_to].sap_date_format` > global `--date-format` >
   `[global].date_format` > `yyyy-mm-dd`; a date that starts with a four-digit year is always read as year-month-day.
+* **`--lt03-two-pass[=bool]`** (default off, `[abc.manual_to].two_pass`): safer, faster pick entry. Pass 1 reads the whole stock
+  table and plans; pass 2 enters the picks in row order (one walk down the table instead of back to the top for every pick),
+  checking each row first (same bin, available and selected quantity as read; the typed value must read back unchanged);
+  pass 3 re-reads the table and requires every picked row to show exactly the planned quantity and every other row to be
+  unchanged. Any mismatch cancels that material only (log `Pick Pass Aborted` / `Pick Verification Failed`, red) and the
+  delivery goes on with the other materials. Nothing is logged as `Bin Selection` for a cancelled material. No search for a
+  "nearby" row is ever done in this mode. `two_pass` is part of the `--json` settings. `--dry-run` ignores the flag (nothing is
+  entered). New in 0.22.0: try it on a single delivery first and check `log.tsv` for `Pick Verified`.
   The effective values are echoed in the result (`settings`). Flags that are not LT03's are rejected with a message.
 * **Result.** With `--json` the **last line on stdout** is one JSON object (`schema` 1). Everything above it is the
   human-readable log and may be shown to the user live; take the last line that starts with `{`. Exit code: `0` = ok,

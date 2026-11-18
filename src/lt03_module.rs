@@ -69,7 +69,7 @@ pub fn describe_settings(st: &ManualToSettings) -> String {
     format!(
         "bin_pick_strategy={}, age_cutoff={}, allow_relabel={}, skip_blacklist={}, \
          blacklist_material_policy={}, shipto_strategy={}, proceed_without_gr={}, warehouse={}, \
-         sap_date_format={}, dry_run={}, resume={}",
+         sap_date_format={}, dry_run={}, two_pass={}, resume={}",
         st.lt.strategy.name(),
         st.lt.age_cutoff_days,
         st.lt.allow_relabel,
@@ -83,6 +83,7 @@ pub fn describe_settings(st: &ManualToSettings) -> String {
         st.lt.warehouse,
         st.lt.sap_date_format,
         st.lt.dry_run,
+        st.lt.two_pass,
         st.resume
     )
 }
@@ -148,6 +149,10 @@ pub fn resolve_manual_to(
         .filter(|v| !v.trim().is_empty())
         .unwrap_or_else(|| "yyyy-mm-dd".to_string());
     lt.dry_run = cli.dry_run;
+    lt.two_pass = cli
+        .two_pass
+        .or_else(|| pb(sec, "two_pass"))
+        .unwrap_or(false);
 
     let mut cols = DbColumns::default();
     for (key, slot) in [
@@ -955,6 +960,7 @@ pub fn settings_json(st: &ManualToSettings) -> serde_json::Value {
         "warehouse": st.lt.warehouse,
         "sap_date_format": st.lt.sap_date_format,
         "dry_run": st.lt.dry_run,
+        "two_pass": st.lt.two_pass,
         "resume": st.resume,
         "vl06o_per_shipment": st.vl06o_per_shipment,
         "vl06o_variant": st.vl06o_variant,

@@ -14,7 +14,7 @@
 //!   `yyyy-mm-dd`) was checked against a screenshot.
 #![allow(dead_code)]
 
-use crate::lt03_runner::{Lt03Screen, MaterialInfo, OpenOutcome, RawRow};
+use crate::lt03_runner::{EnterOutcome, Lt03Screen, MaterialInfo, OpenOutcome, PickTarget, RawRow};
 use crate::utils::sap_ctrl_utils::{exist_ctrl, hit_ctrl};
 use crate::utils::sap_tcode_utils::assert_tcode;
 use anyhow::{anyhow, bail, Result};
@@ -381,6 +381,90 @@ impl Lt03Screen for RealLt03Screen<'_> {
         )?;
         self.vkey(0)?;
         Ok(true)
+    }
+
+    fn begin_pick_pass(&mut self) -> Result<()> {
+        self.first_page();
+        Ok(())
+    }
+
+    /// Checked entry for the two-pass flow. No searching: the row `abs_row` is brought into view
+    /// (scrollbar position, or page down when the scrollbar cannot be read), then bin, available
+    /// and selected quantity must equal what the read pass saw, the typed value must read back
+    /// unchanged, and only then Enter is pressed. Anything else is a `Mismatch`.
+    fn enter_pick_strict(&mut self, t: &PickTarget) -> Result<EnterOutcome> {
+        let mismatch = |why: String| Ok(EnterOutcome::Mismatch(why));
+        let ps = self.page_size();
+        if ps == 0 {
+            return mismatch("stock table not found".to_string());
+        }
+        if t.qty <= 0.0 {
+            return mismatch(format!("quantity {} is not positive", t.qty));
+        }
+        let visible = |top: Option<usize>| {
+            top.and_then(|tp| t.abs_row.checked_sub(tp))
+                .filter(|l| *l < ps)
+        };
+        let mut top = self.top_row();
+        let mut local = visible(top);
+        if local.is_none() {
+            if let Some(tb) = self.table() {
+                if let Ok(sb) = tb.vertical_scrollbar() {
+                    let sb = GuiScrollbar::from(sb.get_idispatch().clone());
+                    let _ = sb.set_position(t.abs_row as i32);
+                    pause(80);
+                }
+            }
+            top = self.top_row();
+            local = visible(top);
+        }
+        if local.is_none() && top.is_none() {
+            // scrollbar position unreadable: page down from the first page, the row checks
+            // below catch a wrong landing
+            self.first_page();
+            for _ in 0..(t.abs_row / ps) {
+                if !self.page_down() {
+                    break;
+                }
+            }
+            local = Some(t.abs_row % ps);
+        }
+        let Some(local) = local else {
+            return mismatch(format!("row {} could not be scrolled into view", t.abs_row));
+        };
+        let cols = self.resolve_cols();
+        let bin_now = self.bin_at(local);
+        if bin_now != t.bin {
+            return mismatch(format!(
+                "row {} shows bin '{bin_now}', expected '{}'",
+                t.abs_row, t.bin
+            ));
+        }
+        let avail_now = qty(&self.text(&Self::cell_id(CID_VERME, cols.verme, local)));
+        if (avail_now - t.avail).abs() > 1e-6 {
+            return mismatch(format!(
+                "row {} shows {avail_now} available, expected {}",
+                t.abs_row, t.avail
+            ));
+        }
+        let sel_id = Self::cell_id(CID_SELMG, cols.selmg, local);
+        let sel_now = qty(&self.text(&sel_id));
+        if (sel_now - t.sel_before).abs() > 1e-6 {
+            return mismatch(format!(
+                "row {} shows {sel_now} selected, expected {}",
+                t.abs_row, t.sel_before
+            ));
+        }
+        self.set_cell(&sel_id, &t.qty.to_string())?;
+        let back = qty(&self.text(&sel_id));
+        if (back - t.qty).abs() > 1e-6 {
+            return mismatch(format!(
+                "typed {} into row {} but the cell shows {back}",
+                t.qty, t.abs_row
+            ));
+        }
+        self.vkey(0)?;
+        Ok(EnterOutcome::Entered)
     }
 
     fn open_qty(&mut self) -> Result<f64> {

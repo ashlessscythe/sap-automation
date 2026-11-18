@@ -143,6 +143,7 @@ pub fn resolve_manual_to(
         .sap_date_format
         .clone()
         .or_else(|| ps(sec, "sap_date_format"))
+        .or_else(|| input.cli_date_format.clone())
         .or_else(|| input.global_date_format.clone())
         .filter(|v| !v.trim().is_empty())
         .unwrap_or_else(|| "yyyy-mm-dd".to_string());
@@ -1549,6 +1550,29 @@ mod tests {
         assert!(t.contains("D1") && t.contains("B1") && t.contains("100"));
         assert!(sap.screen.entered.is_empty());
         assert_eq!(run.picks_tsv().lines().count(), 2);
+    }
+
+    #[test]
+    fn sap_date_format_precedence() {
+        let d = NaiveDate::from_ymd_opt(2026, 11, 13).unwrap();
+        let section: toml::Value = toml::from_str("sap_date_format = \"dd.mm.yyyy\"").unwrap();
+        let fmt = |input: &ResolveInput, cli: &Lt03Cli| {
+            resolve_manual_to(input, cli, d).unwrap().lt.sap_date_format
+        };
+        let none = Lt03Cli::default();
+        let mut input = ResolveInput::default();
+        assert_eq!(fmt(&input, &none), "yyyy-mm-dd"); // default
+        input.global_date_format = Some("dd-mm-yyyy".into());
+        assert_eq!(fmt(&input, &none), "dd-mm-yyyy"); // [global]
+        input.cli_date_format = Some("mm/dd/yyyy".into());
+        assert_eq!(fmt(&input, &none), "mm/dd/yyyy"); // --date-format
+        input.section = Some(section);
+        assert_eq!(fmt(&input, &none), "dd.mm.yyyy"); // [abc.manual_to]
+        let cli = Lt03Cli {
+            sap_date_format: Some("yy/mm/dd".into()),
+            ..Lt03Cli::default()
+        };
+        assert_eq!(fmt(&input, &cli), "yy/mm/dd"); // --lt03-sap-date-format
     }
 
     #[test]

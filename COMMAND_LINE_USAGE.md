@@ -556,6 +556,8 @@ process). The contract:
   `--vl06o-per-shipment[=bool]`, `--lt03-warehouse`, `--lt03-sap-date-format`, `--lt03-vl06o-variant`, `--lt03-vl06o-layout`,
   `--lt03-zmdesnr-variant`, `--lt03-zmdesnr-layout`, plus `--dry-run`, `--lt03-resume`, `--conn-count=N` /
   `--multi-conn`, `--output-date`. (Only the ZMDESNR column header names `material_col`, `bin_col`, ... stay config-only.)
+  The SAP date format (GR date) resolves `--lt03-sap-date-format` > `[abc.manual_to].sap_date_format` > global `--date-format` >
+  `[global].date_format` > `yyyy-mm-dd`; a date that starts with a four-digit year is always read as year-month-day.
   The effective values are echoed in the result (`settings`). Flags that are not LT03's are rejected with a message.
 * **Result.** With `--json` the **last line on stdout** is one JSON object (`schema` 1). Everything above it is the
   human-readable log and may be shown to the user live; take the last line that starts with `{`. Exit code: `0` = ok,

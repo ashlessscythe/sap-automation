@@ -232,6 +232,15 @@ match close_excel_windows(Some(file_name)) {
 | `Column (<name>) is locked in the layout, left in place` | SAP does not allow removing that column (for example `Delivery` in the VL06O item view). It stays in the layout; listing it in `columns` is fine. |
 | `a dialog is open` before anything happens | Close the open SAP popup; the command needs the report's result list on screen. |
 
+### LT03: every bin skipped with "GR age cutoff: missing GR"
+
+The `Bin Skipped` rows in `log.tsv` give the reason: `older than <date>` means the stock really is older than
+`age_cutoff` days; `missing GR` means the GR date could not be read. Since v0.21.1 the GR date column is found by
+field name (the run prints `LT03 stock table columns: ...`) and a date that starts with a four-digit year
+(`2026-11-14`) is always read as year-month-day. For other formats (`11/14/2026`) set how SAP shows dates with
+`--lt03-sap-date-format=mm/dd/yyyy`, `[abc.manual_to].sap_date_format`, the global `--date-format`, or
+`[global].date_format`.
+
 ## Advanced Troubleshooting
 
 ### Memory Issues

@@ -52,11 +52,39 @@ fn qty(s: &str) -> f64 {
 /// The LT03 screen of one SAP session.
 pub struct RealLt03Screen<'a> {
     pub session: &'a GuiSession,
+    cols: std::cell::Cell<Option<Cols>>,
+}
+
+/// Column indices of the stock table (resolved by field name, see `resolve_cols`).
+#[derive(Clone, Copy)]
+struct Cols {
+    selmg: usize,
+    lgpla: usize,
+    verme: usize,
+    wdatu: usize,
+}
+
+impl Default for Cols {
+    fn default() -> Self {
+        Self {
+            selmg: COL_SELMG,
+            lgpla: COL_LGPLA,
+            verme: COL_VERME,
+            wdatu: COL_WDATU,
+        }
+    }
+}
+
+thread_local! {
+    static LAST_COLS: std::cell::RefCell<String> = const { std::cell::RefCell::new(String::new()) };
 }
 
 impl<'a> RealLt03Screen<'a> {
     pub fn new(session: &'a GuiSession) -> Self {
-        Self { session }
+        Self {
+            session,
+            cols: std::cell::Cell::new(None),
+        }
     }
 
     fn cell_id(ctl: &str, col: usize, row: usize) -> String {
@@ -150,8 +178,51 @@ impl<'a> RealLt03Screen<'a> {
         sb.position().ok().map(|p| p.max(0) as usize)
     }
 
+    /// Column indices by field name, read from the names of the cells in the table's first
+    /// visible row (`LQUA-WDATU[9,0]` -> field `LQUA-WDATU`, column 9). A field the screen does
+    /// not show keeps the built-in index. The result is printed once per run.
+    fn scan_cols(&self) -> Cols {
+        let mut cols = Cols::default();
+        let Some(t) = self.table() else {
+            return cols;
+        };
+        let mut seen: Vec<String> = Vec::new();
+        for c in 0..40 {
+            let Ok(cell) = t.get_cell(0, c) else { break };
+            let Ok(name) = cell.name() else { continue };
+            let field = name.split('[').next().unwrap_or("").to_string();
+            match field.as_str() {
+                "RL03T-SELMG" => cols.selmg = c as usize,
+                "LQUA-LGPLA" => cols.lgpla = c as usize,
+                "LQUA-VERME" => cols.verme = c as usize,
+                "LQUA-WDATU" => cols.wdatu = c as usize,
+                _ => {}
+            }
+            seen.push(format!("{c}={field}"));
+        }
+        if !seen.is_empty() {
+            let line = seen.join(" ");
+            if LAST_COLS.with(|l| l.replace(line.clone()) != line) {
+                println!(
+                    "LT03 stock table columns: {line} -> using SELMG={} LGPLA={} VERME={} WDATU={}",
+                    cols.selmg, cols.lgpla, cols.verme, cols.wdatu
+                );
+            }
+        }
+        cols
+    }
+
+    fn resolve_cols(&self) -> Cols {
+        if let Some(c) = self.cols.get() {
+            return c;
+        }
+        let c = self.scan_cols();
+        self.cols.set(Some(c));
+        c
+    }
+
     fn bin_at(&self, row: usize) -> String {
-        self.text(&Self::cell_id(CID_LGPLA, COL_LGPLA, row))
+        self.text(&Self::cell_id(CID_LGPLA, self.resolve_cols().lgpla, row))
             .trim()
             .to_string()
     }
@@ -220,6 +291,8 @@ impl Lt03Screen for RealLt03Screen<'_> {
     }
 
     fn read_stock(&mut self) -> Result<Vec<RawRow>> {
+        self.cols.set(None); // re-read the column layout for every stock table
+        let cols = self.resolve_cols();
         let ps = self.page_size();
         if ps == 0 {
             return Ok(Vec::new());
@@ -242,10 +315,10 @@ impl Lt03Screen for RealLt03Screen<'_> {
                 rows.push(RawRow {
                     abs_row,
                     bin,
-                    avail: qty(&self.text(&Self::cell_id(CID_VERME, COL_VERME, r))),
-                    sel: qty(&self.text(&Self::cell_id(CID_SELMG, COL_SELMG, r))),
+                    avail: qty(&self.text(&Self::cell_id(CID_VERME, cols.verme, r))),
+                    sel: qty(&self.text(&Self::cell_id(CID_SELMG, cols.selmg, r))),
                     gr_text: self
-                        .text(&Self::cell_id(CID_WDATU, COL_WDATU, r))
+                        .text(&Self::cell_id(CID_WDATU, cols.wdatu, r))
                         .trim()
                         .to_string(),
                 });
@@ -303,7 +376,7 @@ impl Lt03Screen for RealLt03Screen<'_> {
             return Ok(false);
         };
         self.set_cell(
-            &Self::cell_id(CID_SELMG, COL_SELMG, local),
+            &Self::cell_id(CID_SELMG, self.resolve_cols().selmg, local),
             &qty_v.to_string(),
         )?;
         self.vkey(0)?;

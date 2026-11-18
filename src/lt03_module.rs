@@ -139,7 +139,10 @@ pub fn resolve_manual_to(
         .proceed_without_gr
         .or_else(|| pb(sec, "proceed_without_gr"))
         .unwrap_or(true);
-    lt.sap_date_format = ps(sec, "sap_date_format")
+    lt.sap_date_format = cli
+        .sap_date_format
+        .clone()
+        .or_else(|| ps(sec, "sap_date_format"))
         .or_else(|| input.global_date_format.clone())
         .filter(|v| !v.trim().is_empty())
         .unwrap_or_else(|| "yyyy-mm-dd".to_string());
@@ -949,6 +952,7 @@ pub fn settings_json(st: &ManualToSettings) -> serde_json::Value {
         },
         "proceed_without_gr": st.lt.proceed_without_gr,
         "warehouse": st.lt.warehouse,
+        "sap_date_format": st.lt.sap_date_format,
         "dry_run": st.lt.dry_run,
         "resume": st.resume,
         "vl06o_per_shipment": st.vl06o_per_shipment,

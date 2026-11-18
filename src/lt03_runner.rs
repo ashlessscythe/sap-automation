@@ -296,6 +296,15 @@ pub fn parse_sap_date(s: &str, vba_format: &str) -> Option<NaiveDate> {
             .find(|p| p.len() == 3)
             .unwrap_or_default();
     }
+    if parts.len() == 3 {
+        let first = parts[0].trim();
+        if first.len() == 4 && first.bytes().all(|b| b.is_ascii_digit()) {
+            // a leading four-digit year is always year-month-day, whatever the configured
+            // pattern says (SAP shows `2026-11-14` while the config may say `mm/dd/yyyy`)
+            let n = |s: &str| s.trim().parse::<u32>().ok();
+            return NaiveDate::from_ymd_opt(first.parse().ok()?, n(parts[1])?, n(parts[2])?);
+        }
+    }
     if fmt_parts.len() != 3 || parts.len() != 3 {
         return None;
     }
@@ -871,6 +880,9 @@ mod tests {
         assert_eq!(parse_sap_date("2026-09-16", "yyyy-mm-dd"), d(2026, 9, 16));
         assert_eq!(parse_sap_date("09-16-26", "mm/dd/yy"), d(2026, 9, 16)); // delimiter fallback
         assert_eq!(parse_sap_date("09/16/99", "mm/dd/yy"), d(1999, 9, 16));
+        // leading four-digit year wins over a mismatching configured pattern
+        assert_eq!(parse_sap_date("2026-11-14", "mm/dd/yyyy"), d(2026, 11, 14));
+        assert_eq!(parse_sap_date("2026/11/14", "dd.mm.yyyy"), d(2026, 11, 14));
         assert_eq!(parse_sap_date("", "mm/dd/yyyy"), None);
         assert_eq!(parse_sap_date("13/45/2026", "mm/dd/yyyy"), None);
         assert_eq!(chrono_format("mm/dd/yyyy"), "%m/%d/%Y");

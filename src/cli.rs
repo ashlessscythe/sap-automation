@@ -442,6 +442,12 @@ pub struct Cli {
     )]
     pub proceed_without_gr: Option<bool>,
 
+    /// LT03 ONLY: how SAP shows dates, e.g. `mm/dd/yyyy` (the GR date column). A date that starts
+    /// with a four-digit year is always read as year-month-day. Overrides
+    /// `[abc.manual_to].sap_date_format` (default: `[global] date_format`).
+    #[arg(long = "lt03-sap-date-format", value_name = "FORMAT")]
+    pub lt03_sap_date_format: Option<String>,
+
     /// LT03 ONLY: warehouse number of LT03 (LTAK-LGNUM). Overrides `[abc.manual_to].warehouse`.
     #[arg(long = "lt03-warehouse", value_name = "WH")]
     pub lt03_warehouse: Option<String>,
@@ -560,6 +566,7 @@ impl Cli {
             shipto_strategy: self.shipto_strategy.clone(),
             vl06o_per_shipment: self.vl06o_per_shipment,
             proceed_without_gr: self.proceed_without_gr,
+            sap_date_format: self.lt03_sap_date_format.clone(),
             warehouse: self.lt03_warehouse.clone(),
             vl06o_variant: self.lt03_vl06o_variant.clone(),
             vl06o_layout: self.lt03_vl06o_layout.clone(),
@@ -890,6 +897,7 @@ mod rname_tests {
             "--vl06o-per-shipment",
             "--proceed-without-gr=false",
             "--lt03-warehouse=W9",
+            "--lt03-sap-date-format=mm/dd/yyyy",
             "--lt03-vl06o-variant=V1",
             "--lt03-vl06o-layout=L1",
             "--lt03-zmdesnr-variant=V2",
@@ -900,6 +908,7 @@ mod rname_tests {
         assert_eq!(o.lt03.vl06o_per_shipment, Some(true));
         assert_eq!(o.lt03.proceed_without_gr, Some(false));
         assert_eq!(o.lt03.warehouse.as_deref(), Some("W9"));
+        assert_eq!(o.lt03.sap_date_format.as_deref(), Some("mm/dd/yyyy"));
         assert_eq!(o.lt03.zmdesnr_layout.as_deref(), Some("L2"));
         assert!(ov(&["--tcode=lt03", "--shipto-strategy=most"]).is_err());
         assert!(ov(&["--tcode=vt11", "--lt03-warehouse=W9"]).is_err());

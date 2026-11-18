@@ -553,7 +553,7 @@ process). The contract:
 * **Every setting has a flag** (CLI > `[abc.manual_to]` > default), so the GUI never has to edit `config.toml`:
   `--bin-pick-strategy`, `--age-cutoff`, `--allow-relabel[=bool]`, `--skip-blacklist[=bool]`,
   `--blacklist-material-policy`, `--shipto-strategy=first|majority`, `--proceed-without-gr[=bool]`,
-  `--vl06o-per-shipment[=bool]`, `--lt03-warehouse`, `--lt03-vl06o-variant`, `--lt03-vl06o-layout`,
+  `--vl06o-per-shipment[=bool]`, `--lt03-warehouse`, `--lt03-sap-date-format`, `--lt03-vl06o-variant`, `--lt03-vl06o-layout`,
   `--lt03-zmdesnr-variant`, `--lt03-zmdesnr-layout`, plus `--dry-run`, `--lt03-resume`, `--conn-count=N` /
   `--multi-conn`, `--output-date`. (Only the ZMDESNR column header names `material_col`, `bin_col`, ... stay config-only.)
   The effective values are echoed in the result (`settings`). Flags that are not LT03's are rejected with a message.

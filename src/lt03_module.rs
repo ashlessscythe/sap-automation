@@ -39,6 +39,10 @@ pub struct ManualToSettings {
     pub vl06o_layout: Option<String>,
     pub zmdesnr_variant: Option<String>,
     pub zmdesnr_layout: Option<String>,
+    /// Variant of the optional final VT11 display step (`None` = no step).
+    pub vt11_variant: Option<String>,
+    /// Run that step after a real run (`--lt03-show-vt11`; default off).
+    pub show_vt11: bool,
     pub lt: Lt03Config,
     pub shipto_strategy: ShipToStrategy,
     pub db_cols: DbColumns,
@@ -194,6 +198,16 @@ pub fn resolve_manual_to(
                 .or_else(|| ps(sec, "zmdesnr_layout"))
                 .unwrap_or_else(|| DEFAULT_ZMDESNR_LAYOUT.to_string()),
         ),
+        vt11_variant: cli
+            .vt11_variant
+            .clone()
+            .or_else(|| ps(sec, "vt11_variant"))
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty()),
+        show_vt11: cli
+            .show_vt11
+            .or_else(|| pb(sec, "show_vt11"))
+            .unwrap_or(false),
         lt,
         shipto_strategy: ShipToStrategy::parse(
             &cli.shipto_strategy
@@ -967,6 +981,8 @@ pub fn settings_json(st: &ManualToSettings) -> serde_json::Value {
         "vl06o_layout": st.vl06o_layout,
         "zmdesnr_variant": st.zmdesnr_variant,
         "zmdesnr_layout": st.zmdesnr_layout,
+        "vt11_variant": st.vt11_variant,
+        "show_vt11": st.show_vt11,
         "reports_dir": st.reports_dir.display().to_string(),
     })
 }
@@ -1336,7 +1352,39 @@ pub fn run_lt03_auto(session: &GuiSession) -> Result<()> {
         dry_run: st.lt.dry_run,
         today: st.lt.today,
     };
+    // Optional last step (opt-in): leave SAP on VT11 with the shipments listed and ticked. It runs
+    // before `finish_run` so the `--json` line stays the last line; it never changes the outcome.
+    if vt11_step_wanted(&st) {
+        let variant = st.vt11_variant.as_deref().unwrap_or_default();
+        match crate::vt11::show_shipments(session, variant, &shipments) {
+            Ok(true) => log.info(
+                "VT11 Display",
+                format!("{} shipment(s) ticked", shipments.len()),
+            ),
+            Ok(false) => {
+                println!("VT11 display step did not complete (see above)");
+                log.info("VT11 Display", "not completed".to_string());
+            }
+            Err(e) => {
+                println!("VT11 display step failed: {e}");
+                log.info("VT11 Display", format!("failed: {e}"));
+            }
+        }
+    }
     finish_run(&st, &rep, &log)
+}
+
+/// The VT11 display step runs only when asked for (`--lt03-show-vt11` / `show_vt11`) and with a
+/// variant (a dry run too: it creates nothing). Otherwise the run is exactly as before.
+pub fn vt11_step_wanted(st: &ManualToSettings) -> bool {
+    if !st.show_vt11 {
+        return false;
+    }
+    if st.vt11_variant.is_none() {
+        println!("--lt03-show-vt11 needs a VT11 variant (--lt03-vt11-variant or vt11_variant): step skipped");
+        return false;
+    }
+    true
 }
 
 #[cfg(test)]
@@ -1446,6 +1494,18 @@ mod tests {
             ],
             &[&["M1", "B1", "100", "S1", ""]],
         ))
+    }
+
+    #[test]
+    fn vt11_step_is_opt_in_and_needs_a_variant() {
+        let mut st = settings(false);
+        assert!(!vt11_step_wanted(&st)); // default: unchanged
+        st.show_vt11 = true;
+        assert!(!vt11_step_wanted(&st)); // flag without variant
+        st.vt11_variant = Some("V".into());
+        assert!(vt11_step_wanted(&st));
+        st.lt.dry_run = true;
+        assert!(vt11_step_wanted(&st)); // a dry run creates nothing: allowed
     }
 
     #[test]

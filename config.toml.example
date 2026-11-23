@@ -175,6 +175,8 @@ proceed_without_gr = true           # fifo/lifo with bins without GR date: conti
 two_pass = false                    # true: pick in row order, check every row, re-read and verify (cancels only a failing material)
 vl06o_per_shipment = false         # true: one VL06O per shipment (every delivery then knows its shipment); default: one VL06O with all
 sap_date_format = "yyyy-mm-dd"      # format of the GR date column (default: [global] date_format)
+show_vt11 = false                   # true: after a real run open VT11, paste the run's shipments (clipboard) and tick all (needs vt11_variant)
+vt11_variant = "MANUAL_TO_VT11_VARIANT"   # VT11 variant of that last step (only used with show_vt11)
 # Every key above except the *_col ones also has a CLI flag (--lt03-warehouse, --lt03-vl06o-variant, --shipto-strategy, ...)
 # material_col / bin_col / qty_col / shipto_col / blocked_col: header names of the ZMDESNR export
 

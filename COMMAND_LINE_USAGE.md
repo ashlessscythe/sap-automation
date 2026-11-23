@@ -566,6 +566,13 @@ process). The contract:
   delivery goes on with the other materials. Nothing is logged as `Bin Selection` for a cancelled material. No search for a
   "nearby" row is ever done in this mode. `two_pass` is part of the `--json` settings. `--dry-run` ignores the flag (nothing is
   entered). New in 0.22.0: try it on a single delivery first and check `log.tsv` for `Pick Verified`.
+* **`--lt03-show-vt11[=bool]`** + **`--lt03-vt11-variant=NAME`** (default off; `[abc.manual_to].show_vt11` / `vt11_variant`):
+  optional last step of a **real** run. SAP is left on VT11: the variant is applied, the run's shipments are pasted into the
+  shipment field from the Windows clipboard (Shift+F12; falls back to row-by-row), the list is executed and all shipment
+  checkmarks are ticked (`tbar[1]/btn[30]`, from the `manual_to` macro). It runs before the summary, so the `--json` line stays
+  last, and never changes the exit code (a failure is printed and logged as `VT11 Display`). Without the flag, or with the flag
+  but no variant (a note is printed), the run is exactly as before. Also runs after a `--dry-run` (nothing is created); ignored by parallel runs
+  (`--conn-count` / `--multi-conn`). The control ids are from the macro: **not yet run live**, try one shipment first.
   The effective values are echoed in the result (`settings`). Flags that are not LT03's are rejected with a message.
 * **Result.** With `--json` the **last line on stdout** is one JSON object (`schema` 1). Everything above it is the
   human-readable log and may be shown to the user live; take the last line that starts with `{`. Exit code: `0` = ok,

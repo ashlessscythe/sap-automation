@@ -77,6 +77,10 @@ pub struct Lt03Cli {
     pub proceed_without_gr: Option<bool>,
     /// `--lt03-two-pass`: read, plan, then enter the picks in row order with row checks and verify.
     pub two_pass: Option<bool>,
+    /// `--lt03-vt11-variant`: SAP variant of the final VT11 display step.
+    pub vt11_variant: Option<String>,
+    /// `--lt03-show-vt11`: run that VT11 step after a real run (default off).
+    pub show_vt11: Option<bool>,
     /// `--lt03-sap-date-format`: how SAP shows dates (GR date column).
     pub sap_date_format: Option<String>,
     /// `--lt03-warehouse`: LT03 warehouse number.
@@ -139,6 +143,8 @@ impl Lt03Cli {
             (self.vl06o_per_shipment.is_some(), "--vl06o-per-shipment"),
             (self.proceed_without_gr.is_some(), "--proceed-without-gr"),
             (self.two_pass.is_some(), "--lt03-two-pass"),
+            (self.vt11_variant.is_some(), "--lt03-vt11-variant"),
+            (self.show_vt11.is_some(), "--lt03-show-vt11"),
             (self.sap_date_format.is_some(), "--lt03-sap-date-format"),
             (self.warehouse.is_some(), "--lt03-warehouse"),
             (self.vl06o_variant.is_some(), "--lt03-vl06o-variant"),

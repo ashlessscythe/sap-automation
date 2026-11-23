@@ -463,6 +463,23 @@ pub struct Cli {
     #[arg(long = "lt03-sap-date-format", value_name = "FORMAT")]
     pub lt03_sap_date_format: Option<String>,
 
+    /// LT03 ONLY: SAP variant of the final VT11 step (`--lt03-show-vt11`). Overrides
+    /// `[abc.manual_to].vt11_variant`. Without a variant the step is not run.
+    #[arg(long = "lt03-vt11-variant", value_name = "NAME")]
+    pub lt03_vt11_variant: Option<String>,
+
+    /// LT03 ONLY: after a real run, open VT11 with the variant of `--lt03-vt11-variant`, paste the
+    /// run's shipments (via the clipboard), execute and tick all shipment checkmarks. Default off
+    /// (nothing changes). Overrides `[abc.manual_to].show_vt11`.
+    #[arg(
+        long = "lt03-show-vt11",
+        value_name = "BOOL",
+        num_args = 0..=1,
+        default_missing_value = "true",
+        value_parser = clap::builder::BoolishValueParser::new()
+    )]
+    pub lt03_show_vt11: Option<bool>,
+
     /// LT03 ONLY: warehouse number of LT03 (LTAK-LGNUM). Overrides `[abc.manual_to].warehouse`.
     #[arg(long = "lt03-warehouse", value_name = "WH")]
     pub lt03_warehouse: Option<String>,
@@ -582,6 +599,8 @@ impl Cli {
             vl06o_per_shipment: self.vl06o_per_shipment,
             proceed_without_gr: self.proceed_without_gr,
             two_pass: self.lt03_two_pass,
+            vt11_variant: self.lt03_vt11_variant.clone(),
+            show_vt11: self.lt03_show_vt11,
             sap_date_format: self.lt03_sap_date_format.clone(),
             warehouse: self.lt03_warehouse.clone(),
             vl06o_variant: self.lt03_vl06o_variant.clone(),
@@ -926,6 +945,16 @@ mod rname_tests {
         assert_eq!(o.lt03.warehouse.as_deref(), Some("W9"));
         assert_eq!(o.lt03.sap_date_format.as_deref(), Some("mm/dd/yyyy"));
         assert_eq!(o.lt03.zmdesnr_layout.as_deref(), Some("L2"));
+        // the VT11 display step is opt-in and LT03 only
+        let o = ov(&["--tcode=lt03"]).unwrap();
+        assert_eq!(
+            (o.lt03.vt11_variant.clone(), o.lt03.show_vt11),
+            (None, None)
+        );
+        let o = ov(&["--tcode=lt03", "--lt03-vt11-variant=V3", "--lt03-show-vt11"]).unwrap();
+        assert_eq!(o.lt03.vt11_variant.as_deref(), Some("V3"));
+        assert_eq!(o.lt03.show_vt11, Some(true));
+        assert!(ov(&["--tcode=vt11", "--lt03-show-vt11"]).is_err());
         // two-pass entry is opt-in and LT03 only
         assert_eq!(ov(&["--tcode=lt03"]).unwrap().lt03.two_pass, None);
         assert_eq!(

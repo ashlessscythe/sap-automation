@@ -313,6 +313,98 @@ fn paste_multi_values(session: &GuiSession, button_id: &str, values: &[String]) 
     Ok(ok)
 }
 
+/// LT03's optional last step (port of the macro's `vt11_display_screen_info`): open VT11, apply
+/// `variant`, paste `shipments` into `K_TKNUM` from the clipboard (Shift+F12, falls back to row
+/// by row), execute and tick all shipment checkmarks (`tbar[1]/btn[30]`). Leaves the session on
+/// the VT11 list. `Ok(false)` = nothing found / a step failed (message printed). Control ids come
+/// from the macro and have not been run live.
+pub fn show_shipments(session: &GuiSession, variant: &str, shipments: &[String]) -> Result<bool> {
+    let values = crate::utils::export_outcome::paste_value_list(shipments, false);
+    if values.is_empty() {
+        println!("VT11 display: no shipments");
+        return Ok(false);
+    }
+    println!(
+        "VT11 display: {} shipment(s), variant '{variant}'",
+        values.len()
+    );
+    if !assert_tcode(session, "VT11", Some(0))? {
+        println!("VT11 display: could not open VT11");
+        return Ok(false);
+    }
+    if !variant_select(session, "VT11", variant)? {
+        println!("VT11 display: variant '{variant}' not selected");
+        return Ok(false);
+    }
+
+    // multi-selection popup of the shipment field
+    if let Ok(btn) = session.find_by_id("wnd[0]/usr/btn%_K_TKNUM_%_APP_%-VALU_PUSH".to_string()) {
+        if let Some(button) = btn.downcast::<GuiButton>() {
+            button.press()?;
+        }
+    }
+    std::thread::sleep(std::time::Duration::from_millis(1000));
+    if !exist_ctrl(session, 1, "", true)?.cband {
+        println!(
+            "VT11 display: the shipment multi-selection did not open (variant hides K_TKNUM?)"
+        );
+        return Ok(false);
+    }
+    let popup_key = |key: i16| -> Result<()> {
+        if let Ok(w) = session.find_by_id("wnd[1]".to_string()) {
+            if let Some(m) = w.downcast::<GuiModalWindow>() {
+                m.send_v_key(key)?;
+            }
+        }
+        Ok(())
+    };
+    popup_key(16)?; // clear the table first, as the macro does
+    let table_id = "tabsTAB_STRIP/tabpSIVA/ssubSCREEN_HEADER:SAPLALDB:3010/tblSAPLALDBSINGLE";
+    let mut ok = crate::utils::sap_ctrl_utils::paste_values_via_clipboard(
+        session,
+        1,
+        table_id,
+        &values,
+        crate::utils::sap_ctrl_utils::PasteKind::Text,
+    )?;
+    if !ok {
+        println!("VT11 display: clipboard paste failed, entering row by row");
+        popup_key(16)?;
+        ok = crate::utils::sap_ctrl_utils::paste_values_with_scroll(
+            session, 1, table_id, &values, 7, "ctxt",
+        )?;
+    }
+    popup_key(8)?; // confirm without the save question, as the other paste paths do
+    if !ok {
+        println!("VT11 display: shipments not pasted");
+        return Ok(false);
+    }
+
+    // execute; an information popup means nothing was found
+    if let Ok(btn) = session.find_by_id("wnd[0]/tbar[1]/btn[8]".to_string()) {
+        if let Some(button) = btn.downcast::<GuiButton>() {
+            button.press()?;
+        }
+    }
+    std::thread::sleep(std::time::Duration::from_millis(1000));
+    let popup = exist_ctrl(session, 1, "", true)?;
+    if popup.cband {
+        println!("VT11 display: SAP says '{}' (no shipments?)", popup.ctext);
+        return Ok(false);
+    }
+
+    // tick all shipment checkmarks
+    if let Ok(btn) = session.find_by_id("wnd[0]/tbar[1]/btn[30]".to_string()) {
+        if let Some(button) = btn.downcast::<GuiButton>() {
+            button.press()?;
+            println!("VT11 display: all shipments ticked");
+            return Ok(true);
+        }
+    }
+    println!("VT11 display: tick button wnd[0]/tbar[1]/btn[30] not found");
+    Ok(false)
+}
+
 /// Run VT11 export with the given parameters
 ///
 /// This function is a port of the VBA function VT11_Run_Export

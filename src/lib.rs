@@ -22,6 +22,7 @@ pub mod lx03_module;
 pub mod mm60;
 pub mod mm60_module;
 pub mod parallel_test;
+pub mod shell;
 pub mod tui;
 pub mod utils;
 pub mod vl06o;

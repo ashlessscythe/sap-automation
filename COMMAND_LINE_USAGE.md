@@ -363,6 +363,19 @@ The shell is NOT used (output and exit codes exactly as before, nothing extra is
 
 Scripts and wrappers need no change: they normally run without a terminal. A terminal-attached script that parses the output should set `SAP_NO_SHELL=1`.
 
+### Driving from another program (headless)
+
+Checklist for a calling program (GUI, scheduler, script). Covered by `tests/headless_contract.rs`.
+
+1. **Never the shell.** Spawn the process with stdin and stdout NOT attached to a terminal (pipes / null / files), and, to be explicit, set `SAP_NO_SHELL=1` (plus `SAP_NO_STATUS=1` to also turn off the parallel status grid). `--json` also keeps the shell and the grid off, even on a terminal. In all these cases no alternate screen, cursor or colour escape sequences are written: stdout is plain lines.
+2. **Always pick a headless mode.** `--tcode`, `--run-loop`, `--run-sequence` or `--rname` (with `--run-date`). Starting with no mode argument means the interactive menu; without a terminal that now fails immediately ("interactive mode needs a terminal ...", non-zero exit) instead of waiting or painting a menu.
+3. **No prompt ever blocks.** Without a terminal on stdin AND stdout, or with `--json`, every prompt (menu, text input, confirmation, password) returns an error instead of reading stdin; unattended flows already take their values from flags / `config.toml` and fail with a message when one is missing. Pass everything as flags or config. Stdin is never needed (the exception you choose yourself is `--shipments-file -`).
+4. **Exit codes.** `0` = success, non-zero = failure (validation error, SAP error, failed report/merge; "no data" cases documented per mode are not failures). A usage error from the argument parser (unknown flag) exits `2` with the text on stderr; other errors exit `1`. Diagnostics go to stderr, progress lines to stdout.
+5. **`--json` (LT03).** The LAST stdout line is exactly one JSON object (`schema` 1). On success it is the result object; on failure, including validation errors raised before anything started, it is `{"schema":1,"tcode":"LT03","ok":false,"error":"..."}` and the exit code is non-zero. Read the exit code AND parse the last line; ignore earlier lines. Argument-parser errors (exit `2`) print usage text only, no JSON. Other tcodes have no `--json`; read their files and the exit code.
+6. **Output files** are the data contract (report folders, `summary.json` for LT03); do not scrape the log text.
+
+Minimal wrapper: `set SAP_NO_SHELL=1 & sap_automation.exe --tcode=lt03 --json --shipments=... < NUL > out.txt` then check `%ERRORLEVEL%` and the last line of `out.txt`.
+
 ## Validation Rules (fail-fast, before SAP connect)
 
 | Condition | Error |

@@ -308,6 +308,12 @@ pub fn with_prompt_ctx<R>(f: impl FnOnce(bool) -> R) -> R {
     }
     IN_PROMPT.with(|c| c.set(true));
     let _leave = Leave(&gate);
+    // the plain screen has no header / footer: say where we are (config section)
+    if let Some(banner) = super::active_shell().and_then(|sh| super::lock(&sh).context_banner()) {
+        use std::io::Write;
+        ::std::println!("{banner}");
+        let _ = std::io::stdout().flush();
+    }
     f(true)
 }
 
@@ -330,9 +336,43 @@ pub fn take_pending() -> String {
     std::mem::take(&mut *relock(&PENDING))
 }
 
+/// Pure rule: a prompt can only be answered with a terminal on stdin AND stdout, and never in
+/// `--json` mode (a calling program reads stdout and cannot type).
+pub fn prompts_possible(stdin_tty: bool, stdout_tty: bool, json: bool) -> bool {
+    stdin_tty && stdout_tty && !json
+}
+
+/// [`prompts_possible`] for this process.
+pub fn prompts_allowed() -> bool {
+    use std::io::IsTerminal;
+    prompts_possible(
+        std::io::stdin().is_terminal(),
+        std::io::stdout().is_terminal(),
+        crate::utils::cli_overrides::cli_overrides().lt03.json,
+    )
+}
+
+/// The error every prompt returns instead of blocking when [`prompts_allowed`] is false.
+pub fn no_prompt_error() -> std::io::Error {
+    std::io::Error::other(
+        "input needed but no terminal is attached (stdin/stdout piped or --json):          pass the value as a flag or set it in config.toml",
+    )
+}
+
+/// Guard of every prompt entry point: `Err` instead of waiting on a stdin nobody types on.
+/// A running shell always means terminals, so it is never refused.
+pub fn ensure_can_prompt() -> std::io::Result<()> {
+    if current_gate().is_some() || prompts_allowed() {
+        Ok(())
+    } else {
+        Err(no_prompt_error())
+    }
+}
+
 /// `stdin().read_line` for prompts. The `print!` text written just before it (the prompt) is
 /// shown on the normal screen, the read happens while the terminal is suspended.
 pub fn read_line(buf: &mut String) -> std::io::Result<usize> {
+    ensure_can_prompt()?;
     let prompt = take_pending();
     let start = buf.len();
     let r = with_prompt_ctx(|_| {
@@ -354,6 +394,7 @@ pub fn read_line(buf: &mut String) -> std::io::Result<usize> {
 /// `rpassword::read_password` for prompts (same suspend / pending-prompt handling as
 /// [`read_line`]; the typed password is never logged).
 pub fn read_password() -> std::io::Result<String> {
+    ensure_can_prompt()?;
     let prompt = take_pending();
     with_prompt_ctx(|_| {
         if !prompt.is_empty() {
@@ -368,6 +409,25 @@ pub fn read_password() -> std::io::Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn prompt_matrix() {
+        assert!(prompts_possible(true, true, false));
+        assert!(!prompts_possible(false, true, false));
+        assert!(!prompts_possible(true, false, false));
+        assert!(!prompts_possible(true, true, true));
+    }
+
+    #[test]
+    fn prompts_error_instead_of_blocking_without_a_terminal() {
+        // cargo test runs with stdin not a terminal (or captured); no gate is installed
+        if !prompts_allowed() {
+            let mut buf = String::new();
+            let e = read_line(&mut buf).unwrap_err();
+            assert!(e.to_string().contains("no terminal"));
+            assert!(read_password().is_err());
+        }
+    }
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
     #[test]

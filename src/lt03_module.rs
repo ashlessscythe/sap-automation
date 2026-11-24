@@ -1024,16 +1024,53 @@ pub fn print_json_line(v: &serde_json::Value) {
     }
 }
 
+/// Pure: do these arguments ask for `--tcode lt03 --json`? Needed because a validation error
+/// happens before the CLI overrides are installed, and a calling program still expects one JSON
+/// object as the last stdout line.
+pub fn args_request_lt03_json<I: IntoIterator<Item = String>>(args: I) -> bool {
+    let args: Vec<String> = args.into_iter().collect();
+    let json = args
+        .iter()
+        .any(|a| a == "--json" || a.starts_with("--json="));
+    let lt03 = args.iter().enumerate().any(|(i, a)| {
+        a.eq_ignore_ascii_case("--tcode=lt03")
+            || (a == "--tcode"
+                && args
+                    .get(i + 1)
+                    .is_some_and(|v| v.eq_ignore_ascii_case("lt03")))
+    });
+    json && lt03
+}
+
 /// For `main`: with `--json`, an error that no result line covered becomes
 /// `{"schema":1,"tcode":"LT03","ok":false,"error":"..."}` as the last stdout line.
 pub fn print_json_error(e: &anyhow::Error) {
-    if crate::utils::cli_overrides::lt03().json
+    if (crate::utils::cli_overrides::lt03().json
+        || args_request_lt03_json(std::env::args().skip(1)))
         && !JSON_PRINTED.load(std::sync::atomic::Ordering::SeqCst)
     {
         println!(
             "{}",
             serde_json::json!({"schema": 1, "tcode": "LT03", "ok": false, "error": format!("{e:#}")})
         );
+    }
+}
+
+#[cfg(test)]
+mod json_args_tests {
+    use super::args_request_lt03_json as f;
+
+    fn v(a: &[&str]) -> Vec<String> {
+        a.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn detects_lt03_json_in_raw_args() {
+        assert!(f(v(&["--tcode=LT03", "--json"])));
+        assert!(f(v(&["--json", "--tcode", "lt03", "--dry-run"])));
+        assert!(!f(v(&["--tcode=lt03"])));
+        assert!(!f(v(&["--tcode=vt11", "--json"])));
+        assert!(!f(v(&[])));
     }
 }
 

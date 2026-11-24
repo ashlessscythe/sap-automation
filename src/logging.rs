@@ -446,10 +446,20 @@ fn render_snapshot(snap: &SessionSnapshot, width: usize, max_rows: usize) -> Vec
         .collect()
 }
 
+/// Pure rule: the ANSI status panel is drawn only on a terminal, without `SAP_NO_STATUS` and
+/// never with `--json` (machine-readable stdout).
+pub fn status_panel_wanted(stdout_tty: bool, no_status: bool, json: bool) -> bool {
+    stdout_tty && !no_status && !json
+}
+
 impl Panel {
     fn new() -> Self {
         Self {
-            tty: std::io::stdout().is_terminal() && std::env::var_os("SAP_NO_STATUS").is_none(),
+            tty: status_panel_wanted(
+                std::io::stdout().is_terminal(),
+                std::env::var_os("SAP_NO_STATUS").is_some(),
+                crate::utils::cli_overrides::cli_overrides().lt03.json,
+            ),
             drawn: 0,
         }
     }

@@ -72,6 +72,21 @@ pub enum SapStatus {
     Disconnected,
 }
 
+impl SapStatus {
+    /// Short footer text.
+    pub fn label(&self) -> String {
+        match self {
+            SapStatus::Connected(Some(i)) => format!("SAP {i}"),
+            SapStatus::Connected(None) => "SAP connected".to_string(),
+            SapStatus::Disconnected => "SAP disconnected".to_string(),
+            SapStatus::Unknown => "SAP ?".to_string(),
+        }
+    }
+}
+
+/// Footer / header label of a section such as the config editor (`ShellState.extras` key).
+pub const SECTION_EXTRA: &str = "section";
+
 /// One session row of the parallel status panel.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SessionRow {
@@ -184,6 +199,19 @@ impl ShellState {
 
     pub fn clear_log(&mut self) {
         self.log.clear();
+    }
+
+    /// One-line context for prompts that must suspend the shell and so lose the header and
+    /// footer: `Title | CONFIG | interactive | SAP ...`. `None` outside a section.
+    pub fn context_banner(&self) -> Option<String> {
+        let section = self.extras.iter().find(|(l, _)| l == SECTION_EXTRA)?;
+        Some(format!(
+            "[{}] {} | {} | {}",
+            self.title,
+            section.1.to_uppercase(),
+            self.mode.label(),
+            self.sap.label()
+        ))
     }
 
     pub fn set_extra(&mut self, label: &str, value: impl Into<String>) {
@@ -342,6 +370,21 @@ pub fn format_elapsed(d: Duration) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn context_banner_only_inside_a_section() {
+        let mut st = ShellState::new("Tool", Mode::Interactive);
+        assert_eq!(st.context_banner(), None);
+        st.sap = SapStatus::Connected(Some("PRD".into()));
+        st.set_extra(SECTION_EXTRA, "config");
+        assert_eq!(
+            st.context_banner().as_deref(),
+            Some("[Tool] CONFIG | interactive | SAP PRD")
+        );
+        st.remove_extra(SECTION_EXTRA);
+        assert_eq!(st.context_banner(), None);
+        assert_eq!(SapStatus::Disconnected.label(), "SAP disconnected");
+    }
+
     use super::*;
 
     #[test]

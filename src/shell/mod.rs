@@ -287,6 +287,60 @@ mod tests {
     }
 
     #[test]
+    fn config_action_sets_chip_and_dialog_select_uses_shell_menu() {
+        let _s = ACTIVE_SERIAL.lock().unwrap_or_else(|p| p.into_inner());
+        let _sink = crate::logging::attach_shell();
+        let sh = shared(ShellState::new("t", Mode::Interactive));
+        set_active_shell(Some(sh.clone()));
+        prompt::set_gate(Some(Arc::new(prompt::PromptGate::new())));
+        request::set_interactive(true);
+        struct Cleanup;
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                request::set_interactive(false);
+                prompt::set_gate(None);
+                set_active_shell(None);
+            }
+        }
+        let _cleanup = Cleanup;
+        let _scope = begin_action("Configure Loop");
+        assert_eq!(lock(&sh).tcode.as_deref(), Some("CONFIG"));
+        assert!(lock(&sh).context_banner().is_some());
+        let worker = std::thread::spawn(|| {
+            dialog::Select::new()
+                .with_prompt("Choose an option")
+                .items(["a", "b", "c"])
+                .default(1)
+                .interact()
+                .unwrap()
+        });
+        for _ in 0..500 {
+            if lock(&sh).request.is_some() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        match lock(&sh).request.clone() {
+            Some(UiRequest::Menu(spec)) => {
+                assert_eq!(spec.title, "Choose an option");
+                assert_eq!(spec.items, ["a", "b", "c"]);
+                assert_eq!(spec.default, Some(1));
+            }
+            other => panic!("{other:?}"),
+        }
+        request::answer(&sh, Some(2));
+        assert_eq!(worker.join().unwrap(), 2);
+        // leave without the acknowledge round trip
+        end_action_state_reset(&sh);
+    }
+
+    fn end_action_state_reset(sh: &SharedShell) {
+        let mut s = lock(sh);
+        s.tcode = None;
+        s.remove_extra("section");
+    }
+
+    #[test]
     fn shared_state_updates_from_helper() {
         let s = shared(ShellState::new("t", Mode::Interactive));
         push_log(&s, Level::Warn, Some("s1"), "hi");

@@ -600,6 +600,12 @@ fn connect_interactive_sap() -> (
 /// (`shell::prompt`). Without a terminal or with `SAP_NO_SHELL` / `SAP_NO_STATUS` it is the
 /// classic menu loop, unchanged.
 fn run_interactive_mode() -> anyhow::Result<()> {
+    // never block on (or paint escape codes into) a pipe: a calling program must pick a headless mode
+    if !sap_automation::shell::prompt::prompts_allowed() {
+        return Err(anyhow::anyhow!(
+            "interactive mode needs a terminal on stdin and stdout; for unattended use pass              --tcode, --run-loop, --run-sequence or --rname (see COMMAND_LINE_USAGE.md,              \"Driving from another program\")"
+        ));
+    }
     sap_automation::shell::run_with_shell_opts(
         "SAP Automation",
         sap_automation::shell::Mode::Interactive,

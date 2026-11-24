@@ -83,12 +83,12 @@ fn header(state: &ShellState) -> Line<'static> {
 }
 
 fn status_line(state: &ShellState, view: &ViewState, width: usize) -> Line<'static> {
-    let (dot_color, sap_text) = match &state.sap {
-        SapStatus::Connected(Some(i)) => (Color::Green, format!("SAP {i}")),
-        SapStatus::Connected(None) => (Color::Green, "SAP connected".to_string()),
-        SapStatus::Disconnected => (Color::Red, "SAP disconnected".to_string()),
-        SapStatus::Unknown => (Color::DarkGray, "SAP ?".to_string()),
+    let dot_color = match &state.sap {
+        SapStatus::Connected(_) => Color::Green,
+        SapStatus::Disconnected => Color::Red,
+        SapStatus::Unknown => Color::DarkGray,
     };
+    let sap_text = state.sap.label();
     let mut spans = vec![
         Span::styled(" ● ", Style::default().fg(dot_color)),
         Span::raw(sap_text),
@@ -771,5 +771,19 @@ mod tests {
         assert!(out.contains("back to menu"));
         assert!(out.contains("old output 29"));
         assert!(!out.contains("Action number"));
+    }
+
+    #[test]
+    fn config_menu_keeps_header_chip_and_footer_section() {
+        let mut st = menu_state(9);
+        st.tcode = Some("CONFIG".into());
+        st.set_extra(crate::shell::state::SECTION_EXTRA, "config");
+        let mut v = ViewState::default();
+        let out = render(120, 30, &st, &mut v);
+        assert!(out.contains("SAP Automation"), "header title");
+        assert!(out.contains("CONFIG"), "header chip");
+        assert!(out.contains("section: config"), "footer section");
+        assert!(out.contains("logged in"), "footer SAP status");
+        assert!(out.contains("Action number 2"), "menu body");
     }
 }

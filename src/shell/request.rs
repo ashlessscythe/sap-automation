@@ -8,6 +8,7 @@
 #![allow(dead_code)]
 
 use super::menu::{MenuSpec, UiRequest};
+use super::state::SECTION_EXTRA;
 use super::{active_shell, lock, prompt, Level, SharedShell};
 use std::io;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -84,6 +85,11 @@ pub fn tcode_from_label(label: &str) -> Option<String> {
     (!head.is_empty() && head.chars().count() <= 20).then(|| head.to_string())
 }
 
+/// Section a main-menu label belongs to (`Configure ...` entries = the config editor).
+pub fn section_from_label(label: &str) -> Option<&'static str> {
+    label.starts_with("Configure ").then_some("config")
+}
+
 /// State of a running menu action (see [`begin_action`]).
 pub struct ActionScope {
     errors_before: Option<usize>,
@@ -97,7 +103,17 @@ pub fn begin_action(label: &str) -> ActionScope {
         };
     };
     let mut s = lock(&sh);
-    s.tcode = tcode_from_label(label);
+    match section_from_label(label) {
+        Some(section) => {
+            // header chip CONFIG, footer "section: config"; free-text prompts print a banner
+            s.tcode = Some(section.to_uppercase());
+            s.set_extra(SECTION_EXTRA, section);
+        }
+        None => {
+            s.tcode = tcode_from_label(label);
+            s.remove_extra(SECTION_EXTRA);
+        }
+    }
     s.command_line = format!("menu: {label}");
     s.started = std::time::Instant::now();
     s.finished_after = None;
@@ -140,6 +156,7 @@ pub fn end_action(scope: ActionScope) {
     s.tcode = None;
     s.command_line.clear();
     s.remove_extra("result");
+    s.remove_extra(SECTION_EXTRA);
 }
 
 #[cfg(test)]
@@ -158,6 +175,17 @@ mod tests {
         );
         assert_eq!(tcode_from_label("Run Loop (using config)"), None);
         assert_eq!(tcode_from_label(" - x"), None);
+    }
+
+    #[test]
+    fn config_labels_are_a_section() {
+        assert_eq!(section_from_label("Configure Loop"), Some("config"));
+        assert_eq!(
+            section_from_label("Configure Global and SAP Parameters"),
+            Some("config")
+        );
+        assert_eq!(section_from_label("VT11 - Auto Run"), None);
+        assert_eq!(section_from_label("Run Loop (using config)"), None);
     }
 
     #[test]

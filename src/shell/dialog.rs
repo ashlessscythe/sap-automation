@@ -12,51 +12,111 @@ use std::str::FromStr;
 
 type Result<T> = dialoguer::Result<T>;
 
-pub struct Select<'a>(dialoguer::Select<'a>);
+pub struct Select<'a> {
+    inner: dialoguer::Select<'a>,
+    prompt: String,
+    items: Vec<String>,
+    default: usize,
+}
 
 impl Default for Select<'static> {
     fn default() -> Self {
-        Select(dialoguer::Select::new())
+        Self::new()
     }
 }
 
 impl Select<'static> {
     pub fn new() -> Self {
-        Select(dialoguer::Select::new())
+        Select {
+            inner: dialoguer::Select::new(),
+            prompt: String::new(),
+            items: Vec::new(),
+            default: 0,
+        }
     }
 }
 
 impl Select<'_> {
-    pub fn default(self, val: usize) -> Self {
-        Select(self.0.default(val))
+    pub fn default(mut self, val: usize) -> Self {
+        self.default = val;
+        self.inner = self.inner.default(val);
+        self
     }
-    pub fn clear(self, val: bool) -> Self {
-        Select(self.0.clear(val))
+    pub fn clear(mut self, val: bool) -> Self {
+        self.inner = self.inner.clear(val);
+        self
     }
-    pub fn max_length(self, val: usize) -> Self {
-        Select(self.0.max_length(val))
+    pub fn max_length(mut self, val: usize) -> Self {
+        self.inner = self.inner.max_length(val);
+        self
     }
-    pub fn item<T: ToString>(self, item: T) -> Self {
-        Select(self.0.item(item))
+    pub fn item<T: ToString>(mut self, item: T) -> Self {
+        self.items.push(item.to_string());
+        self.inner = self.inner.item(item);
+        self
     }
-    pub fn items<T, I>(self, items: I) -> Self
+    pub fn items<T, I>(mut self, items: I) -> Self
     where
         T: ToString,
         I: IntoIterator<Item = T>,
     {
-        Select(self.0.items(items))
+        let items: Vec<T> = items.into_iter().collect();
+        self.items.extend(items.iter().map(|i| i.to_string()));
+        self.inner = self.inner.items(items);
+        self
     }
-    pub fn with_prompt<S: Into<String>>(self, prompt: S) -> Self {
-        Select(self.0.with_prompt(prompt))
+    pub fn with_prompt<S: Into<String>>(mut self, prompt: S) -> Self {
+        let prompt = prompt.into();
+        self.prompt = prompt.clone();
+        self.inner = self.inner.with_prompt(prompt);
+        self
     }
-    pub fn report(self, val: bool) -> Self {
-        Select(self.0.report(val))
+    pub fn report(mut self, val: bool) -> Self {
+        self.inner = self.inner.report(val);
+        self
     }
+
+    /// Title and default for the in-shell menu, `None` when it cannot be shown there.
+    fn shell_menu(&self) -> Option<(String, Option<usize>)> {
+        if self.items.is_empty() {
+            return None;
+        }
+        let title = if self.prompt.is_empty() {
+            "Choose an option".to_string()
+        } else {
+            self.prompt.clone()
+        };
+        Some((title, Some(self.default.min(self.items.len() - 1))))
+    }
+
+    /// Inside an interactive shell session the choice is a shell menu (header and footer stay
+    /// visible); `None` = not available, use the terminal prompt. `Some(Ok(None))` = Esc / q.
+    fn ask_in_shell(&self) -> Option<std::io::Result<Option<usize>>> {
+        let (title, default) = self.shell_menu()?;
+        super::try_menu(&title, &self.items, default)
+    }
+
     pub fn interact(self) -> Result<usize> {
-        with_prompt(|| self.0.interact())
+        loop {
+            match self.ask_in_shell() {
+                Some(Ok(Some(i))) => return Ok(i),
+                // `interact` has no cancel: Esc asks again while the shell is still up
+                Some(Ok(None)) if super::request::requests_available() => continue,
+                Some(Err(e)) => return Err(e.into()),
+                _ => break,
+            }
+        }
+        super::prompt::ensure_can_prompt()?;
+        with_prompt(|| self.inner.interact())
     }
     pub fn interact_opt(self) -> Result<Option<usize>> {
-        with_prompt(|| self.0.interact_opt())
+        match self.ask_in_shell() {
+            Some(Ok(choice)) => return Ok(choice),
+            Some(Err(e)) => return Err(e.into()),
+            None => {}
+        }
+        super::prompt::ensure_can_prompt()?;
+        with_prompt(|| self.inner.interact_opt())
     }
 }
 
@@ -91,9 +151,11 @@ impl Confirm<'_> {
         Confirm(self.0.show_default(val))
     }
     pub fn interact(self) -> Result<bool> {
+        super::prompt::ensure_can_prompt()?;
         with_prompt(|| self.0.interact())
     }
     pub fn interact_opt(self) -> Result<Option<bool>> {
+        super::prompt::ensure_can_prompt()?;
         with_prompt(|| self.0.interact_opt())
     }
 }
@@ -150,6 +212,7 @@ where
     <T as FromStr>::Err: ToString,
 {
     pub fn interact_text(self) -> Result<T> {
+        super::prompt::ensure_can_prompt()?;
         with_prompt(|| self.0.interact_text())
     }
 }
@@ -160,6 +223,7 @@ where
     <T as FromStr>::Err: Debug + ToString,
 {
     pub fn interact(self) -> Result<T> {
+        super::prompt::ensure_can_prompt()?;
         with_prompt(|| self.0.interact())
     }
 }

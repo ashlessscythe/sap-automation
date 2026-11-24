@@ -13,7 +13,7 @@ pub mod ui;
 pub use runner::{run_with_shell, shell_enabled, shell_wanted};
 pub use state::{
     command_line_from, format_elapsed, quote_arg, truncate_ellipsis, Level, LogEntry, Mode,
-    SapStatus, ShellState, ViewState, LOG_CAP,
+    SapStatus, SessionRow, SessionSnapshot, ShellState, ViewState, LOG_CAP,
 };
 pub use terminal::{restore_terminal, ShellTerminal, TerminalGuard};
 pub use ui::draw;
@@ -41,6 +41,35 @@ pub fn set_sap_status(status: SapStatus) {
     if let Some(sh) = active_shell() {
         lock(&sh).sap = status;
     }
+}
+
+/// Pure gate: raw screen writes (clear, cursor moves) are allowed only when neither the log
+/// sink nor an active shell owns the terminal.
+pub fn raw_screen_allowed(sink_active: bool, shell_active: bool) -> bool {
+    !sink_active && !shell_active
+}
+
+/// Run `f` (a raw terminal write such as a clear) only while the shell is NOT up; while it is,
+/// such writes would corrupt the alternate screen, so `f` is skipped.
+pub fn unless_shell(f: impl FnOnce()) {
+    if raw_screen_allowed(
+        crate::logging::shell_sink_active(),
+        active_shell().is_some(),
+    ) {
+        f();
+    }
+}
+
+/// Shared `clear_screen()` for the interactive modules: exactly the old
+/// `execute!(stdout(), Clear(All))` when the shell is off, a no-op while it is up.
+pub fn clear_screen() {
+    unless_shell(|| {
+        crossterm::execute!(
+            io::stdout(),
+            crossterm::terminal::Clear(crossterm::terminal::ClearType::All)
+        )
+        .unwrap();
+    });
 }
 
 pub fn shared(state: ShellState) -> SharedShell {
@@ -99,7 +128,9 @@ pub fn draw_once(
     shell: &SharedShell,
     view: &mut ViewState,
 ) -> io::Result<()> {
-    let snapshot = lock(shell).clone();
+    let mut snapshot = lock(shell).clone();
+    // parallel session rows come from the shared logging board; draw itself stays pure
+    snapshot.sessions = crate::logging::session_snapshot();
     term.draw(|f| draw(f, &snapshot, view))?;
     Ok(())
 }
@@ -160,6 +191,28 @@ mod tests {
         assert!(!handle_event(&key(KeyCode::Char('z')), &mut v));
         handle_event(&key(KeyCode::Char('q')), &mut v);
         assert!(v.quit);
+    }
+
+    #[test]
+    fn raw_screen_gate() {
+        assert!(raw_screen_allowed(false, false));
+        assert!(!raw_screen_allowed(true, false));
+        assert!(!raw_screen_allowed(false, true));
+        assert!(!raw_screen_allowed(true, true));
+    }
+
+    #[test]
+    fn unless_shell_skips_while_shell_is_active() {
+        // shell tests that touch the global ACTIVE slot live in this one test
+        let mut ran = false;
+        unless_shell(|| ran = true);
+        assert!(ran, "shell off: runs");
+        set_active_shell(Some(shared(ShellState::new("t", Mode::Interactive))));
+        let mut ran = false;
+        unless_shell(|| ran = true);
+        clear_screen(); // must not touch the terminal (and must not panic)
+        set_active_shell(None);
+        assert!(!ran, "shell on: skipped");
     }
 
     #[test]

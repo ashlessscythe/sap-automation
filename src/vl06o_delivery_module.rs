@@ -1,8 +1,4 @@
 use chrono::NaiveDate;
-use crossterm::{
-    execute,
-    terminal::{Clear, ClearType},
-};
 use dialoguer::{Input, Select};
 use sap_scripting::*;
 use std::fs;
@@ -819,7 +815,7 @@ fn get_vl06o_delivery_parameters() -> Result<VL06ODeliveryParams> {
 
 /// Clear the screen
 fn clear_screen() {
-    execute!(std::io::stdout(), Clear(ClearType::All)).unwrap();
+    sap_automation::shell::clear_screen();
 }
 
 /// Parse a date string into a NaiveDate

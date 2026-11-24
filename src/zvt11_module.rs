@@ -257,5 +257,5 @@ fn get_zvt11_parameters() -> Result<ZVT11Params> {
 
 /// Clear the screen
 fn clear_screen() {
-    print!("\x1B[2J\x1B[1;1H");
+    sap_automation::shell::unless_shell(|| print!("\x1B[2J\x1B[1;1H"));
 }

@@ -1,8 +1,4 @@
 use chrono::NaiveDate;
-use crossterm::{
-    execute,
-    terminal::{Clear, ClearType},
-};
 use dialoguer::{Input, Select};
 use sap_scripting::*;
 use std::collections::HashMap;
@@ -567,7 +563,7 @@ fn create_vl06o_params_from_config(config: &HashMap<String, String>) -> VL06OPar
 }
 
 fn clear_screen() {
-    execute!(std::io::stdout(), Clear(ClearType::All)).unwrap();
+    sap_automation::shell::clear_screen();
 }
 
 fn get_vl06o_parameters() -> Result<VL06OParams> {

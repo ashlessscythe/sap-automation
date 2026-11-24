@@ -1,7 +1,3 @@
-use crossterm::{
-    execute,
-    terminal::{Clear, ClearType},
-};
 use dialoguer::Input;
 use sap_scripting::*;
 use std::collections::HashMap;
@@ -229,7 +225,7 @@ fn create_zmdesnr_params_from_config(config: &HashMap<String, String>) -> ZMDESN
 }
 
 fn clear_screen() {
-    execute!(std::io::stdout(), Clear(ClearType::All)).unwrap();
+    sap_automation::shell::clear_screen();
 }
 
 fn get_zmdesnr_parameters() -> Result<ZMDESNRParams> {

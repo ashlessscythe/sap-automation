@@ -1,9 +1,6 @@
 use anyhow::Result;
-use crossterm::{
-    execute,
-    terminal::{Clear, ClearType},
-};
 use dialoguer::{Input, Select};
+use std::fmt::Write as _;
 use std::io;
 use std::thread;
 use std::time::Duration;
@@ -175,24 +172,25 @@ pub fn handle_read_excel_file() -> Result<()> {
                     col_widths.push(max_width + 2); // +2 for padding
                 }
 
-                // Print header row with color
-                print!("\x1b[1;36m| "); // Bright cyan, bold
+                let mut buf = String::new(); // built first so the shell sink gets whole lines
+                                             // Print header row with color
+                let _ = write!(buf, "\x1b[1;36m| "); // Bright cyan, bold
                 for (i, col) in selected_columns.iter().enumerate() {
                     let width = col_widths[i];
-                    print!("{col:<width$} | ");
+                    let _ = write!(buf, "{col:<width$} | ");
                 }
-                println!("\x1b[0m"); // Reset color
+                buf.push_str("\x1b[0m\n"); // Reset color
 
                 // Print separator with double line for better visibility
-                print!("\x1b[1;36m|"); // Bright cyan, bold
+                let _ = write!(buf, "\x1b[1;36m|"); // Bright cyan, bold
                 for width in &col_widths {
                     for _ in 0..(width + 3) {
                         // +3 for the " | " separator
-                        print!("=");
+                        buf.push('=');
                     }
-                    print!("|");
+                    buf.push('|');
                 }
-                println!("\x1b[0m"); // Reset color
+                buf.push_str("\x1b[0m\n"); // Reset color
 
                 // Print data rows (up to 5)
                 let row_count = if columns.is_empty() {
@@ -203,29 +201,29 @@ pub fn handle_read_excel_file() -> Result<()> {
                 let display_rows = std::cmp::min(5, row_count);
 
                 for row_idx in 0..display_rows {
-                    print!("| ");
+                    buf.push_str("| ");
                     for (col_idx, col) in columns.iter().enumerate() {
                         let width = col_widths[col_idx];
                         if row_idx < col.len() {
                             let value = col[row_idx].to_string();
-                            print!("{value:<width$} | ");
+                            let _ = write!(buf, "{value:<width$} | ");
                         } else {
-                            print!("{:<width$} | ", "", width = width);
+                            let _ = write!(buf, "{:<width$} | ", "", width = width);
                         }
                     }
-                    println!();
+                    buf.push('\n');
                 }
 
                 // Print bottom separator
-                print!("|");
+                buf.push('|');
                 for width in &col_widths {
                     for _ in 0..(width + 3) {
                         // +3 for the " | " separator
-                        print!("-");
+                        buf.push('-');
                     }
-                    print!("|");
+                    buf.push('|');
                 }
-                println!();
+                println!("{buf}");
             }
         }
 
@@ -302,5 +300,5 @@ pub fn handle_read_excel_file() -> Result<()> {
 
 // Helper function to clear the screen
 fn clear_screen() {
-    execute!(std::io::stdout(), Clear(ClearType::All)).unwrap();
+    sap_automation::shell::clear_screen();
 }

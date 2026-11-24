@@ -71,6 +71,47 @@ pub enum SapStatus {
     Disconnected,
 }
 
+/// One session row of the parallel status panel.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SessionRow {
+    /// Session tag such as `s3`.
+    pub tag: String,
+    /// `running`, `done`, `FAILED`, ...
+    pub state: String,
+    pub task: String,
+    /// Latest log line of the session.
+    pub last: String,
+    /// Time in the current task; `None` once the session is finished.
+    pub task_elapsed: Option<Duration>,
+}
+
+impl SessionRow {
+    pub fn is_finished(&self) -> bool {
+        is_finished_state(&self.state)
+    }
+}
+
+/// States after which a session no longer counts as active.
+pub fn is_finished_state(state: &str) -> bool {
+    matches!(state, "done" | "FAILED")
+}
+
+/// Point-in-time copy of the parallel status panel data (see `logging::session_snapshot`).
+/// Both the ANSI panel and the shell's session pane render from this.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SessionSnapshot {
+    pub elapsed: Duration,
+    /// `(done, total)` days.
+    pub progress: Option<(usize, usize)>,
+    pub rows: Vec<SessionRow>,
+}
+
+impl SessionSnapshot {
+    pub fn running(&self) -> usize {
+        self.rows.iter().filter(|r| !r.is_finished()).count()
+    }
+}
+
 /// Everything the shell shows. Share it as `Arc<Mutex<ShellState>>` (see [`super::SharedShell`]).
 #[derive(Clone, Debug)]
 pub struct ShellState {
@@ -84,6 +125,8 @@ pub struct ShellState {
     pub finished_after: Option<Duration>,
     /// Free-form `(label, value)` items shown in the status bar.
     pub extras: Vec<(String, String)>,
+    /// Parallel session rows; copied in by `draw_once` (None outside parallel runs).
+    pub sessions: Option<SessionSnapshot>,
     log: VecDeque<LogEntry>,
     /// Total entries ever pushed, including dropped ones.
     pub total_logged: u64,
@@ -100,6 +143,7 @@ impl ShellState {
             started: Instant::now(),
             finished_after: None,
             extras: Vec::new(),
+            sessions: None,
             log: VecDeque::new(),
             total_logged: 0,
         }

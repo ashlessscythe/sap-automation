@@ -25,6 +25,10 @@
 //! The pinned ANSI status panel is switched off in that case. Dropping the [`ShellSinkGuard`]
 //! returns to plain printing.
 //!
+//! The data behind the panel (rows per session tag, progress, start time) lives in one shared
+//! board ([`session_snapshot`] copies it out as a `SessionSnapshot`); the ANSI panel above and
+//! the shell's session pane both render from that snapshot, so the refresh logic exists once.
+//!
 //! Declared first in `lib.rs` with `#[macro_use]` so the macros are in scope crate-wide. Plain
 //! `print!` is not covered (it stays direct).
 
@@ -36,23 +40,10 @@ use std::sync::mpsc::{self, Sender};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
+use crate::shell::state::{is_finished_state, SessionRow, SessionSnapshot};
+
 enum Msg {
-    Line {
-        stderr: bool,
-        text: String,
-        tag: String,
-        last: String,
-    },
-    Status {
-        tag: String,
-        state: Option<String>,
-        task: Option<String>,
-    },
-    Progress {
-        done: usize,
-        total: usize,
-    },
-    Begin,
+    Line { stderr: bool, text: String },
     Finish(Sender<()>),
     Flush(Sender<()>),
 }
@@ -85,7 +76,12 @@ pub fn emit(stderr: bool, args: Arguments<'_>) {
         if let Some(shell) = crate::shell::active_shell() {
             let tag = crate::utils::sap_export_utils::session_tag_name();
             let tag = if tag.is_empty() { None } else { Some(tag) };
-            let entries = lines_to_entries(stderr, tag.as_deref(), &args.to_string());
+            let body = args.to_string();
+            board_line(
+                tag.as_deref().unwrap_or(""),
+                body.lines().last().unwrap_or("").trim(),
+            );
+            let entries = lines_to_entries(stderr, tag.as_deref(), &body);
             let mut st = crate::shell::lock(&shell);
             for (level, tag, text) in entries {
                 st.log(level, tag.as_deref(), text);
@@ -103,7 +99,7 @@ pub fn emit(stderr: bool, args: Arguments<'_>) {
     }
     let tag = crate::utils::sap_export_utils::session_tag_name();
     let body = args.to_string();
-    let last = body.lines().last().unwrap_or("").trim().to_string();
+    board_line(&tag, body.lines().last().unwrap_or("").trim());
     let text = if tag.is_empty() {
         body
     } else {
@@ -114,15 +110,7 @@ pub fn emit(stderr: bool, args: Arguments<'_>) {
     };
     if let Some(tx) = TX.get() {
         if let Ok(tx) = tx.lock() {
-            if tx
-                .send(Msg::Line {
-                    stderr,
-                    text,
-                    tag: tag.clone(),
-                    last,
-                })
-                .is_ok()
-            {
+            if tx.send(Msg::Line { stderr, text }).is_ok() {
                 return;
             }
         }
@@ -255,13 +243,112 @@ impl Default for Row {
     }
 }
 
-/// The pinned status panel (see the module docs). All drawing state lives on the writer thread.
-struct Panel {
-    tty: bool,
+/// Shared status data of a parallel run (see the module docs).
+struct Board {
     active: bool,
-    t0: Instant,
+    t0: Option<Instant>,
     rows: BTreeMap<String, Row>,
     progress: Option<(usize, usize)>,
+}
+
+impl Board {
+    const fn new() -> Self {
+        Self {
+            active: false,
+            t0: None,
+            rows: BTreeMap::new(),
+            progress: None,
+        }
+    }
+
+    fn begin(&mut self) {
+        self.active = true;
+        self.t0 = Some(Instant::now());
+        self.rows.clear();
+        self.progress = None;
+    }
+
+    fn finish(&mut self) {
+        self.active = false;
+        self.rows.clear();
+        self.progress = None;
+    }
+
+    /// A log line of session `tag`: creates the row and remembers the latest line.
+    fn line(&mut self, tag: &str, last: &str) {
+        if self.active && !tag.is_empty() {
+            let row = self.rows.entry(tag.to_string()).or_default();
+            if row.state.is_empty() {
+                row.state = "running".into();
+            }
+            if !last.is_empty() {
+                row.last = last.to_string();
+            }
+        }
+    }
+
+    fn set(&mut self, tag: &str, state: Option<&str>, task: Option<&str>) {
+        if !self.active || tag.is_empty() {
+            return;
+        }
+        let row = self.rows.entry(tag.to_string()).or_default();
+        if let Some(s) = state {
+            row.state = s.to_string();
+        }
+        if let Some(t) = task {
+            row.task = t.to_string();
+            row.since = Instant::now();
+        }
+    }
+
+    fn set_progress(&mut self, done: usize, total: usize) {
+        if self.active {
+            self.progress = Some((done, total));
+        }
+    }
+
+    /// `None` while there are no session rows (no panel is shown then).
+    fn snapshot(&self) -> Option<SessionSnapshot> {
+        if !self.active || self.rows.is_empty() {
+            return None;
+        }
+        Some(SessionSnapshot {
+            elapsed: self.t0.map(|t| t.elapsed()).unwrap_or_default(),
+            progress: self.progress,
+            rows: self
+                .rows
+                .iter()
+                .map(|(tag, r)| SessionRow {
+                    tag: tag.clone(),
+                    state: r.state.clone(),
+                    task: r.task.clone(),
+                    last: r.last.clone(),
+                    task_elapsed: (!is_finished_state(&r.state)).then(|| r.since.elapsed()),
+                })
+                .collect(),
+        })
+    }
+}
+
+static BOARD: Mutex<Board> = Mutex::new(Board::new());
+
+fn board() -> std::sync::MutexGuard<'static, Board> {
+    BOARD.lock().unwrap_or_else(|p| p.into_inner())
+}
+
+fn board_line(tag: &str, last: &str) {
+    board().line(tag, last);
+}
+
+/// Current session rows of a parallel run (`None` outside parallel runs or before the first
+/// session reports). Used by the ANSI panel and by the shell's session pane.
+pub fn session_snapshot() -> Option<SessionSnapshot> {
+    board().snapshot()
+}
+
+/// The pinned ANSI status panel: only drawing state; the data is the shared board.
+struct Panel {
+    tty: bool,
     drawn: usize,
 }
 
@@ -280,66 +367,56 @@ fn fit(s: &str, w: usize) -> String {
     }
 }
 
+/// The panel as plain text lines (header first, then a column title and one row per session),
+/// each at most `width - 1` chars.
+fn render_snapshot(snap: &SessionSnapshot, width: usize, max_rows: usize) -> Vec<String> {
+    let mut head = format!(" status | {}", mmss(snap.elapsed.as_secs()));
+    if let Some((d, t)) = snap.progress {
+        head.push_str(&format!(" | days {d}/{t}"));
+    }
+    head.push_str(&format!(
+        " | {}/{} sessions active ",
+        snap.running(),
+        snap.rows.len()
+    ));
+    let w = width.saturating_sub(1).max(40);
+    // columns: session 4, state 8, task 28, time 5, rest = latest line
+    let rest = w.saturating_sub(4 + 8 + 28 + 5 + 4).max(5);
+    let mut lines = vec![head];
+    lines.push(format!(
+        "{} {} {} {} {}",
+        fit("ses", 4),
+        fit("state", 8),
+        fit("task", 28),
+        fit("time", 5),
+        fit("latest", rest)
+    ));
+    for r in snap.rows.iter().take(max_rows) {
+        let t = r
+            .task_elapsed
+            .map(|d| mmss(d.as_secs()))
+            .unwrap_or_default();
+        lines.push(format!(
+            "{} {} {} {} {}",
+            fit(&r.tag, 4),
+            fit(&r.state, 8),
+            fit(&r.task, 28),
+            fit(&t, 5),
+            fit(&r.last, rest)
+        ));
+    }
+    lines
+        .into_iter()
+        .map(|l| fit(&l, w).trim_end().to_string())
+        .collect()
+}
+
 impl Panel {
     fn new() -> Self {
         Self {
             tty: std::io::stdout().is_terminal() && std::env::var_os("SAP_NO_STATUS").is_none(),
-            active: false,
-            t0: Instant::now(),
-            rows: BTreeMap::new(),
-            progress: None,
             drawn: 0,
         }
-    }
-
-    /// The panel as plain text lines (header first, then a column title and one row per session),
-    /// each at most `width - 1` chars.
-    fn render(&self, width: usize, max_rows: usize) -> Vec<String> {
-        let secs = self.t0.elapsed().as_secs();
-        let running = self
-            .rows
-            .values()
-            .filter(|r| !matches!(r.state.as_str(), "done" | "FAILED"))
-            .count();
-        let mut head = format!(" status | {}", mmss(secs));
-        if let Some((d, t)) = self.progress {
-            head.push_str(&format!(" | days {d}/{t}"));
-        }
-        head.push_str(&format!(
-            " | {running}/{} sessions active ",
-            self.rows.len()
-        ));
-        let w = width.saturating_sub(1).max(40);
-        // columns: session 4, state 8, task 28, time 5, rest = latest line
-        let rest = w.saturating_sub(4 + 8 + 28 + 5 + 4).max(5);
-        let mut lines = vec![head];
-        lines.push(format!(
-            "{} {} {} {} {}",
-            fit("ses", 4),
-            fit("state", 8),
-            fit("task", 28),
-            fit("time", 5),
-            fit("latest", rest)
-        ));
-        for (tag, r) in self.rows.iter().take(max_rows) {
-            let t = if matches!(r.state.as_str(), "done" | "FAILED") {
-                String::new()
-            } else {
-                mmss(r.since.elapsed().as_secs())
-            };
-            lines.push(format!(
-                "{} {} {} {} {}",
-                fit(tag, 4),
-                fit(&r.state, 8),
-                fit(&r.task, 28),
-                fit(&t, 5),
-                fit(&r.last, rest)
-            ));
-        }
-        lines
-            .into_iter()
-            .map(|l| fit(&l, w).trim_end().to_string())
-            .collect()
     }
 
     fn erase(&mut self, out: &mut impl Write) {
@@ -357,11 +434,14 @@ impl Panel {
     }
 
     fn draw(&mut self, out: &mut impl Write) {
-        if !self.tty || !self.active || self.rows.is_empty() || shell_sink_active() {
+        if !self.tty || shell_sink_active() {
             return;
         }
+        let Some(snap) = session_snapshot() else {
+            return;
+        };
         let (w, h) = crossterm::terminal::size().unwrap_or((110, 30));
-        let lines = self.render(w as usize, (h as usize).saturating_sub(5).min(12));
+        let lines = render_snapshot(&snap, w as usize, (h as usize).saturating_sub(5).min(12));
         for (i, l) in lines.iter().enumerate() {
             if i < 2 {
                 let _ = crossterm::queue!(
@@ -380,56 +460,16 @@ impl Panel {
 
     fn apply(&mut self, m: Msg, out: &mut impl Write) -> Option<Sender<()>> {
         match m {
-            Msg::Line {
-                stderr,
-                text,
-                tag,
-                last,
-            } => {
+            Msg::Line { stderr, text } => {
                 if stderr {
                     let _ = out.flush();
                     let _ = writeln!(std::io::stderr(), "{text}");
                 } else {
                     let _ = writeln!(out, "{text}");
                 }
-                if self.active && !tag.is_empty() {
-                    let row = self.rows.entry(tag).or_default();
-                    if row.state.is_empty() {
-                        row.state = "running".into();
-                    }
-                    if !last.is_empty() {
-                        row.last = last;
-                    }
-                }
                 None
             }
-            Msg::Status { tag, state, task } => {
-                let row = self.rows.entry(tag).or_default();
-                if let Some(s) = state {
-                    row.state = s;
-                }
-                if let Some(t) = task {
-                    row.task = t;
-                    row.since = Instant::now();
-                }
-                None
-            }
-            Msg::Progress { done, total } => {
-                self.progress = Some((done, total));
-                None
-            }
-            Msg::Begin => {
-                self.active = true;
-                self.t0 = Instant::now();
-                self.rows.clear();
-                self.progress = None;
-                None
-            }
-            Msg::Finish(ack) => {
-                self.active = false;
-                self.rows.clear();
-                Some(ack)
-            }
+            Msg::Finish(ack) => Some(ack),
             Msg::Flush(ack) => Some(ack),
         }
     }
@@ -479,53 +519,31 @@ fn spawn_writer() -> Sender<Msg> {
     tx
 }
 
-fn send(m: Msg) {
-    if ENABLED.load(Ordering::Acquire) {
-        if let Some(tx) = TX.get() {
-            if let Ok(tx) = tx.lock() {
-                let _ = tx.send(m);
-            }
-        }
-    }
-}
-
 /// Set the state shown in the panel for the calling thread's session (`running`, `done`,
 /// `FAILED`, ...). No effect outside parallel runs or on a thread without a session tag.
 pub fn status(state: &str) {
     let tag = crate::utils::sap_export_utils::session_tag_name();
-    if !tag.is_empty() {
-        send(Msg::Status {
-            tag,
-            state: Some(state.to_string()),
-            task: None,
-        });
-    }
+    board().set(&tag, Some(state), None);
 }
 
 /// Set the task text of the calling thread's session (`relabel for 2026-11-05`) and restart its
 /// row timer.
 pub fn task(text: &str) {
     let tag = crate::utils::sap_export_utils::session_tag_name();
-    if !tag.is_empty() {
-        send(Msg::Status {
-            tag,
-            state: None,
-            task: Some(text.to_string()),
-        });
-    }
+    board().set(&tag, None, Some(text));
 }
 
 /// Set the `done/total` counter in the panel header.
 pub fn progress(done: usize, total: usize) {
-    send(Msg::Progress { done, total });
+    board().set_progress(done, total);
 }
 
 /// Switch to asynchronous logging until the guard is dropped.
 pub fn start() -> LogGuard {
     let tx = TX.get_or_init(|| Mutex::new(spawn_writer()));
     let _ = tx; // writer thread lives for the process
+    board().begin();
     ENABLED.store(true, Ordering::Release);
-    send(Msg::Begin);
     LogGuard
 }
 
@@ -547,6 +565,7 @@ pub struct LogGuard;
 impl Drop for LogGuard {
     fn drop(&mut self) {
         // erase the panel and wait until everything is written
+        board().finish();
         if let Some(tx) = TX.get() {
             let (ack_tx, ack_rx) = mpsc::channel();
             let sent = tx
@@ -605,30 +624,46 @@ mod tests {
         assert!(lines_to_entries(false, None, "").is_empty());
     }
 
+    fn sample_board() -> Board {
+        let mut b = Board::new();
+        b.begin();
+        b.set_progress(2, 8);
+        b.set("s3", Some("running"), Some("relabel for 2026-11-05"));
+        b.line("s3", &"x".repeat(200));
+        b.set("s4", Some("done"), None);
+        b
+    }
+
     #[test]
     fn panel_renders_header_and_rows_truncated() {
-        let mut p = Panel::new();
-        p.progress = Some((2, 8));
-        p.rows.insert(
-            "s3".into(),
-            Row {
-                state: "running".into(),
-                task: "relabel for 2026-11-05".into(),
-                last: "x".repeat(200),
-                ..Row::default()
-            },
-        );
-        p.rows.insert(
-            "s4".into(),
-            Row {
-                state: "done".into(),
-                ..Row::default()
-            },
-        );
-        let l = p.render(100, 12);
+        let snap = sample_board().snapshot().unwrap();
+        let l = render_snapshot(&snap, 100, 12);
         assert_eq!(l.len(), 4);
         assert!(l[0].contains("days 2/8") && l[0].contains("1/2 sessions"));
         assert!(l[2].starts_with("s3") && l[2].contains("relabel for 2026-11-05"));
         assert!(l.iter().all(|x| x.chars().count() <= 99));
+    }
+
+    #[test]
+    fn board_snapshot_rules() {
+        let mut b = Board::new();
+        assert!(b.snapshot().is_none(), "inactive");
+        b.line("s1", "ignored while inactive");
+        b.begin();
+        assert!(b.snapshot().is_none(), "no rows yet");
+        b.line("", "no tag, no row");
+        assert!(b.snapshot().is_none());
+        b.line("s1", "hello");
+        let s = b.snapshot().unwrap();
+        assert_eq!(s.rows.len(), 1);
+        assert_eq!(s.rows[0].state, "running");
+        assert_eq!(s.rows[0].last, "hello");
+        assert!(s.rows[0].task_elapsed.is_some());
+        b.set("s1", Some("FAILED"), None);
+        let s = b.snapshot().unwrap();
+        assert_eq!(s.running(), 0);
+        assert!(s.rows[0].task_elapsed.is_none());
+        b.finish();
+        assert!(b.snapshot().is_none());
     }
 }

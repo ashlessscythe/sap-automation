@@ -2,13 +2,17 @@
 #![allow(dead_code)]
 
 use super::state::{
-    format_elapsed, truncate_ellipsis, Level, LogEntry, SapStatus, ShellState, ViewState,
+    format_elapsed, truncate_ellipsis, Level, LogEntry, SapStatus, SessionRow, SessionSnapshot,
+    ShellState, ViewState,
 };
 use ratatui::{
     layout::{Constraint, Layout, Margin, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap},
+    widgets::{
+        Block, Borders, Cell, Gauge, Paragraph, Row, Scrollbar, ScrollbarOrientation,
+        ScrollbarState, Table, Wrap,
+    },
     Frame,
 };
 
@@ -93,6 +97,9 @@ fn status_line(state: &ShellState, view: &ViewState, width: usize) -> Line<'stat
         state.mode.label().to_string(),
         format_elapsed(state.elapsed()),
     ];
+    if let Some((d, t)) = state.sessions.as_ref().and_then(|s| s.progress) {
+        optional.push(format!("days {d}/{t}"));
+    }
     optional.extend(state.extras.iter().map(|(l, v)| format!("{l}: {v}")));
     optional.push(format!(
         "{} lines, {} warn, {} err",
@@ -122,11 +129,16 @@ pub fn draw(frame: &mut Frame, state: &ShellState, view: &mut ViewState) {
         return;
     }
     let show_cmd = area.height >= 12 && !state.command_line.is_empty();
+    let footer_h = u16::from(area.height >= 2);
+    let fixed = 1 + u16::from(show_cmd) + footer_h;
+    let n_sessions = state.sessions.as_ref().map_or(0, |s| s.rows.len());
+    let (pane_h, pane) = session_pane_layout(area.height, fixed, n_sessions);
     let rows = Layout::vertical([
         Constraint::Length(1),
         Constraint::Length(u16::from(show_cmd)),
+        Constraint::Length(pane_h),
         Constraint::Min(0),
-        Constraint::Length(u16::from(area.height >= 2)),
+        Constraint::Length(footer_h),
     ])
     .split(area);
 
@@ -142,13 +154,193 @@ pub fn draw(frame: &mut Frame, state: &ShellState, view: &mut ViewState) {
         ]);
         frame.render_widget(Paragraph::new(line), rows[1]);
     }
-    draw_log(frame, rows[2], state, view);
-    if rows[3].height > 0 {
+    if let (Some(snap), true) = (&state.sessions, pane_h > 0) {
+        draw_sessions(frame, rows[2], snap, pane);
+    }
+    draw_log(frame, rows[3], state, view);
+    if rows[4].height > 0 {
         frame.render_widget(
             Paragraph::new(status_line(state, view, area.width as usize)),
-            rows[3],
+            rows[4],
         );
     }
+}
+
+/// The log window is never squeezed below this many rows by the session pane.
+pub const MIN_LOG_ROWS: u16 = 6;
+
+/// How the parallel session pane is shown.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PaneLayout {
+    Hidden,
+    /// One line: counts, elapsed and the progress gauge.
+    Summary,
+    /// Summary line, column titles and `rows` session rows.
+    Table {
+        rows: u16,
+    },
+}
+
+/// Pure sizing rule: `(height, layout)` for the session pane given the terminal height, the rows
+/// used by everything else (`fixed`: header, command line, footer) and the number of sessions.
+/// The log keeps at least [`MIN_LOG_ROWS`]; with little room the pane collapses to one summary
+/// line, with none it is hidden.
+pub fn session_pane_layout(total_h: u16, fixed: u16, sessions: usize) -> (u16, PaneLayout) {
+    let avail = total_h.saturating_sub(fixed).saturating_sub(MIN_LOG_ROWS);
+    if sessions == 0 || avail == 0 {
+        return (0, PaneLayout::Hidden);
+    }
+    let full = u16::try_from(sessions)
+        .unwrap_or(u16::MAX)
+        .saturating_add(2);
+    if avail >= full {
+        (full, PaneLayout::Table { rows: full - 2 })
+    } else if avail >= 3 {
+        (avail, PaneLayout::Table { rows: avail - 2 })
+    } else {
+        (1, PaneLayout::Summary)
+    }
+}
+
+fn state_color(row: &SessionRow) -> Color {
+    match row.state.as_str() {
+        "FAILED" => Color::Red,
+        "done" => Color::DarkGray,
+        "" => Color::Gray,
+        _ => Color::Green,
+    }
+}
+
+/// `sessions 1/3 active | 00:12` summary text of the pane.
+pub fn session_summary(snap: &SessionSnapshot) -> String {
+    format!(
+        " sessions {}/{} active | {}",
+        snap.running(),
+        snap.rows.len(),
+        format_elapsed(snap.elapsed)
+    )
+}
+
+fn draw_sessions(frame: &mut Frame, area: Rect, snap: &SessionSnapshot, pane: PaneLayout) {
+    if area.width == 0 || area.height == 0 || pane == PaneLayout::Hidden {
+        return;
+    }
+    let bar = Rect { height: 1, ..area };
+    let (text_area, gauge_area) = match snap.progress {
+        Some(_) if bar.width >= 60 => {
+            let cols = Layout::horizontal([Constraint::Min(0), Constraint::Length(24)]).split(bar);
+            (cols[0], Some(cols[1]))
+        }
+        _ => (bar, None),
+    };
+    let mut summary = session_summary(snap);
+    if gauge_area.is_none() {
+        if let Some((d, t)) = snap.progress {
+            summary.push_str(&format!(" | days {d}/{t}"));
+        }
+    }
+    frame.render_widget(
+        Paragraph::new(truncate_ellipsis(&summary, text_area.width as usize))
+            .style(Style::default().add_modifier(Modifier::REVERSED)),
+        text_area,
+    );
+    if let (Some(g), Some((d, t))) = (gauge_area, snap.progress) {
+        let ratio = if t == 0 {
+            0.0
+        } else {
+            (d as f64 / t as f64).clamp(0.0, 1.0)
+        };
+        frame.render_widget(
+            Gauge::default()
+                .ratio(ratio)
+                .label(format!("days {d}/{t}"))
+                .gauge_style(Style::default().fg(Color::Green).bg(Color::DarkGray)),
+            g,
+        );
+    }
+    let PaneLayout::Table { rows } = pane else {
+        return;
+    };
+    if area.height < 2 || rows == 0 {
+        return;
+    }
+    let table_area = Rect {
+        y: area.y + 1,
+        height: area.height - 1,
+        ..area
+    };
+    // narrow terminals drop columns: task first, then the latest line
+    let w = area.width;
+    let (widths, with_task, with_last): (Vec<Constraint>, bool, bool) = if w >= 90 {
+        (
+            vec![
+                Constraint::Length(4),
+                Constraint::Length(8),
+                Constraint::Length(26),
+                Constraint::Length(5),
+                Constraint::Min(10),
+            ],
+            true,
+            true,
+        )
+    } else if w >= 50 {
+        (
+            vec![
+                Constraint::Length(4),
+                Constraint::Length(8),
+                Constraint::Length(5),
+                Constraint::Min(10),
+            ],
+            false,
+            true,
+        )
+    } else {
+        (
+            vec![
+                Constraint::Length(4),
+                Constraint::Length(8),
+                Constraint::Min(5),
+            ],
+            false,
+            false,
+        )
+    };
+    let make_row = |c: [String; 5], st: Style| {
+        let [tag, state, task, time, last] = c;
+        let mut cells = vec![Cell::from(tag), Cell::from(state)];
+        if with_task {
+            cells.push(Cell::from(task));
+        }
+        cells.push(Cell::from(time));
+        if with_last {
+            cells.push(Cell::from(last));
+        }
+        Row::new(cells).style(st)
+    };
+    let header = make_row(
+        ["ses", "state", "task", "time", "latest"].map(String::from),
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD),
+    );
+    let body: Vec<Row> = snap
+        .rows
+        .iter()
+        .take(rows as usize)
+        .map(|r| {
+            make_row(
+                [
+                    r.tag.clone(),
+                    r.state.clone(),
+                    r.task.clone(),
+                    r.task_elapsed.map(format_elapsed).unwrap_or_default(),
+                    r.last.clone(),
+                ],
+                Style::default().fg(state_color(r)),
+            )
+        })
+        .collect();
+    frame.render_widget(Table::new(body, widths).header(header), table_area);
 }
 
 fn draw_log(frame: &mut Frame, area: Rect, state: &ShellState, view: &mut ViewState) {
@@ -308,6 +500,102 @@ mod tests {
         assert!(out.contains("export line 0"));
         assert!(!out.contains("something failed"));
         assert!(!v.follow);
+    }
+
+    fn with_sessions(n: usize, progress: Option<(usize, usize)>) -> ShellState {
+        use crate::shell::state::{SessionRow, SessionSnapshot};
+        let mut st = sample();
+        st.sessions = Some(SessionSnapshot {
+            elapsed: std::time::Duration::from_secs(75),
+            progress,
+            rows: (0..n)
+                .map(|i| SessionRow {
+                    tag: format!("s{}", i + 1),
+                    state: if i == 1 { "done" } else { "running" }.into(),
+                    task: format!("relabel for day {i}"),
+                    last: format!("latest message {i}"),
+                    task_elapsed: (i != 1).then(|| std::time::Duration::from_secs(5)),
+                })
+                .collect(),
+        });
+        st
+    }
+
+    #[test]
+    fn pane_layout_rules() {
+        // fixed = header + cmd + footer = 3
+        assert_eq!(session_pane_layout(40, 3, 0), (0, PaneLayout::Hidden));
+        assert_eq!(
+            session_pane_layout(40, 3, 3),
+            (5, PaneLayout::Table { rows: 3 })
+        );
+        // log keeps MIN_LOG_ROWS: 15 - 3 - 6 = 6 rows available, 10 sessions -> truncated
+        assert_eq!(
+            session_pane_layout(15, 3, 10),
+            (6, PaneLayout::Table { rows: 4 })
+        );
+        // two spare rows -> one-line summary; none -> hidden
+        assert_eq!(session_pane_layout(11, 3, 3), (1, PaneLayout::Summary));
+        assert_eq!(session_pane_layout(10, 3, 3), (1, PaneLayout::Summary));
+        assert_eq!(session_pane_layout(9, 3, 3), (0, PaneLayout::Hidden));
+        assert_eq!(session_pane_layout(0, 0, 3), (0, PaneLayout::Hidden));
+        for h in 0..60u16 {
+            for n in 0..9usize {
+                let (ph, _) = session_pane_layout(h, 3, n);
+                assert!(ph == 0 || h.saturating_sub(3 + ph) >= MIN_LOG_ROWS);
+            }
+        }
+    }
+
+    #[test]
+    fn sessions_pane_renders_table_and_gauge() {
+        let st = with_sessions(3, Some((2, 8)));
+        let mut v = ViewState::default();
+        let out = render(120, 30, &st, &mut v);
+        assert!(out.contains("sessions 2/3 active"));
+        assert!(out.contains("days 2/8"));
+        assert!(out.contains("relabel for day 0"));
+        assert!(out.contains("latest message 2"));
+        assert!(out.contains("something failed"), "log still visible");
+    }
+
+    #[test]
+    fn sessions_pane_narrow_and_collapsed() {
+        let st = with_sessions(3, Some((1, 2)));
+        let mut v = ViewState::default();
+        // narrow: task column dropped, progress moves into the summary text
+        let out = render(55, 30, &st, &mut v);
+        assert!(out.contains("sessions 2/3 active"));
+        assert!(out.contains("latest message 0"));
+        assert!(!out.contains("relabel for day 0"));
+        // short terminal: one summary line, no table rows
+        let out = render(120, 10, &st, &mut v);
+        assert!(out.contains("sessions 2/3 active"));
+        assert!(!out.contains("latest message"));
+        // very short: hidden, log gets the room
+        let out = render(120, 8, &st, &mut v);
+        assert!(!out.contains("sessions 2/3 active"));
+    }
+
+    #[test]
+    fn sessions_pane_footer_has_days_and_tiny_sizes_do_not_panic() {
+        let st = with_sessions(6, Some((3, 9)));
+        let mut v = ViewState::default();
+        let out = render(120, 40, &st, &mut v);
+        assert!(out.lines().last().unwrap().contains("days 3/9"));
+        for (w, h) in [
+            (0u16, 0u16),
+            (1, 1),
+            (5, 3),
+            (20, 8),
+            (30, 12),
+            (60, 14),
+            (200, 3),
+        ] {
+            let st = with_sessions(6, Some((0, 0)));
+            let mut v = ViewState::default();
+            render(w, h, &st, &mut v);
+        }
     }
 
     #[test]

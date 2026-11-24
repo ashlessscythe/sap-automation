@@ -1,12 +1,8 @@
-use crossterm::{
-    execute,
-    terminal::{Clear, ClearType},
-};
 use dialoguer::Select;
 use rand::RngExt;
 use sap_scripting::*;
 use std::env;
-use std::io::{self, stdout, Write};
+use std::io::{self, Write};
 use std::thread::{self};
 use std::time::Duration;
 
@@ -37,7 +33,7 @@ impl From<&LoginParams> for ParamsStruct {
 }
 
 pub fn clear_screen() {
-    execute!(stdout(), Clear(ClearType::All)).unwrap();
+    sap_automation::shell::clear_screen();
 }
 
 // Wrapper for the handle_configure_reports_dir function from config_ops

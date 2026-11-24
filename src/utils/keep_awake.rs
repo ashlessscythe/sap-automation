@@ -27,8 +27,13 @@ pub fn start_keep_awake_thread() -> Result<(), String> {
     // First, set the initial execution state
     prevent_sleep()?;
 
-    // Start a background thread to periodically refresh the state
+    // Start a background thread to periodically refresh the state.
+    // SetThreadExecutionState with ES_CONTINUOUS is per thread and ends with the thread that set
+    // it. The caller may be a short-lived worker (the shell runs unattended work on its own
+    // thread), so the refresher sets the state itself before its first sleep and owns it for the
+    // life of the process.
     thread::spawn(|| {
+        let _ = prevent_sleep();
         loop {
             thread::sleep(Duration::from_secs(60)); // Refresh every minute
             if let Err(e) = prevent_sleep() {

@@ -1,8 +1,4 @@
 use chrono::NaiveDate;
-use crossterm::{
-    execute,
-    terminal::{Clear, ClearType},
-};
 use dialoguer::{Input, Select};
 use sap_scripting::*;
 use std::collections::HashMap;
@@ -253,7 +249,7 @@ fn create_vt11_listcheck_params_from_config(config: &HashMap<String, String>) ->
 }
 
 fn clear_screen() {
-    execute!(std::io::stdout(), Clear(ClearType::All)).unwrap();
+    sap_automation::shell::clear_screen();
 }
 
 fn get_vt11_parameters() -> Result<VT11Params> {

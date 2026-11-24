@@ -1,9 +1,5 @@
 //! Interactive menu wrapper for the inbond shipment → VL06O → 149 workflow.
 
-use crossterm::{
-    execute,
-    terminal::{Clear, ClearType},
-};
 use dialoguer::Input;
 use sap_scripting::*;
 use std::io::{self, Write};
@@ -12,8 +8,7 @@ use windows::core::Result;
 use crate::inbond_shipment::{run_inbond_shipment_flow, InbondSettings};
 
 fn clear_screen() {
-    let mut stdout = io::stdout();
-    let _ = execute!(stdout, Clear(ClearType::All));
+    sap_automation::shell::clear_screen();
 }
 
 /// Prompt for a shipment number and run the inbond VL06O → 149 → paste-file flow.

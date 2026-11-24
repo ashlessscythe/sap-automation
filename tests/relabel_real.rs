@@ -10,7 +10,7 @@ mod common;
 
 use anyhow::Result;
 use chrono::NaiveDate;
-use common::{assert_tables_equal, load_fixture, load_real_in};
+use common::{assert_tables_equal, load_real_in};
 use sap_automation::abc::raw::{load_export_canonical, RawOptions};
 use sap_automation::abc::relabel::{self, *};
 use sap_automation::abc::relabel_runner::*;
@@ -107,6 +107,18 @@ impl RelabelSteps for Real {
     }
 }
 
+/// Expected combined / pivot: the macro's tables with `_of_labels` recomputed by the rules.
+fn expected_combined() -> Table {
+    common::expected_with_rules(
+        "expected_real_combined.tsv",
+        &common::four_label_rules_from("expected_real_combined.tsv"),
+    )
+}
+
+fn expected_pivot() -> Table {
+    relabel::pivot_customer_plant(&expected_combined()).unwrap()
+}
+
 fn read(p: &std::path::Path, n: &str) -> Table {
     Table::from_tsv(n, &std::fs::read_to_string(p).unwrap()).unwrap()
 }
@@ -134,12 +146,9 @@ fn stages_reproduce_the_macro_output() {
     assert_eq!(y.len(), 5);
     let c = build_combined(&f, &eff, &b, &y, "2026-11-05", &rules).unwrap();
     assert_eq!((c.rows_with_4, c.label_total, c.yellow_rows), (4, 850, 5));
-    assert_tables_equal(
-        &load_fixture("relabel", "expected_real_combined.tsv"),
-        &c.table,
-    );
+    assert_tables_equal(&expected_combined(), &c.table);
     let p = relabel::pivot_customer_plant(&c.table).unwrap();
-    assert_tables_equal(&load_fixture("relabel", "expected_real_pivot.tsv"), &p);
+    assert_tables_equal(&expected_pivot(), &p);
     assert_eq!(pivot_total(&p).unwrap(), 850);
 }
 
@@ -191,14 +200,8 @@ fn run_relabel_on_the_real_exports() {
     assert_eq!((s.labels.as_str(), s.pivot_rows), ("850", 9));
     let base = dir.join("K2XX").join("2026-11-11").join("relabel");
     assert_eq!(s.outputs[0], base.join("11-05-2026_RELABEL_COMBINED.tsv"));
-    assert_tables_equal(
-        &load_fixture("relabel", "expected_real_combined.tsv"),
-        &read(&s.outputs[0], "combined"),
-    );
-    assert_tables_equal(
-        &load_fixture("relabel", "expected_real_pivot.tsv"),
-        &read(&s.outputs[3], "pivot"),
-    );
+    assert_tables_equal(&expected_combined(), &read(&s.outputs[0], "combined"));
+    assert_tables_equal(&expected_pivot(), &read(&s.outputs[3], "pivot"));
     assert_tables_equal(&f, &read(&s.outputs[1], "sn_del"));
     let _ = std::fs::remove_dir_all(&dir);
 }

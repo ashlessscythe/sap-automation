@@ -31,6 +31,7 @@
 //! label_plant = "PL55"               # plant of the label rows
 //! alias_plant = "AL55"               # label_plant rows of an alias customer count as this plant
 //! alias_customers = ["ALIAS_A*", "ALIAS_B*", "ALIAS_C*"]
+//! # 2 labels per row; 4 only for rows matching a [[abc.relabel.four_label_rules]] block (keys customer, plant, container), see CONFIG.md
 //! delete_exports = true
 //! ignore_display_error = true
 //!
@@ -68,7 +69,7 @@ use super::inv_runner::{run_misc, run_toyota, run_xdock, InvSelection, InvSummar
 use super::k2xx_runner::{run_k2xx, K2xxSelection, K2xxSummary};
 use super::raw::RawOptions;
 use super::registry;
-use super::relabel::RelabelRules;
+use super::relabel::{FourLabelRule, RelabelRules};
 use super::relabel_runner::{run_relabel, RelabelSelection, RelabelSummary};
 use super::repack::RepackRules;
 use super::repack_runner::{run_repack, RepackSelection, RepackSummary};
@@ -134,6 +135,34 @@ fn str_list(section: &Option<toml::Value>, key: &str) -> Option<Vec<String>> {
         .map(str::to_string)
         .collect();
     (!v.is_empty()).then_some(v)
+}
+
+/// `[[abc.relabel.four_label_rules]]`: array of tables with the optional keys `customer`,
+/// `plant`, `container` (blank = not set). An empty block is kept (and rejected later).
+fn four_label_rules(section: &Option<toml::Value>) -> Vec<FourLabelRule> {
+    let Some(arr) = section
+        .as_ref()
+        .and_then(|v| v.get("four_label_rules"))
+        .and_then(|v| v.as_array())
+    else {
+        return Vec::new();
+    };
+    arr.iter()
+        .map(|t| {
+            let g = |k: &str| {
+                t.get(k)
+                    .and_then(|v| v.as_str())
+                    .map(str::trim)
+                    .filter(|v| !v.is_empty())
+                    .map(str::to_string)
+            };
+            FourLabelRule {
+                customer: g("customer"),
+                plant: g("plant"),
+                container: g("container"),
+            }
+        })
+        .collect()
 }
 
 pub(crate) fn int(section: &Option<toml::Value>, key: &str) -> Option<i64> {
@@ -317,6 +346,7 @@ pub fn resolve_relabel(input: &ResolveInput) -> ResolvedRelabel {
             alias_plant: s(&input.section, "alias_plant").unwrap_or(d.rules.alias_plant),
             alias_customers: str_list(&input.section, "alias_customers")
                 .unwrap_or(d.rules.alias_customers),
+            four_label_rules: four_label_rules(&input.section),
         },
     };
     ResolvedRelabel {
@@ -378,6 +408,7 @@ pub fn resolve_repack(input: &ResolveInput) -> ResolvedRepack {
                 alias_plant: s(&input.section, "alias_plant").unwrap_or(d.rules.plants.alias_plant),
                 alias_customers: str_list(&input.section, "alias_customers")
                     .unwrap_or(d.rules.plants.alias_customers),
+                four_label_rules: Vec::new(),
             },
             history_warehouse: s(&input.section, "history_warehouse")
                 .unwrap_or(d.rules.history_warehouse),

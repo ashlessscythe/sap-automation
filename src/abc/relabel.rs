@@ -21,9 +21,11 @@
 //!    blank, `parent_serial_number` blank; B7 `parent_serial_number` and `kanban_number` both
 //!    non-blank and `kanban_number` not starting with `0`.
 //!    `combined` = B1, B2, B3, B5, B6, B7. Plant comparisons use the effective plant.
-//! 3. **`_of_labels`**: `4` for a row whose effective plant is the label plant, with blank
-//!    `kanban_number`, `container` not matching `KC*`, `pallet` in {1,2} and not yellow, provided
-//!    at least two such rows exist; `2` for every other row.
+//! 3. **`_of_labels`**: `2` for every row, `4` for a row that matches at least one configured
+//!    [`FourLabelRule`] (`[[abc.relabel.four_label_rules]]`; the keys `customer`, `plant`, `container`
+//!    must all match inside a rule, wildcards allowed, `plant` is the real plant). Owner decision
+//!    2026-11-24: the macro's own rule (label plant, pallet 1/2, no kanban, not `KC*`, not yellow,
+//!    at least two rows) is gone; yellow no longer influences the labels. Without rules all rows get 2.
 //! 4. **`export_date`** = the run date; the pivot sums `_of_labels` by `customer` x `plant`.
 //!
 //! The macro's yellow cell fill is a data channel (spec 9.5, decision 35); here it is the
@@ -54,6 +56,33 @@ pub struct RelabelRules {
     pub alias_plant: String,
     /// Customer patterns that move a `label_plant` row to `alias_plant`.
     pub alias_customers: Vec<String>,
+    /// Rows matching any of these rules get 4 labels, every other row 2. Empty by default.
+    pub four_label_rules: Vec<FourLabelRule>,
+}
+
+/// One 4-label rule: every key that is set must match (AND); a row needs to match only one
+/// rule of the list (OR). Patterns are case-insensitive with `*` / `?` wildcards, matched
+/// against the whole value; `plant` is the row's real plant.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct FourLabelRule {
+    pub customer: Option<String>,
+    pub plant: Option<String>,
+    pub container: Option<String>,
+}
+
+impl FourLabelRule {
+    /// A rule with no key would match every row: a configuration error.
+    pub fn is_empty(&self) -> bool {
+        self.customer.is_none() && self.plant.is_none() && self.container.is_none()
+    }
+
+    pub fn matches(&self, customer: &str, plant: &str, container: &str) -> bool {
+        let ok = |pat: &Option<String>, v: &str| {
+            pat.as_ref()
+                .is_none_or(|p| ops::wildcard_match(p, v.trim()))
+        };
+        ok(&self.customer, customer) && ok(&self.plant, plant) && ok(&self.container, container)
+    }
 }
 
 impl Default for RelabelRules {
@@ -66,6 +95,7 @@ impl Default for RelabelRules {
                 "ALIAS_B*".to_string(),
                 "ALIAS_C*".to_string(),
             ],
+            four_label_rules: Vec::new(),
         }
     }
 }
@@ -262,7 +292,7 @@ pub struct Combined {
 /// `yellow` is the set of serials from [`yellow_serials`]; `export_date` the text of the run date.
 pub fn build_combined(
     f: &Table,
-    eff: &[String],
+    _eff: &[String],
     blocks: &Blocks,
     yellow: &HashSet<String>,
     export_date: &str,
@@ -275,10 +305,15 @@ pub fn build_combined(
             ));
         }
     }
-    let (ser, pal, kan, con) = (
+    if rules.four_label_rules.iter().any(FourLabelRule::is_empty) {
+        return Err(anyhow!(
+            "a [[abc.relabel.four_label_rules]] block has no key (customer, plant, container): it would match every row"
+        ));
+    }
+    let (ser, cus, pla, con) = (
         f.col("lm_serial_number")?,
-        f.col("pallet")?,
-        f.col("kanban_number")?,
+        f.col("customer")?,
+        f.col("plant")?,
         f.col("container")?,
     );
     let idx = blocks.combined_rows();
@@ -286,27 +321,24 @@ pub fn build_combined(
         .iter()
         .map(|&i| yellow.contains(f.rows[i][ser].trim()))
         .collect();
-    // the 4-label rule (spec 9.5 step 3)
+    // 4 labels: the row matches at least one configured rule (real plant, not the alias plant)
     let special: Vec<bool> = idx
         .iter()
-        .zip(&is_yellow)
-        .map(|(&i, &y)| {
+        .map(|&i| {
             let r = &f.rows[i];
-            eff[i].eq_ignore_ascii_case(&rules.label_plant)
-                && blank(&r[kan])
-                && !ops::wildcard_match("KC*", r[con].trim())
-                && (eq_num(&r[pal], 1.0) || eq_num(&r[pal], 2.0))
-                && !y
+            rules
+                .four_label_rules
+                .iter()
+                .any(|rule| rule.matches(&r[cus], &r[pla], &r[con]))
         })
         .collect();
     let n4 = special.iter().filter(|s| **s).count();
-    let four = n4 >= 2;
     let mut headers = f.headers.clone();
     headers.extend([COL_LABELS, COL_EXPORT_DATE, COL_YELLOW].map(String::from));
     let mut label_total = 0;
     let mut rows = Vec::with_capacity(idx.len());
     for (k, &i) in idx.iter().enumerate() {
-        let labels = if four && special[k] {
+        let labels = if special[k] {
             LABELS_SPECIAL
         } else {
             LABELS_DEFAULT
@@ -320,7 +352,7 @@ pub fn build_combined(
     }
     Ok(Combined {
         table: Table::new("combined", headers, rows),
-        rows_with_4: if four { n4 } else { 0 },
+        rows_with_4: n4,
         label_total,
         yellow_rows: is_yellow.iter().filter(|y| **y).count(),
     })
@@ -587,62 +619,99 @@ mod tests {
         assert_eq!(history_serials(&f, &b).unwrap(), ["15"]);
     }
 
+    fn rule(c: Option<&str>, p: Option<&str>, k: Option<&str>) -> FourLabelRule {
+        FourLabelRule {
+            customer: c.map(str::to_string),
+            plant: p.map(str::to_string),
+            container: k.map(str::to_string),
+        }
+    }
+
+    fn labels_of(f: &Table, rules: &RelabelRules, yellow: &[&str]) -> Vec<String> {
+        let eff = effective_plants(f, rules).unwrap();
+        let b = select_blocks(f, &eff, d(), rules).unwrap();
+        let y: HashSet<String> = yellow.iter().map(|s| s.to_string()).collect();
+        let c = build_combined(f, &eff, &b, &y, "2026-11-05", rules).unwrap();
+        let l = c.table.col(COL_LABELS).unwrap();
+        c.table.rows.iter().map(|r| r[l].clone()).collect()
+    }
+
     #[test]
-    fn labels_need_two_candidates_and_yellow_is_excluded() {
-        fn mk<'a>(
-            ser: &'a str,
-            pal: &'a str,
-            kan: &'a str,
-            con: &'a str,
-            cust: &'a str,
-        ) -> [&'a str; 12] {
-            row([ser, "SHP", "X", "", pal, "", "PL55", "", kan, con, cust])
+    fn no_rules_means_two_labels_for_everyone() {
+        fn mk<'a>(ser: &'a str, pal: &'a str, cust: &'a str) -> [&'a str; 12] {
+            row([ser, "SHP", "X", "", pal, "", "PL55", "", "", "", cust])
+        }
+        // the old 4-label shape (label plant, pallet 1/2, no kanban, not KC*, not yellow)
+        let f = tbl(&[mk("1", "2", "BRAND_H"), mk("2", "1", "BRAND_H")]);
+        assert_eq!(labels_of(&f, &RelabelRules::default(), &[]), ["2", "2"]);
+    }
+
+    #[test]
+    fn rules_are_and_inside_a_block_and_or_between_blocks() {
+        fn mk<'a>(ser: &'a str, plant: &'a str, con: &'a str, cust: &'a str) -> [&'a str; 12] {
+            // status PAL, parent set: lands in block B3 for non-label plants; use B2 (blank verification)
+            row([
+                ser,
+                "SHP",
+                "",
+                "",
+                "",
+                "",
+                plant,
+                "2026-11-05",
+                "",
+                con,
+                cust,
+            ])
         }
         let f = tbl(&[
-            mk("1", "1", "", "", "BRAND_H"),    // yellow
-            mk("2", "2", "", "SC1", "BRAND_H"), // 4
-            mk("3", "2", "", "kc9", "BRAND_H"), // KC*: 2
-            mk("4", "2", "9", "", "BRAND_H"),   // kanban: 2
-            mk("5", "1", "", "", "ALIAS_A X"),  // AL55: not in B5
-            mk("6", "2", "", "", "BRAND_H"),    // 4
+            mk("1", "PL33", "C001", "HONDA X"),  // rule 1 (customer)
+            mk("2", "PL33", "C001", "OTHER"),    // none
+            mk("3", "PL34", "C777", "GM FLINT"), // rule 2 (customer + plant)
+            mk("4", "PL33", "C777", "GM FLINT"), // rule 2 needs PL34: none
+            mk("5", "PL33", "C9X1", "OTHER"),    // rule 3 (container only)
+            mk("6", "PL35", "C001", "CONTI"),    // rule 4 (all three, wildcards)
+            mk("7", "PL35", "C002", "CONTI"),    // rule 4 needs C00?: matches C002? yes
         ]);
-        let eff = effective_plants(&f, &RelabelRules::default()).unwrap();
-        let b = select_blocks(&f, &eff, d(), &RelabelRules::default()).unwrap();
-        let yellow: HashSet<String> = ["1".to_string()].into();
-        let c = build_combined(
-            &f,
-            &eff,
-            &b,
-            &yellow,
-            "2026-11-05",
-            &RelabelRules::default(),
-        )
-        .unwrap();
-        let l = c.table.col(COL_LABELS).unwrap();
-        let labels: Vec<&str> = c.table.rows.iter().map(|r| r[l].as_str()).collect();
-        assert_eq!(labels, ["2", "4", "2", "2", "4"]);
-        assert_eq!((c.rows_with_4, c.label_total, c.yellow_rows), (2, 14, 1));
-        // the same table with one candidate less: nobody gets 4
-        let yellow2: HashSet<String> = ["1".to_string(), "6".to_string()].into();
-        let c = build_combined(
-            &f,
-            &eff,
-            &b,
-            &yellow2,
-            "2026-11-05",
-            &RelabelRules::default(),
-        )
-        .unwrap();
-        assert!(c.table.rows.iter().all(|r| r[l] == "2"));
-        assert_eq!((c.rows_with_4, c.label_total, c.yellow_rows), (0, 10, 2));
-        // header order and the yellow column
+        let rules = RelabelRules {
+            four_label_rules: vec![
+                rule(Some("honda*"), None, None),
+                rule(Some("GM FLINT*"), Some("PL34"), None),
+                rule(None, None, Some("C9?1")),
+                rule(Some("CONTI*"), Some("PL35"), Some("C00?")),
+            ],
+            ..RelabelRules::default()
+        };
         assert_eq!(
-            c.table.headers[12..],
-            [COL_LABELS, COL_EXPORT_DATE, COL_YELLOW]
+            labels_of(&f, &rules, &[]),
+            ["4", "2", "4", "2", "4", "4", "4"]
         );
-        assert_eq!(c.table.rows[0][13], "2026-11-05");
-        assert_eq!(c.table.rows[0][14], "1");
-        assert_eq!(c.table.rows[1][14], "");
+    }
+
+    #[test]
+    fn yellow_rows_still_match_a_rule() {
+        // yellow only matters for repack: a yellow row that matches a rule still gets 4
+        let f = tbl(&[row([
+            "1", "SHP", "X", "", "1", "", "PL55", "", "", "", "BRAND_H",
+        ])]);
+        let rules = RelabelRules {
+            four_label_rules: vec![rule(None, Some("PL55"), None)],
+            ..RelabelRules::default()
+        };
+        assert_eq!(labels_of(&f, &rules, &["1"]), ["4"]);
+    }
+
+    #[test]
+    fn an_empty_rule_is_an_error() {
+        let f = tbl(&[row(["1", "SHP", "X", "", "1", "", "PL55", "", "", "", "A"])]);
+        let rules = RelabelRules {
+            four_label_rules: vec![FourLabelRule::default()],
+            ..RelabelRules::default()
+        };
+        let eff = effective_plants(&f, &rules).unwrap();
+        let b = select_blocks(&f, &eff, d(), &rules).unwrap();
+        let e = build_combined(&f, &eff, &b, &HashSet::new(), "x", &rules).unwrap_err();
+        assert!(e.to_string().contains("four_label_rules"), "{e}");
     }
 
     #[test]

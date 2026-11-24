@@ -295,7 +295,7 @@ SAP is not touched. It needs a **single date** (`--run-date=YYYY-MM-DD`; a range
 the blocks are built -> blocks of rows (non-PL55 rows with 2 scan copies or a blank verification dated the run date or the next day,
 the first pallet row per parent serial, the PL55 pallet rows, PL55 rows without pallet and parent, rows with a kanban and a parent) ->
 ZMDESNR by serial / History for the PL55 pallet-1 serials (rows at storage location 11 with status `PRI` are flagged `yellow`) ->
-`_of_labels` (4 for PL55 pallet rows 1/2 without kanban, not container `KC*`, not yellow, when at least two exist; 2 otherwise) ->
+`_of_labels` (2 for every row, 4 for rows matching a `[[abc.relabel.four_label_rules]]` block of `config.toml` (keys `customer`, `plant`, `container`, see CONFIG.md); no blocks = all 2) ->
 `export_date` -> pivot of `_of_labels` by customer and plant. Both `k2xx` and `relabel` have run against live SAP and are golden-tested on the owner's real exports.
 
 `repack` takes the delivery list from the `VL06O` table of `k2xx` **and** the exclusion list from the `yellow` rows of the `combined` table of

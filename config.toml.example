@@ -151,6 +151,35 @@ label_plant = "PL55"                # plant of the label rows
 alias_plant = "AL55"                # label_plant rows of an alias customer count as this plant
 alias_customers = ["ALIAS_A*", "ALIAS_B*", "ALIAS_C*"]
 
+# ---- 4-label rules (relabel only) -------------------------------------------------------------
+# Every row of `combined` gets 2 labels, unless it matches a rule below: then it gets 4.
+#   * One [[abc.relabel.four_label_rules]] block = one rule. Add as many blocks as you need.
+#   * Inside a block ALL the keys you set must match (AND). Keys you leave out are ignored.
+#   * Between blocks it is OR: a row only has to match ONE block.
+#   * Keys: customer, plant, container. Case-insensitive, `*` and `?` wildcards, matched against
+#     the whole value. `plant` is the row's real plant (never the alias plant).
+#   * A block without any key is an error (it would match every row). No blocks = everyone gets 2.
+#   * Yellow (history) rows are not special here; yellow only feeds repack's exclusion list.
+#
+# Rule 1: every row of one customer
+# [[abc.relabel.four_label_rules]]
+# customer = "ALIAS_A*"
+#
+# Rule 2: a customer, but only from one plant
+# [[abc.relabel.four_label_rules]]
+# customer = "CUSTOMER 034*"
+# plant    = "PL55"
+#
+# Rule 3: a container family, any customer, any plant
+# [[abc.relabel.four_label_rules]]
+# container = "C0017*"
+#
+# Rule 4: all three keys at once
+# [[abc.relabel.four_label_rules]]
+# customer  = "CUSTOMER 201*"
+# plant     = "PL50"
+# container = "C00152??"
+
 [abc.repack]                        # needs the k2xx and relabel output of the same run
 zmdesnr_variant = "ZMDESNR_REPACK_VARIANT"
 zmdesnr_layout = "ZMDESNR_REPACK_LAYOUT"

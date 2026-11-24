@@ -29,6 +29,18 @@ fn col(t: &Table, name: &str) -> Vec<String> {
     t.rows.iter().map(|r| r[c].clone()).collect()
 }
 
+/// Expected combined / pivot: the macro's tables with `_of_labels` recomputed by the rules.
+fn expected_combined() -> Table {
+    common::expected_with_rules(
+        "expected_combined.tsv",
+        &common::four_label_rules_from("expected_combined.tsv"),
+    )
+}
+
+fn expected_pivot() -> Table {
+    relabel::pivot_customer_plant(&expected_combined()).unwrap()
+}
+
 struct Stages {
     f: Table,
     eff: Vec<String>,
@@ -39,18 +51,14 @@ struct Stages {
 
 fn stages() -> Stages {
     let f = sn_del();
-    let eff = effective_plants(&f, &RelabelRules::default()).unwrap();
-    let blocks = select_blocks(&f, &eff, run_date(), &RelabelRules::default()).unwrap();
+    let rules = RelabelRules {
+        four_label_rules: common::four_label_rules_from("expected_combined.tsv"),
+        ..RelabelRules::default()
+    };
+    let eff = effective_plants(&f, &rules).unwrap();
+    let blocks = select_blocks(&f, &eff, run_date(), &rules).unwrap();
     let yellow = yellow_serials(&history()).unwrap();
-    let combined = build_combined(
-        &f,
-        &eff,
-        &blocks,
-        &yellow,
-        "2026-11-05",
-        &RelabelRules::default(),
-    )
-    .unwrap();
+    let combined = build_combined(&f, &eff, &blocks, &yellow, "2026-11-05", &rules).unwrap();
     Stages {
         f,
         eff,
@@ -189,21 +197,18 @@ fn yellow_follows_storage_location_11_and_pri() {
             "serial {}",
             r[ser]
         );
-        if r[yc] == "1" {
-            assert_eq!(r[lab], "2", "a yellow row never gets 4 labels");
-        } else {
+        // yellow no longer influences the labels (it only feeds repack)
+        if r[yc] != "1" {
             assert_eq!(r[yc], "");
         }
+        let _ = lab;
     }
 }
 
 #[test]
 fn combined_equals_the_expected_table() {
     let s = stages();
-    assert_tables_equal(
-        &load_fixture("relabel", "expected_combined.tsv"),
-        &s.combined.table,
-    );
+    assert_tables_equal(&expected_combined(), &s.combined.table);
     assert_eq!(
         s.combined.table.headers[20..],
         ["_of_labels", "export_date", "yellow"]
@@ -214,52 +219,34 @@ fn combined_equals_the_expected_table() {
 }
 
 #[test]
-fn labels_follow_the_four_two_rule() {
+fn rows_matching_a_rule_get_four_labels_all_others_two() {
     let s = stages();
-    assert_eq!(s.combined.rows_with_4, 8);
-    assert_eq!(s.combined.label_total, 8 * 4 + 25 * 2);
+    let e = expected_combined();
+    let el = e.col("_of_labels").unwrap();
+    let n4 = e.rows.iter().filter(|r| r[el] == "4").count();
+    assert!(
+        n4 >= 8,
+        "the derived rules cover at least the macro's 4-label rows"
+    );
+    assert_eq!(s.combined.rows_with_4, n4);
+    assert_eq!(
+        s.combined.label_total as usize,
+        n4 * 4 + (e.nrows() - n4) * 2
+    );
     let t = &s.combined.table;
-    let c = |n: &str| t.col(n).unwrap();
-    let mut fours = 0;
-    for r in &t.rows {
-        let four = r[c("plant")] == "PL55"
-            && r[c("kanban_number")].is_empty()
-            && !r[c("container")].to_uppercase().starts_with("KC")
-            && ["1", "2"].contains(&r[c("pallet")].as_str())
-            && r[c("yellow")].is_empty()
-            // alias-pattern customers are PL55 in the table but were AL55 for the rule
-            && !["ALIAS_A", "ALIAS_B", "ALIAS_C"]
-                .iter()
-                .any(|p| r[c("customer")].to_uppercase().starts_with(p));
-        assert_eq!(r[c("_of_labels")], if four { "4" } else { "2" }, "{r:?}");
-        fours += usize::from(four);
-    }
-    assert_eq!(fours, 8);
+    let l = t.col("_of_labels").unwrap();
+    assert_eq!(t.rows.iter().filter(|r| r[l] == "4").count(), n4);
+    assert!(t.rows.iter().all(|r| r[l] == "4" || r[l] == "2"));
 }
 
 #[test]
-fn fewer_than_two_candidates_means_two_labels_everywhere() {
+fn without_rules_everyone_gets_two_labels() {
     let s = stages();
-    // mark all but one of the 4-label serials yellow
-    let t = &s.combined.table;
-    let (ser, lab) = (
-        t.col("lm_serial_number").unwrap(),
-        t.col("_of_labels").unwrap(),
-    );
-    let fours: Vec<String> = t
-        .rows
-        .iter()
-        .filter(|r| r[lab] == "4")
-        .map(|r| r[ser].clone())
-        .collect();
-    assert_eq!(fours.len(), 8);
-    let mut yellow = s.yellow.clone();
-    yellow.extend(fours[1..].iter().cloned());
     let c = build_combined(
         &s.f,
         &s.eff,
         &s.blocks,
-        &yellow,
+        &s.yellow,
         "2026-11-05",
         &RelabelRules::default(),
     )
@@ -267,36 +254,6 @@ fn fewer_than_two_candidates_means_two_labels_everywhere() {
     assert_eq!(c.rows_with_4, 0);
     assert!(col(&c.table, "_of_labels").iter().all(|v| v == "2"));
     assert_eq!(c.label_total as usize, c.table.nrows() * 2);
-    // with exactly two candidates left, both get 4
-    let mut yellow = s.yellow.clone();
-    yellow.extend(fours[2..].iter().cloned());
-    let c = build_combined(
-        &s.f,
-        &s.eff,
-        &s.blocks,
-        &yellow,
-        "2026-11-05",
-        &RelabelRules::default(),
-    )
-    .unwrap();
-    assert_eq!(c.rows_with_4, 2);
-}
-
-#[test]
-fn no_history_means_no_yellow_and_more_fours() {
-    let s = stages();
-    let c = build_combined(
-        &s.f,
-        &s.eff,
-        &s.blocks,
-        &HashSet::new(),
-        "2026-11-05",
-        &RelabelRules::default(),
-    )
-    .unwrap();
-    assert_eq!(c.yellow_rows, 0);
-    // the 3 yellow pallet-1 rows without kanban now qualify (the 4th has a kanban number)
-    assert_eq!(c.rows_with_4, 8 + 3);
 }
 
 #[test]
@@ -306,7 +263,7 @@ fn pivot_equals_the_expected_table() {
     assert_eq!(p.headers[0], "customer");
     assert_eq!(p.headers.last().unwrap(), "Grand Total");
     assert_eq!(p.rows.last().unwrap()[0], "Grand Total");
-    assert_tables_equal(&load_fixture("relabel", "expected_pivot.tsv"), &p);
+    assert_tables_equal(&expected_pivot(), &p);
     assert_eq!(pivot_total(&p).unwrap(), i64::from(s.combined.label_total));
     // `(blank)` customer sorts last, just above the Grand Total row
     assert_eq!(p.rows[p.nrows() - 2][0], "(blank)");

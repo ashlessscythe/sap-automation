@@ -35,6 +35,7 @@ pub fn real_relabel_rules() -> sap_automation::abc::relabel::RelabelRules {
             .filter(|l| !l.is_empty())
             .map(str::to_string)
             .collect(),
+        four_label_rules: four_label_rules_from("expected_real_combined.tsv"),
         ..Default::default()
     }
 }
@@ -189,4 +190,53 @@ pub fn load_synthetic_in(dir: &str, tcode: &str, file: &str) -> Table {
         &sap_automation::abc::raw::RawOptions::default(),
     )
     .unwrap_or_else(|e| panic!("load {file}: {e}"))
+}
+
+/// The 4-label rules that reproduce an expected `combined` table: one exact rule per distinct
+/// (customer, plant, container) of its rows with `_of_labels` = 4. The rules only see those three
+/// columns, so other rows with the same triple (yellow, other pallet) get 4 too: the tests compare
+/// against [`expected_with_rules`], not the raw macro labels.
+pub fn four_label_rules_from(
+    expected_file: &str,
+) -> Vec<sap_automation::abc::relabel::FourLabelRule> {
+    use sap_automation::abc::relabel::FourLabelRule;
+    let t = load_fixture("relabel", expected_file);
+    let (cu, pl, co, la) = (
+        t.col("customer").unwrap(),
+        t.col("plant").unwrap(),
+        t.col("container").unwrap(),
+        t.col("_of_labels").unwrap(),
+    );
+    let mut rules: Vec<FourLabelRule> = Vec::new();
+    for r in t.rows.iter().filter(|r| r[la] == "4") {
+        let rule = FourLabelRule {
+            customer: Some(r[cu].clone()),
+            plant: Some(r[pl].clone()),
+            container: Some(r[co].clone()),
+        };
+        if !rules.contains(&rule) {
+            rules.push(rule);
+        }
+    }
+    rules
+}
+
+/// The expected `combined` fixture with `_of_labels` recomputed by the rules (4 when a rule
+/// matches, else 2): every other column stays the macro's.
+pub fn expected_with_rules(
+    expected_file: &str,
+    rules: &[sap_automation::abc::relabel::FourLabelRule],
+) -> Table {
+    let mut t = load_fixture("relabel", expected_file);
+    let (cu, pl, co, la) = (
+        t.col("customer").unwrap(),
+        t.col("plant").unwrap(),
+        t.col("container").unwrap(),
+        t.col("_of_labels").unwrap(),
+    );
+    for r in &mut t.rows {
+        let four = rules.iter().any(|x| x.matches(&r[cu], &r[pl], &r[co]));
+        r[la] = if four { "4" } else { "2" }.to_string();
+    }
+    t
 }

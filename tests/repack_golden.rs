@@ -139,6 +139,7 @@ fn the_label_plant_and_alias_customers_come_from_the_rules() {
             label_plant: "PL56".into(),
             alias_plant: "ZZ56".into(),
             alias_customers: vec!["CUSTOMER 201*".into()],
+            four_label_rules: Vec::new(),
         },
         ..RepackRules::default()
     };

@@ -76,7 +76,7 @@ Fixtures: `tests/fixtures/mustgo/` holds xlsx-derived TSVs (approximate stand-in
 `run_misc`); `k2xx`: `src/abc/k2xx.rs` + `k2xx_runner.rs` (`K2xxSteps` seam, `run_k2xx`; submodules are registered once in `src/abc/mod.rs`, not in lib.rs/main.rs), `tests/fixtures/k2xx/`
 (`real/` byte-exact exports, `expected_real_*.tsv` from the macro xlsx, pivot computed; ZVT11 expected = macro sheet WITH spec 7.0 item 30 applied, `date` = `shipment_end_date`, a deliberate owner-approved deviation; an empty ZVT11 list does not stop k2xx, header-only output + warning), `k2xx_golden_real`, `k2xx_golden`, `k2xx_runner`. `relabel` (`abc/relabel.rs` pure stages, `relabel_runner.rs`: `RelabelSteps` seam, `run_relabel`; `--rname=relabel`, `[abc.relabel]`, single run date only)
 re-reads the k2xx `vl06o` TSV of the same run (owner decision) and stops with "Run k2xx first" if it is missing/empty. Spec 9.5 wins over 5.6; the
-macro's AL55 leaks, the extra `sn_del` row and `save full_label` are deliberately not reproduced; yellow is an explicit `yellow` column of `combined`.
+macro's AL55 leaks, the extra `sn_del` row and `save full_label` are deliberately not reproduced; yellow is an explicit `yellow` column of `combined` (it only feeds repack). `_of_labels` is 2 for every row; 4 only for rows matching a `[[abc.relabel.four_label_rules]]` block (AND inside a block of `customer`/`plant`/`container` wildcard patterns, OR between blocks; empty block = error). The macro's own 4-label rule was dropped by owner decision 2026-11-24 (WK47 comparison); the golden tests derive rules from the expected tables (`common::four_label_rules_from`, `expected_with_rules`).
 `ZMDESNRParams.history_serials` + `tab_number = Some(1)` is the by-serial/History flow (spec-only control ids). Fixtures `tests/fixtures/relabel/`
 are synthetic plus `real/` (byte-exact, anonymised); tests `relabel_golden`, `relabel_real`, `relabel_runner`.
 
@@ -226,7 +226,7 @@ report, `--create-missing-layout` in an export run. Unverified: the choose-layou
 - **No real SAP data, names, plants, variants or layouts are committed.** Site-specific names come from the git-ignored `config.toml`
   (every one is a config key; `config.toml.example` shows them with placeholder values, and the built-in defaults are the same
   neutral placeholders such as `VT11_XDOCK_VARIANT`, `PL55`, `ALIAS_A*`). Relabel's plant codes and alias customer patterns
-  (`label_plant`, `alias_plant`, `alias_customers`) and misc's `ship_point_marker` are config keys too (`RelabelRules`, `InvSelection`).
+  (`label_plant`, `alias_plant`, `alias_customers`, `[[abc.relabel.four_label_rules]]`) and misc's `ship_point_marker` are config keys too (`RelabelRules`, `InvSelection`).
 - Keep real values in the git-ignored `config.private.toml` / `config.toml` and `docs/private/` (the migration spec and the plan
   live there, local only). Never put them in code, tests, docs, commit messages or fixtures.
 - Fixtures under `tests/fixtures/` are **anonymised** copies (consistent, shape- and order-preserving substitutions of ids, plants,

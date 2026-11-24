@@ -134,8 +134,33 @@ fn read(p: &PathBuf, n: &str) -> Table {
     Table::from_tsv(n, &std::fs::read_to_string(p).unwrap()).unwrap()
 }
 
+/// Expected combined / pivot: the macro's tables with `_of_labels` recomputed by the rules.
+fn expected_combined() -> Table {
+    common::expected_with_rules(
+        "expected_combined.tsv",
+        &common::four_label_rules_from("expected_combined.tsv"),
+    )
+}
+
+/// (rows, rows with 4 labels) of the recomputed expected table.
+fn expected_counts() -> (usize, usize) {
+    let e = expected_combined();
+    let l = e.col("_of_labels").unwrap();
+    (e.nrows(), e.rows.iter().filter(|r| r[l] == "4").count())
+}
+
+fn expected_pivot() -> Table {
+    sap_automation::abc::relabel::pivot_customer_plant(&expected_combined()).unwrap()
+}
+
 fn sel() -> RelabelSelection {
-    RelabelSelection::default()
+    RelabelSelection {
+        rules: sap_automation::abc::relabel::RelabelRules {
+            four_label_rules: common::four_label_rules_from("expected_combined.tsv"),
+            ..Default::default()
+        },
+        ..RelabelSelection::default()
+    }
 }
 
 #[test]
@@ -170,8 +195,13 @@ fn full_run_on_the_stand_in_fixtures() {
     assert_eq!((s.deliveries, s.sn_del_rows, s.alias_rows), (107, 44, 6));
     assert_eq!(s.blocks, [4, 7, 2, 9, 14, 3, 3]);
     assert_eq!((s.history_serials, s.history_rows), (9, 7));
-    assert_eq!((s.combined_rows, s.yellow_rows, s.rows_with_4), (33, 4, 8));
-    assert_eq!((s.labels.as_str(), s.pivot_rows), ("82", 9));
+    let (e, n4) = expected_counts();
+    assert_eq!(e, 33);
+    assert_eq!((s.combined_rows, s.yellow_rows, s.rows_with_4), (33, 4, n4));
+    assert_eq!(
+        (s.labels.as_str(), s.pivot_rows),
+        ((e * 2 + n4 * 2).to_string().as_str(), 9)
+    );
 
     // outputs: <reports_dir>\K2XX\<today>\relabel\<date>_RELABEL_<TABLE>.tsv
     assert_eq!(s.outputs.len(), 4);
@@ -187,20 +217,14 @@ fn full_run_on_the_stand_in_fixtures() {
     assert!(s.outputs.iter().all(|p| p.is_file()));
     // the four outputs plus the k2xx file that was read (and is left alone)
     assert_eq!(files_under(&out.reports_dir), 5);
-    assert_tables_equal(
-        &load_fixture("relabel", "expected_combined.tsv"),
-        &read(&s.outputs[0], "combined"),
-    );
+    assert_tables_equal(&expected_combined(), &read(&s.outputs[0], "combined"));
     // no AL55 marks and no extra last row in sn_del / snr_orig (macro side effects not reproduced)
     let sn = read(&s.outputs[1], "sn_del");
     assert_tables_equal(&load_fixture("relabel", "expected_sn_del.tsv"), &sn);
     assert_eq!(sn.nrows(), 44);
     assert!(!sn.rows.iter().flatten().any(|c| c == "AL55"));
     assert_tables_equal(&sn, &read(&s.outputs[2], "snr_orig"));
-    assert_tables_equal(
-        &load_fixture("relabel", "expected_pivot.tsv"),
-        &read(&s.outputs[3], "pivot"),
-    );
+    assert_tables_equal(&expected_pivot(), &read(&s.outputs[3], "pivot"));
     let _ = std::fs::remove_dir_all(&out.reports_dir);
 }
 
@@ -447,7 +471,8 @@ fn history_without_a_hit_marks_nothing() {
         ..Fake::default()
     };
     let s = run_relabel(&mut f, &day(), &sel(), &out).unwrap();
-    assert_eq!((s.yellow_rows, s.rows_with_4), (0, 8 + 3));
+    // yellow no longer changes the labels: the same rows get 4 as with hits
+    assert_eq!((s.yellow_rows, s.rows_with_4), (0, expected_counts().1));
     let _ = std::fs::remove_dir_all(&out.reports_dir);
 }
 

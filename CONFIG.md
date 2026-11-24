@@ -196,9 +196,45 @@ zmdesnr_variant = "ZMDESNR_RELABEL_VARIANT" # ZMDESNR variant of both calls
 zmdesnr_layout = "ZMDESNR_RELABEL_LAYOUT"  # ZMDESNR layout of both calls (20 columns, see the live verification checklist)
 delete_exports = true            # delete each temporary export after it was loaded
 ignore_display_error = true      # treat "no display authorization" as harmless
-label_plant = "PL55"             # plant of the label rows (blocks B4-B6, the 4-label rule)
+label_plant = "PL55"             # plant of the label rows (blocks B4-B6)
 alias_plant = "AL55"             # label_plant rows of an alias customer count as this plant while the blocks are built
 alias_customers = ["ALIAS_A*", "ALIAS_B*", "ALIAS_C*"]   # customer patterns (case-insensitive, `*` and `?` wildcards)
+
+# 4-label rules (see below): without any block every row gets 2 labels
+# [[abc.relabel.four_label_rules]]
+# customer  = "ALIAS_A*"
+# plant     = "PL55"
+# container = "C0017*"
+```
+
+**4-label rules (`[[abc.relabel.four_label_rules]]`, relabel only).** Every row of `combined` gets `_of_labels = 2`
+unless it matches a rule, then it gets 4. One `[[...]]` block is one rule; add as many as you need.
+
+- Inside a block **all** keys you set must match (AND); keys you leave out are ignored. Keys: `customer`, `plant`, `container`.
+- Between blocks it is OR: a row only has to match one block.
+- Patterns are case-insensitive, `*` and `?` are wildcards, and the whole value must match. `plant` is the row's real plant, not the alias plant.
+- A block with no key is an error (it would match every row). No blocks at all = everyone gets 2.
+- Yellow rows (history hits) are not special: yellow only feeds repack's exclusion list.
+
+```toml
+# every row of one customer
+[[abc.relabel.four_label_rules]]
+customer = "ALIAS_A*"
+
+# a customer, only from one plant
+[[abc.relabel.four_label_rules]]
+customer = "CUSTOMER 034*"
+plant    = "PL55"
+
+# a container family, any customer, any plant
+[[abc.relabel.four_label_rules]]
+container = "C0017*"
+
+# all three keys at once
+[[abc.relabel.four_label_rules]]
+customer  = "CUSTOMER 201*"
+plant     = "PL50"
+container = "C00152??"
 ```
 
 ### ABC Headless Section (`[abc.repack]`)

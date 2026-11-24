@@ -219,6 +219,8 @@ pub struct ViewState {
     /// Set by `draw`: wrapped line count of the log, used for clamping.
     pub total_lines: usize,
     pub quit: bool,
+    /// Key help overlay is shown (`?` / F1).
+    pub help: bool,
     /// Selection / filter state of the menu view.
     pub menu: MenuView,
 }
@@ -231,6 +233,7 @@ impl Default for ViewState {
             page: 10,
             total_lines: 0,
             quit: false,
+            help: false,
             menu: MenuView::default(),
         }
     }

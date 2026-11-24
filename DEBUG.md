@@ -52,6 +52,10 @@ If you're experiencing issues with SAP connectivity:
 2. Set breakpoints in the SAP connection initialization code in `main.rs` to see where connection failures occur.
 3. Check error messages in the Debug Console when connection attempts fail.
 
+## Full-screen shell while debugging
+
+At a terminal the program runs inside a full-screen shell (alternate screen, raw mode, mouse capture), which takes over the console a debugger or `println!` inspection relies on. For debugging set `SAP_NO_SHELL=1` (plain output, as before), or launch from a non-terminal. `SAP_SHELL_AUTOCLOSE=1` closes the window at the end of an unattended run. Code: `src/shell/` (library-only module); the UI thread owns the terminal and the work runs on a worker thread; prompts go through `shell::dialog` / `shell::read_line` (see CLAUDE.md).
+
 ## Mock Mode vs. Real Mode
 
 - **Mock Mode**: Uses simulated SAP responses, useful for testing logic without an actual SAP system.

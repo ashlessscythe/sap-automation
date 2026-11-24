@@ -14,7 +14,7 @@
 #![allow(dead_code)]
 
 use super::menu::{MenuEvent, UiRequest};
-use super::prompt::{self, CloseOnDrop, PromptGate};
+use super::prompt::{self, PromptGate};
 use super::request;
 use super::{
     draw_once, handle_event, lock, set_active_shell, shared, Level, Mode, SharedShell, ShellState,
@@ -55,7 +55,7 @@ pub fn shell_wanted() -> bool {
 
 fn is_ctrl_c(ev: &Event) -> bool {
     matches!(ev, Event::Key(k)
-        if k.kind != KeyEventKind::Release
+        if k.kind == KeyEventKind::Press
             && k.code == KeyCode::Char('c')
             && k.modifiers.contains(KeyModifiers::CONTROL))
 }
@@ -110,7 +110,7 @@ impl ShellOpts {
 /// keys (so the output can still be read), key releases and bare modifiers.
 pub fn is_ack_key(ev: &Event) -> bool {
     match ev {
-        Event::Key(k) if k.kind != KeyEventKind::Release => !matches!(
+        Event::Key(k) if k.kind == KeyEventKind::Press => !matches!(
             k.code,
             KeyCode::Up
                 | KeyCode::Down
@@ -119,6 +119,8 @@ pub fn is_ack_key(ev: &Event) -> bool {
                 | KeyCode::Home
                 | KeyCode::End
                 | KeyCode::Char('f')
+                | KeyCode::Char('?')
+                | KeyCode::F(1)
                 | KeyCode::Modifier(_)
                 | KeyCode::Null
         ),
@@ -129,7 +131,22 @@ pub fn is_ack_key(ev: &Event) -> bool {
 /// Route one terminal event according to what the worker waits for. Returns true when the screen
 /// should be redrawn at once.
 pub fn dispatch_event(ev: &Event, sh: &SharedShell, view: &mut ViewState) -> bool {
+    // the help overlay swallows input: any key closes it
+    if view.help {
+        return match ev {
+            Event::Key(k) if k.kind == KeyEventKind::Press => {
+                view.help = false;
+                true
+            }
+            Event::Resize(_, _) => true,
+            _ => false,
+        };
+    }
     let req = lock(sh).request.clone();
+    if is_help_key(ev, !view.menu.filtering || req.is_none()) {
+        view.help = true;
+        return true;
+    }
     match req {
         Some(UiRequest::Menu(spec)) => {
             view.menu.sync(&spec);
@@ -163,6 +180,13 @@ pub fn dispatch_event(ev: &Event, sh: &SharedShell, view: &mut ViewState) -> boo
     }
 }
 
+/// `?` or F1 (the `?` only when it is not text being typed into the menu filter).
+pub fn is_help_key(ev: &Event, allow_char: bool) -> bool {
+    matches!(ev, Event::Key(k)
+        if k.kind == KeyEventKind::Press
+            && (k.code == KeyCode::F(1) || (allow_char && k.code == KeyCode::Char('?'))))
+}
+
 /// Throw away key events typed while the terminal belonged to a prompt.
 fn drain_input() {
     while matches!(event::poll(Duration::ZERO), Ok(true)) {
@@ -183,6 +207,21 @@ fn echo_recent(sh: &SharedShell, printed: &mut u64) {
     ::std::println!();
     for e in s.log_entries().skip(n - take) {
         ::std::println!("{}", format_tail_line(e));
+    }
+}
+
+/// Ends the UI side for good (also when the UI thread unwinds): releases a worker that waits on
+/// a menu / acknowledge request or on a prompt handshake, so `thread::scope` cannot hang.
+struct ReleaseOnDrop<'a> {
+    sh: &'a SharedShell,
+    gate: Arc<PromptGate>,
+}
+
+impl Drop for ReleaseOnDrop<'_> {
+    fn drop(&mut self) {
+        request::set_interactive(false);
+        request::cancel_pending(self.sh);
+        self.gate.close();
     }
 }
 
@@ -269,7 +308,10 @@ pub fn run_with_shell_opts<T: Send>(
             }
             r
         });
-        let _close = CloseOnDrop(gate.clone());
+        let _release = ReleaseOnDrop {
+            sh: &sh,
+            gate: gate.clone(),
+        };
         let mut view = ViewState::default();
         let tick = Duration::from_millis(30);
         let redraw_every = Duration::from_millis(100);
@@ -309,6 +351,7 @@ pub fn run_with_shell_opts<T: Send>(
             }
             let finished = done.load(Ordering::Acquire);
             if crashed.load(Ordering::Acquire)
+                || super::panicked()
                 || (finished && (autoclose || view.quit || !opts.hold_on_finish))
             {
                 break;
@@ -323,6 +366,7 @@ pub fn run_with_shell_opts<T: Send>(
                     if is_ctrl_c(&ev) {
                         // raw mode: Ctrl-C is a key, not a signal. Abort like before.
                         super::restore_terminal();
+                        ::std::eprintln!("Aborted (Ctrl-C)");
                         std::process::exit(130);
                     }
                     dirty |= dispatch_event(&ev, &sh, &mut view);
@@ -346,9 +390,15 @@ pub fn run_with_shell_opts<T: Send>(
                 dirty = true;
             }
         }
-        // release a worker that still waits on a request or a prompt
+        // release a worker that still waits on a request or a prompt; if it keeps running (the UI
+        // failed), it continues on the normal terminal with plain output
+        request::set_interactive(false);
         request::cancel_pending(&sh);
         gate.close();
+        if !done.load(Ordering::Acquire) {
+            let _ = guard.borrow_mut().suspend();
+            crate::logging::detach_shell();
+        }
         worker.join()
     });
 
@@ -368,6 +418,11 @@ pub fn run_with_shell_opts<T: Send>(
     };
     for l in &tail {
         println!("{l}");
+    }
+    // an unfinished `print!` line (no newline yet) must not vanish with the shell
+    let pending = prompt::take_pending();
+    if !pending.is_empty() {
+        println!("{pending}");
     }
     match result {
         Ok(r) => r,
@@ -482,6 +537,26 @@ mod tests {
         assert!(!view.quit);
         dispatch_event(&key_ev(KeyCode::Char('q'), p), &sh, &mut view);
         assert!(lock(&sh).request.is_none());
+        // help overlay: ? opens, any key closes without reaching the menu / quit logic
+        assert!(dispatch_event(
+            &key_ev(KeyCode::Char('?'), p),
+            &sh,
+            &mut view
+        ));
+        assert!(view.help);
+        assert!(dispatch_event(
+            &key_ev(KeyCode::Char('q'), p),
+            &sh,
+            &mut view
+        ));
+        assert!(!view.help && !view.quit);
+        // key releases never act
+        assert!(!dispatch_event(
+            &key_ev(KeyCode::Char('q'), KeyEventKind::Release),
+            &sh,
+            &mut view
+        ));
+        assert!(!view.quit);
         // no request: q is the old "quit when done" key
         dispatch_event(&key_ev(KeyCode::Char('q'), p), &sh, &mut view);
         assert!(view.quit);

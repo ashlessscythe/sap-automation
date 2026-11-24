@@ -349,6 +349,20 @@ non-zero before SAP is touched (clap errors exit with 2).
 | `--rname` with any per-tcode flag (`--tcode --layout --variant --export-type ... --bin-filter`) | `<flags> can't be used with --rname; ...` |
 | `--rname` with `--rname-dir` | `--rname-dir can't be used with --rname ...` |
 
+## Full-screen shell and plain output
+
+On a terminal every unattended run (`--run-loop`, `--run-sequence`, `--tcode`, `--rname`, parallel runs) is shown in a persistent full-screen window (header, command line, scrolling log, session grid, status bar; `?` / F1 lists the keys). The process exit code is unchanged: a failed run still exits non-zero after the window is closed, and the last log lines are printed to the normal screen.
+
+The shell is NOT used (output and exit codes exactly as before, nothing extra is printed) when stdin or stdout is not a terminal, with `--json` (the last stdout line stays the single JSON object), or when one of these environment variables is set:
+
+| Variable | Effect |
+|---|---|
+| `SAP_NO_SHELL=1` | Never use the full-screen shell (the parallel status grid of v0.17.0 is still drawn). |
+| `SAP_NO_STATUS=1` | Disables the shell AND the parallel status grid: plain scrolling output. |
+| `SAP_SHELL_AUTOCLOSE=1` | Close the window when an unattended run ends instead of waiting for `q`. |
+
+Scripts and wrappers need no change: they normally run without a terminal. A terminal-attached script that parses the output should set `SAP_NO_SHELL=1`.
+
 ## Validation Rules (fail-fast, before SAP connect)
 
 | Condition | Error |

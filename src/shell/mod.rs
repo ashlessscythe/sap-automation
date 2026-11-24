@@ -22,7 +22,7 @@ pub use state::{
     command_line_from, format_elapsed, quote_arg, truncate_ellipsis, Level, LogEntry, Mode,
     SapStatus, SessionRow, SessionSnapshot, ShellState, ViewState, LOG_CAP,
 };
-pub use terminal::{restore_terminal, ShellTerminal, TerminalGuard};
+pub use terminal::{panicked, restore_terminal, ShellTerminal, TerminalGuard};
 pub use ui::draw;
 
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers, MouseEventKind};
@@ -108,7 +108,7 @@ pub fn handle_event(ev: &Event, view: &mut ViewState) -> bool {
             }
             _ => false,
         },
-        Event::Key(k) if k.kind != KeyEventKind::Release => {
+        Event::Key(k) if k.kind == KeyEventKind::Press => {
             match k.code {
                 KeyCode::Char('q') | KeyCode::Esc => view.quit = true,
                 KeyCode::Char('c') if k.modifiers.contains(KeyModifiers::CONTROL) => {

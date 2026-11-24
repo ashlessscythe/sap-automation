@@ -209,6 +209,12 @@ match close_excel_windows(Some(file_name)) {
 | `N session(s) already open + M new > 6` / `only N free session slot(s)` | Parallel runs (`--multi-conn`, `--conn-count`) need free windows: SAP allows 6 per connection including yours. Close windows or use a smaller `--conn-count`. |
 | `--rname given N times: add --multi-conn` | Several `--rname` are only for parallel sessions; add `--multi-conn` (and no `--loop`), or run the reports one by one. |
 | Parallel run slower than expected | Parallel sessions do not speed up one report; the whole range or set of reports finishes sooner. Heavy reports (VT11, VL06O) compete on the SAP server. Compare the start/end columns of the final table with a sequential run. |
+| Full-screen window shows garbage, the wrong size or no colours | The shell needs a terminal with ANSI support (Windows Terminal, recent conhost, VS Code terminal). Resize the window to force a repaint, or set `SAP_NO_SHELL=1` for plain output. It has not been verified on every terminal. |
+| Terminal looks broken (no echo, odd characters) after a hard kill | Raw mode could not be restored (only a hard kill does that; normal exit, errors, panics and Ctrl-C restore it). Close the tab or run `reset`. |
+| Text cannot be selected / copied in the shell | Mouse capture is on. Hold Shift while dragging to select, or set `SAP_NO_SHELL=1`. |
+| `q` does nothing during an unattended run | `q` quits only after the run is done; `Ctrl-C` aborts it. In the menu `q` goes back. Press `?` for the key help. |
+| The window disappears for a moment and a question shows on the normal screen | Intended: prompts (confirmations, typed values, passwords) hand the terminal back, then the shell returns. Keys typed during the switch are discarded. |
+| A terminal-attached script sees screen control codes | It got the shell. Run it without a terminal, add `--json`, or set `SAP_NO_SHELL=1`. |
 | Status grid at the bottom flickers, or leaves stray lines | The grid is redrawn as one frame where the terminal supports synchronized output (recent Windows Terminal); very narrow windows (under about 40 columns) can wrap it. Widen the window, or set `SAP_NO_STATUS=1` to turn the grid off. |
 | Parallel run feels slow | Use a release build (`cargo run --release -- ...` or `target\i686-pc-windows-msvcelease\sap_automation.exe`): debug builds are much slower per COM call. |
 | Export file name has `-s3` in it | Intended: in parallel runs the session number is added (`<timestamp>-s3_<TCODE>.txt`) so sessions never overwrite each other. |

@@ -9,6 +9,7 @@ use crossterm::{
 };
 use ratatui::{backend::CrosstermBackend, Terminal};
 use std::io::{self, Stdout};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Once;
 
 pub type ShellTerminal = Terminal<CrosstermBackend<Stdout>>;
@@ -25,12 +26,20 @@ pub fn restore_terminal() {
 }
 
 static HOOK: Once = Once::new();
+static PANICKED: AtomicBool = AtomicBool::new(false);
+
+/// True once any thread panicked after the shell's panic hook was installed (the hook has then
+/// already restored the terminal; the UI loop must stop drawing).
+pub fn panicked() -> bool {
+    PANICKED.load(Ordering::Acquire)
+}
 
 /// Chain a panic hook that restores the terminal before the previous hook prints the message.
 fn install_panic_hook() {
     HOOK.call_once(|| {
         let prev = std::panic::take_hook();
         std::panic::set_hook(Box::new(move |info| {
+            PANICKED.store(true, Ordering::Release);
             restore_terminal();
             prev(info);
         }));
@@ -56,8 +65,14 @@ impl TerminalGuard {
 
     fn enter(&mut self) -> io::Result<()> {
         enable_raw_mode()?;
-        execute!(io::stdout(), EnterAlternateScreen, EnableMouseCapture, Hide)?;
-        self.terminal.clear()?;
+        // a failure half way must not leave raw mode / the alternate screen behind (`active` is
+        // still false, so Drop would not restore)
+        let r = execute!(io::stdout(), EnterAlternateScreen, EnableMouseCapture, Hide)
+            .and_then(|_| self.terminal.clear());
+        if let Err(e) = r {
+            restore_terminal();
+            return Err(e);
+        }
         self.active = true;
         Ok(())
     }

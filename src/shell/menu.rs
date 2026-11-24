@@ -103,7 +103,7 @@ impl MenuView {
     pub fn handle_event(&mut self, ev: &Event, spec: &MenuSpec) -> MenuEvent {
         match ev {
             Event::Resize(_, _) => MenuEvent::Redraw,
-            Event::Key(k) if k.kind != KeyEventKind::Release => {
+            Event::Key(k) if k.kind == KeyEventKind::Press => {
                 self.handle_key(k.code, k.modifiers, spec)
             }
             _ => MenuEvent::None,

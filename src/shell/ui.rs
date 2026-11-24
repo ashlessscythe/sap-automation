@@ -202,6 +202,53 @@ pub fn draw(frame: &mut Frame, state: &ShellState, view: &mut ViewState) {
             rows[4],
         );
     }
+    if view.help {
+        draw_help(frame, area);
+    }
+}
+
+/// Lines of the key help overlay.
+pub const HELP_LINES: &[&str] = &[
+    "Up / Down, PgUp / PgDn, Home / End, mouse wheel   scroll the log",
+    "f                                                 follow the end of the log",
+    "q                                                 quit (when the run is done)",
+    "Ctrl-C                                            abort the process",
+    "? / F1                                            this help",
+    "",
+    "Menus:  Up/Down, Enter, 1-9 jump, / filter, q or Esc back",
+    "After an action: any key returns to the menu",
+    "",
+    "Select text: hold Shift while dragging (mouse capture is on)",
+    "Plain output instead of the shell: SAP_NO_SHELL=1",
+    "",
+    "Press any key to close",
+];
+
+fn draw_help(frame: &mut Frame, area: Rect) {
+    use ratatui::widgets::Clear;
+    let w = (HELP_LINES
+        .iter()
+        .map(|l| l.chars().count())
+        .max()
+        .unwrap_or(0) as u16
+        + 4)
+    .min(area.width);
+    let h = (HELP_LINES.len() as u16 + 2).min(area.height);
+    if w < 8 || h < 3 {
+        return;
+    }
+    let rect = Rect {
+        x: area.x + (area.width - w) / 2,
+        y: area.y + (area.height - h) / 2,
+        width: w,
+        height: h,
+    };
+    frame.render_widget(Clear, rect);
+    let lines: Vec<Line> = HELP_LINES.iter().map(|l| Line::from(*l)).collect();
+    frame.render_widget(
+        Paragraph::new(lines).block(Block::default().borders(Borders::ALL).title(" Keys ")),
+        rect,
+    );
 }
 
 /// The log window is never squeezed below this many rows by the session pane.
@@ -526,6 +573,20 @@ mod tests {
         let out = render(40, 10, &st, &mut v);
         assert!(!out.contains("sap_automation --tcode"));
         assert!(!out.contains(&st.log_entries().next().unwrap().timestamp));
+    }
+
+    #[test]
+    fn help_overlay_renders_and_survives_every_size() {
+        let st = sample();
+        let mut v = ViewState {
+            help: true,
+            ..Default::default()
+        };
+        let out = render(100, 30, &st, &mut v);
+        assert!(out.contains("Keys") && out.contains("follow the end"));
+        for (w, h) in [(1, 1), (5, 3), (30, 8), (60, 15), (200, 60)] {
+            render(w, h, &st, &mut v);
+        }
     }
 
     #[test]

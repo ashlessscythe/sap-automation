@@ -246,6 +246,12 @@ pub fn attach_shell() -> ShellSinkGuard {
     ShellSinkGuard
 }
 
+/// Stop routing log lines into the shell now (the guard's drop does the same later). Used when
+/// the UI ended while the worker still runs: its output must reach the normal screen.
+pub fn detach_shell() {
+    SINK_ON.store(false, Ordering::Release);
+}
+
 pub struct ShellSinkGuard;
 
 impl Drop for ShellSinkGuard {

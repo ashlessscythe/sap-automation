@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use dialoguer::{Input, Select};
+use sap_automation::shell::dialog::{Input, Select};
 use std::fs::{self, DirEntry};
 use std::io::{self, Error, ErrorKind};
 use std::path::{Path, PathBuf};

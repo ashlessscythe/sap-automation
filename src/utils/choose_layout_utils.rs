@@ -306,7 +306,7 @@ pub fn choose_layout(
                 }
 
                 // Ask user for a new layout name or to exit
-                use dialoguer::{Input, Select};
+                use sap_automation::shell::dialog::{Input, Select};
 
                 if !crate::utils::cli_overrides::can_prompt() {
                     println!("Layout '{current_layout}' not found.");
@@ -514,7 +514,7 @@ fn choose_layout_149_impl(
                 }
 
                 // Ask user for a new layout name or to exit
-                use dialoguer::{Input, Select};
+                use sap_automation::shell::dialog::{Input, Select};
 
                 if !crate::utils::cli_overrides::can_prompt() {
                     println!("Layout '{layout_name}' not found in the grid.");
@@ -665,7 +665,7 @@ pub fn ensure_inbond_layout_149(
     columns: &[String],
 ) -> windows::core::Result<(bool, Option<String>)> {
     use crate::utils::setup_layout_utils::setup_layout;
-    use dialoguer::{Confirm, Input};
+    use sap_automation::shell::dialog::{Confirm, Input};
 
     let save_name = if layout_name.trim().is_empty() {
         "INB_149_NAME".to_string()
@@ -862,7 +862,7 @@ fn choose_layout_zvt11_impl(
                 }
 
                 // Ask user for a new layout name or to exit
-                use dialoguer::{Input, Select};
+                use sap_automation::shell::dialog::{Input, Select};
 
                 if !crate::utils::cli_overrides::can_prompt() {
                     println!("Layout '{layout_name}' not found in the ZVT11 grid.");

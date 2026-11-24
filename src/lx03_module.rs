@@ -1,7 +1,6 @@
-use dialoguer::Input;
+use sap_automation::shell::dialog::Input;
 use sap_scripting::*;
 use std::collections::HashMap;
-use std::io::{self};
 use windows::core::Result;
 
 use crate::lx03::{run_export, LX03Params};
@@ -22,7 +21,7 @@ pub fn run_lx03_module(session: &GuiSession) -> Result<()> {
 
     println!("\nPress Enter to return to main menu...");
     let mut input = String::new();
-    io::stdin().read_line(&mut input).unwrap();
+    sap_automation::shell::read_line(&mut input).unwrap();
 
     Ok(())
 }
@@ -38,7 +37,7 @@ pub fn run_lx03_auto(session: &GuiSession) -> Result<()> {
             println!("Error loading configuration: {e}");
             println!("\nPress Enter to return to main menu...");
             let mut input = String::new();
-            io::stdin().read_line(&mut input).unwrap();
+            sap_automation::shell::read_line(&mut input).unwrap();
             return Ok(());
         }
     };
@@ -50,7 +49,7 @@ pub fn run_lx03_auto(session: &GuiSession) -> Result<()> {
             println!("Please configure LX03 parameters first.");
             println!("\nPress Enter to return to main menu...");
             let mut input = String::new();
-            io::stdin().read_line(&mut input).unwrap();
+            sap_automation::shell::read_line(&mut input).unwrap();
             return Ok(());
         }
     };

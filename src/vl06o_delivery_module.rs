@@ -1,8 +1,7 @@
 use chrono::NaiveDate;
-use dialoguer::{Input, Select};
+use sap_automation::shell::dialog::{Input, Select};
 use sap_scripting::*;
 use std::fs;
-use std::io::{self};
 use std::path::Path;
 use windows::core::Result;
 
@@ -96,7 +95,7 @@ pub fn run_vl06o_delivery_packages_module(session: &GuiSession) -> Result<()> {
     // Wait for user to press enter before returning to main menu
     println!("\nPress Enter to return to main menu...");
     let mut input = String::new();
-    io::stdin().read_line(&mut input).unwrap();
+    sap_automation::shell::read_line(&mut input).unwrap();
 
     Ok(())
 }
@@ -180,7 +179,7 @@ pub fn run_vl06o_delivery_packages_auto(session: &GuiSession) -> Result<()> {
             println!("Error loading configuration: {e}");
             println!("\nPress Enter to return to main menu...");
             let mut input = String::new();
-            io::stdin().read_line(&mut input).unwrap();
+            sap_automation::shell::read_line(&mut input).unwrap();
             return Ok(());
         }
     };
@@ -223,7 +222,7 @@ pub fn run_vl06o_delivery_packages_auto(session: &GuiSession) -> Result<()> {
             println!("Error creating directory: {e}");
             println!("\nPress Enter to return to main menu...");
             let mut input = String::new();
-            io::stdin().read_line(&mut input).unwrap();
+            sap_automation::shell::read_line(&mut input).unwrap();
             return Ok(());
         }
     }
@@ -248,7 +247,7 @@ pub fn run_vl06o_delivery_packages_auto(session: &GuiSession) -> Result<()> {
         println!("Please run ZMDESNR export first to generate a file.");
         println!("\nPress Enter to return to main menu...");
         let mut input = String::new();
-        io::stdin().read_line(&mut input).unwrap();
+        sap_automation::shell::read_line(&mut input).unwrap();
         return Ok(());
     }
 
@@ -266,7 +265,7 @@ pub fn run_vl06o_delivery_packages_auto(session: &GuiSession) -> Result<()> {
                 println!("Error reading Excel file: {e}");
                 println!("\nPress Enter to return to main menu...");
                 let mut input = String::new();
-                io::stdin().read_line(&mut input).unwrap();
+                sap_automation::shell::read_line(&mut input).unwrap();
                 return Ok(());
             }
         }
@@ -277,7 +276,7 @@ pub fn run_vl06o_delivery_packages_auto(session: &GuiSession) -> Result<()> {
                 println!("Error reading text file: {e}");
                 println!("\nPress Enter to return to main menu...");
                 let mut input = String::new();
-                io::stdin().read_line(&mut input).unwrap();
+                sap_automation::shell::read_line(&mut input).unwrap();
                 return Ok(());
             }
         }
@@ -286,7 +285,7 @@ pub fn run_vl06o_delivery_packages_auto(session: &GuiSession) -> Result<()> {
         println!("Currently supported: xlsx, txt (tab-delimited).");
         println!("\nPress Enter to return to main menu...");
         let mut input = String::new();
-        io::stdin().read_line(&mut input).unwrap();
+        sap_automation::shell::read_line(&mut input).unwrap();
         return Ok(());
     };
 
@@ -294,7 +293,7 @@ pub fn run_vl06o_delivery_packages_auto(session: &GuiSession) -> Result<()> {
         println!("No delivery numbers found in {ext} file.");
         println!("\nPress Enter to return to main menu...");
         let mut input = String::new();
-        io::stdin().read_line(&mut input).unwrap();
+        sap_automation::shell::read_line(&mut input).unwrap();
         return Ok(());
     } else {
         println!(
@@ -533,7 +532,7 @@ fn get_vl06o_delivery_parameters() -> Result<VL06ODeliveryParams> {
 
                 loop {
                     let mut line = String::new();
-                    io::stdin().read_line(&mut line).unwrap();
+                    sap_automation::shell::read_line(&mut line).unwrap();
 
                     if line.trim().is_empty() && buffer.trim().is_empty() {
                         break;
@@ -631,7 +630,7 @@ fn get_vl06o_delivery_parameters() -> Result<VL06ODeliveryParams> {
                 println!("Please select an Excel file from the dialog...");
                 println!("Press Enter to continue to file selection...");
                 let mut input = String::new();
-                io::stdin().read_line(&mut input).unwrap();
+                sap_automation::shell::read_line(&mut input).unwrap();
 
                 match get_excel_file_path(&dir_to_use) {
                     Ok(excel_path) => {
@@ -729,7 +728,7 @@ fn get_vl06o_delivery_parameters() -> Result<VL06ODeliveryParams> {
                         // Wait for user to acknowledge before continuing
                         println!("Press Enter to continue...");
                         let mut input = String::new();
-                        io::stdin().read_line(&mut input).unwrap();
+                        sap_automation::shell::read_line(&mut input).unwrap();
                     }
                     Err(e) => {
                         println!("Error selecting Excel file: {e}");
@@ -738,7 +737,7 @@ fn get_vl06o_delivery_parameters() -> Result<VL06ODeliveryParams> {
                         // Wait for user to acknowledge before continuing
                         println!("Press Enter to continue...");
                         let mut input = String::new();
-                        io::stdin().read_line(&mut input).unwrap();
+                        sap_automation::shell::read_line(&mut input).unwrap();
                     }
                 }
             }
@@ -748,7 +747,7 @@ fn get_vl06o_delivery_parameters() -> Result<VL06ODeliveryParams> {
                 // Wait for user to acknowledge before continuing
                 println!("Press Enter to continue...");
                 let mut input = String::new();
-                io::stdin().read_line(&mut input).unwrap();
+                sap_automation::shell::read_line(&mut input).unwrap();
             }
         }
     }

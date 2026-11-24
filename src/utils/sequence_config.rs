@@ -2,10 +2,9 @@
 #![allow(dead_code)]
 
 use anyhow::Result;
-use dialoguer::{Input, Select};
+use sap_automation::shell::dialog::{Input, Select};
 use sap_scripting::*;
 use std::collections::HashMap;
-use std::io;
 use std::thread;
 use std::time::Duration;
 
@@ -456,7 +455,7 @@ pub fn handle_configure_sequence() -> Result<()> {
 
                 println!("\nPress Enter to continue...");
                 let mut input = String::new();
-                io::stdin().read_line(&mut input).unwrap();
+                sap_automation::shell::read_line(&mut input).unwrap();
                 continue;
             }
             _ => {
@@ -490,7 +489,7 @@ pub fn run_sequence(session: &GuiSession) -> Result<()> {
             println!("Error loading sequence configuration: {e}");
             println!("\nPress Enter to return to main menu...");
             let mut input = String::new();
-            io::stdin().read_line(&mut input).unwrap();
+            sap_automation::shell::read_line(&mut input).unwrap();
             return Ok(());
         }
     };
@@ -501,7 +500,7 @@ pub fn run_sequence(session: &GuiSession) -> Result<()> {
         println!("Please configure sequence parameters first.");
         println!("\nPress Enter to return to main menu...");
         let mut input = String::new();
-        io::stdin().read_line(&mut input).unwrap();
+        sap_automation::shell::read_line(&mut input).unwrap();
         return Ok(());
     }
 
@@ -535,7 +534,7 @@ pub fn run_sequence(session: &GuiSession) -> Result<()> {
 
     println!("\nPress Enter to start the sequence or Ctrl+C to cancel...");
     let mut input = String::new();
-    io::stdin().read_line(&mut input).unwrap();
+    sap_automation::shell::read_line(&mut input).unwrap();
 
     // Run the sequence in a loop
     let mut iteration = 1;
@@ -637,7 +636,7 @@ pub fn run_sequence(session: &GuiSession) -> Result<()> {
     println!("\nSequence execution completed.");
     println!("\nPress Enter to return to main menu...");
     let mut input = String::new();
-    io::stdin().read_line(&mut input).unwrap();
+    sap_automation::shell::read_line(&mut input).unwrap();
 
     Ok(())
 }

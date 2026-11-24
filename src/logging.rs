@@ -30,7 +30,7 @@
 //! the shell's session pane both render from that snapshot, so the refresh logic exists once.
 //!
 //! Declared first in `lib.rs` with `#[macro_use]` so the macros are in scope crate-wide. Plain
-//! `print!` is not covered (it stays direct).
+//! `print!` is plain std printing except under the shell (see [`emit_partial`]).
 
 use std::collections::BTreeMap;
 use std::fmt::Arguments;
@@ -61,6 +61,12 @@ macro_rules! println {
     };
 }
 
+macro_rules! print {
+    ($($arg:tt)*) => {
+        $crate::logging::emit_partial(format_args!($($arg)*))
+    };
+}
+
 macro_rules! eprintln {
     () => {
         $crate::logging::emit(true, format_args!(""))
@@ -76,7 +82,12 @@ pub fn emit(stderr: bool, args: Arguments<'_>) {
         if let Some(shell) = crate::shell::active_shell() {
             let tag = crate::utils::sap_export_utils::session_tag_name();
             let tag = if tag.is_empty() { None } else { Some(tag) };
-            let body = args.to_string();
+            let mut body = args.to_string();
+            let pending = crate::shell::prompt::take_pending();
+            if !pending.is_empty() {
+                // an earlier `print!` without newline continues on this line
+                body.insert_str(0, &pending);
+            }
             board_line(
                 tag.as_deref().unwrap_or(""),
                 body.lines().last().unwrap_or("").trim(),
@@ -117,6 +128,24 @@ pub fn emit(stderr: bool, args: Arguments<'_>) {
     }
     // writer thread gone: never lose a line
     ::std::println!("{args}");
+}
+
+/// `print!`: plain `std::print!`, except while the shell owns the screen. There complete lines go
+/// to the shell log and an unfinished line (a prompt) is kept aside: `shell::read_line` shows it
+/// on the normal screen when the terminal is suspended, the next `println!` continues it.
+pub fn emit_partial(args: Arguments<'_>) {
+    if SINK_ON.load(Ordering::Acquire) && crate::shell::active_shell().is_some() {
+        let text = args.to_string();
+        match text.rfind(char::from(10u8)) {
+            Some(i) => {
+                emit(false, format_args!("{}", &text[..i]));
+                crate::shell::prompt::push_pending(&text[i + 1..]);
+            }
+            None => crate::shell::prompt::push_pending(&text),
+        }
+        return;
+    }
+    ::std::print!("{args}");
 }
 
 /// True while the shell owns the screen (log lines go to its buffer, no ANSI panel).

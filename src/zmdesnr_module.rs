@@ -1,8 +1,7 @@
-use dialoguer::Input;
+use sap_automation::shell::dialog::Input;
 use sap_scripting::*;
 use std::collections::HashMap;
 use std::fs;
-use std::io::{self};
 use std::path::Path;
 use windows::core::Result;
 
@@ -36,7 +35,7 @@ pub fn run_zmdesnr_module(session: &GuiSession) -> Result<()> {
     // Wait for user to press enter before returning to main menu
     println!("\nPress Enter to return to main menu...");
     let mut input = String::new();
-    io::stdin().read_line(&mut input).unwrap();
+    sap_automation::shell::read_line(&mut input).unwrap();
 
     Ok(())
 }
@@ -53,7 +52,7 @@ pub fn run_zmdesnr_auto(session: &GuiSession) -> Result<()> {
             println!("Error loading configuration: {e}");
             println!("\nPress Enter to return to main menu...");
             let mut input = String::new();
-            io::stdin().read_line(&mut input).unwrap();
+            sap_automation::shell::read_line(&mut input).unwrap();
             return Ok(());
         }
     };
@@ -66,7 +65,7 @@ pub fn run_zmdesnr_auto(session: &GuiSession) -> Result<()> {
             println!("Please configure ZMDESNR parameters first.");
             println!("\nPress Enter to return to main menu...");
             let mut input = String::new();
-            io::stdin().read_line(&mut input).unwrap();
+            sap_automation::shell::read_line(&mut input).unwrap();
             return Ok(());
         }
     };

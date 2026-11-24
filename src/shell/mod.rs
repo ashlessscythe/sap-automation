@@ -5,12 +5,19 @@
 //! [`ShellState`] through [`SharedShell`] (e.g. [`push_log`]).
 #![allow(dead_code)]
 
+pub mod dialog;
+pub mod menu;
+pub mod prompt;
+pub mod request;
 pub mod runner;
 pub mod state;
 pub mod terminal;
 pub mod ui;
 
-pub use runner::{run_with_shell, shell_enabled, shell_wanted};
+pub use menu::{MenuSpec, MenuView, UiRequest};
+pub use prompt::{read_line, read_password, with_prompt, with_prompt_ctx};
+pub use request::{begin_action, end_action, try_menu};
+pub use runner::{run_with_shell, run_with_shell_opts, shell_enabled, shell_wanted, ShellOpts};
 pub use state::{
     command_line_from, format_elapsed, quote_arg, truncate_ellipsis, Level, LogEntry, Mode,
     SapStatus, SessionRow, SessionSnapshot, ShellState, ViewState, LOG_CAP,
@@ -201,8 +208,12 @@ mod tests {
         assert!(!raw_screen_allowed(true, true));
     }
 
+    /// Tests that use the global ACTIVE slot run one at a time.
+    static ACTIVE_SERIAL: Mutex<()> = Mutex::new(());
+
     #[test]
     fn unless_shell_skips_while_shell_is_active() {
+        let _s = ACTIVE_SERIAL.lock().unwrap_or_else(|p| p.into_inner());
         // shell tests that touch the global ACTIVE slot live in this one test
         let mut ran = false;
         unless_shell(|| ran = true);
@@ -213,6 +224,66 @@ mod tests {
         clear_screen(); // must not touch the terminal (and must not panic)
         set_active_shell(None);
         assert!(!ran, "shell on: skipped");
+    }
+
+    #[test]
+    fn menu_and_action_requests_roundtrip_between_worker_and_ui() {
+        use std::time::Duration;
+        let _s = ACTIVE_SERIAL.lock().unwrap_or_else(|p| p.into_inner());
+        let _sink = crate::logging::attach_shell();
+        let sh = shared(ShellState::new("t", Mode::Interactive));
+        set_active_shell(Some(sh.clone()));
+        prompt::set_gate(Some(Arc::new(prompt::PromptGate::new())));
+        request::set_interactive(true);
+        struct Cleanup;
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                request::set_interactive(false);
+                prompt::set_gate(None);
+                set_active_shell(None);
+            }
+        }
+        let _cleanup = Cleanup;
+        let wait_request = |sh: &SharedShell| {
+            for _ in 0..500 {
+                if lock(sh).request.is_some() {
+                    return lock(sh).request.clone().unwrap();
+                }
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            panic!("no request posted");
+        };
+        let worker = std::thread::spawn(|| {
+            let choice = try_menu("m", &["a".to_string(), "b".to_string()], Some(1))
+                .expect("available")
+                .unwrap();
+            let scope = begin_action("VT11 - Auto");
+            eprintln!("Error: boom");
+            end_action(scope);
+            let cancelled = try_menu("m2", &["a".to_string()], None).unwrap().unwrap();
+            (choice, cancelled)
+        });
+        match wait_request(&sh) {
+            UiRequest::Menu(spec) => {
+                assert_eq!((spec.title.as_str(), spec.default), ("m", Some(1)))
+            }
+            other => panic!("{other:?}"),
+        }
+        request::answer(&sh, Some(1));
+        // the action ended with an error line: FAILED acknowledge, header shows the chip meanwhile
+        match wait_request(&sh) {
+            UiRequest::Acknowledge { ok } => assert!(!ok),
+            other => panic!("{other:?}"),
+        }
+        assert_eq!(lock(&sh).tcode.as_deref(), Some("VT11"));
+        request::answer(&sh, Some(0));
+        match wait_request(&sh) {
+            UiRequest::Menu(spec) => assert_eq!(spec.title, "m2"),
+            other => panic!("{other:?}"),
+        }
+        request::cancel_pending(&sh);
+        assert_eq!(worker.join().unwrap(), (Some(1), None));
+        assert!(lock(&sh).tcode.is_none());
     }
 
     #[test]

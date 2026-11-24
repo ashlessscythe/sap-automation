@@ -132,8 +132,20 @@ impl App {
     }
 }
 
-/// Display a selection menu with TUI
+/// Display a selection menu with TUI. Inside the full-screen shell (interactive session) the menu
+/// is shown in the shell body instead of a terminal of its own; `Ok(None)` = cancelled.
 pub fn show_selection_menu(
+    title: &str,
+    items: Vec<String>,
+    default_selection: Option<usize>,
+) -> io::Result<Option<usize>> {
+    if let Some(r) = sap_automation::shell::try_menu(title, &items, default_selection) {
+        return r;
+    }
+    sap_automation::shell::with_prompt(|| show_selection_menu_own(title, items, default_selection))
+}
+
+fn show_selection_menu_own(
     title: &str,
     items: Vec<String>,
     default_selection: Option<usize>,
@@ -396,6 +408,15 @@ pub fn show_grid_menu(
     items: Vec<String>,
     default_selection: Option<usize>,
 ) -> io::Result<Option<usize>> {
+    sap_automation::shell::with_prompt(|| show_grid_menu_own(title, items, default_selection))
+}
+
+#[allow(dead_code)]
+fn show_grid_menu_own(
+    title: &str,
+    items: Vec<String>,
+    default_selection: Option<usize>,
+) -> io::Result<Option<usize>> {
     // Terminal setup
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -572,6 +593,10 @@ fn grid_ui(f: &mut Frame, app: &App) {
 
 /// Simple input dialog using TUI
 pub fn show_input_dialog(prompt: &str, default_value: Option<&str>) -> io::Result<Option<String>> {
+    sap_automation::shell::with_prompt(|| show_input_dialog_own(prompt, default_value))
+}
+
+fn show_input_dialog_own(prompt: &str, default_value: Option<&str>) -> io::Result<Option<String>> {
     // Terminal setup
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -706,6 +731,18 @@ fn input_ui(f: &mut Frame, prompt: &str, input: &str, _cursor_pos: usize) {
 /// Keys: Up/Down (j/k), PageUp/PageDown, Home/End scroll; q, Esc or Enter close. `row_style`
 /// colours a row from its cells.
 pub fn show_table_view(
+    title: &str,
+    headers: &[&str],
+    rows: &[Vec<String>],
+    summary: &str,
+    row_style: &dyn Fn(&[String]) -> Style,
+) -> io::Result<()> {
+    sap_automation::shell::with_prompt(|| {
+        show_table_view_own(title, headers, rows, summary, row_style)
+    })
+}
+
+fn show_table_view_own(
     title: &str,
     headers: &[&str],
     rows: &[Vec<String>],

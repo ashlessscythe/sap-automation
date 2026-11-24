@@ -875,7 +875,7 @@ pub fn run_summarize(date: Option<NaiveDate>) -> Result<()> {
             items.push(format!("All {pending} runs that are not yet summarized"));
         }
         let default = runs.iter().position(|r| !r.summarized()).unwrap_or(0);
-        let pick = dialoguer::Select::new()
+        let pick = sap_automation::shell::dialog::Select::new()
             .with_prompt("Which run do you want summarized? (Esc = none)")
             .items(&items)
             .default(default)

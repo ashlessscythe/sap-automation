@@ -1,5 +1,5 @@
 use chrono::NaiveDate;
-use dialoguer::{Input, Select};
+use sap_automation::shell::dialog::{Input, Select};
 use sap_scripting::*;
 use std::collections::HashMap;
 use windows::core::Result;
@@ -30,7 +30,7 @@ pub fn run_zvt11_module(session: &GuiSession) -> Result<()> {
 
     println!("\nPress Enter to continue...");
     let mut input = String::new();
-    std::io::stdin().read_line(&mut input).unwrap();
+    sap_automation::shell::read_line(&mut input).unwrap();
 
     Ok(())
 }
@@ -48,7 +48,7 @@ pub fn run_zvt11_auto(session: &GuiSession) -> Result<()> {
             println!("Please configure ZVT11 parameters first.");
             println!("\nPress Enter to continue...");
             let mut input = String::new();
-            std::io::stdin().read_line(&mut input).unwrap();
+            sap_automation::shell::read_line(&mut input).unwrap();
             return Ok(());
         }
     };
@@ -61,7 +61,7 @@ pub fn run_zvt11_auto(session: &GuiSession) -> Result<()> {
             println!("Please configure ZVT11 parameters first.");
             println!("\nPress Enter to continue...");
             let mut input = String::new();
-            std::io::stdin().read_line(&mut input).unwrap();
+            sap_automation::shell::read_line(&mut input).unwrap();
             return Ok(());
         }
     };

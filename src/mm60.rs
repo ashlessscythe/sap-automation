@@ -277,7 +277,7 @@ pub fn find_layout_row(rows: &[(String, String)], name: &str) -> Option<usize> {
 /// [`can_prompt`]: unattended runs (and runs without a terminal) get `None` and fail instead.
 /// `None` also when the user exits or enters nothing.
 fn prompt_new_layout(missing: &str, available: &[String]) -> Option<String> {
-    use dialoguer::{Input, Select};
+    use sap_automation::shell::dialog::{Input, Select};
     if !can_prompt() {
         return None;
     }

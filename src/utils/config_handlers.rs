@@ -1,7 +1,6 @@
 use anyhow::{anyhow, Result};
-use dialoguer::{Input, Select};
+use sap_automation::shell::dialog::{Input, Select};
 use std::collections::HashMap;
-use std::io;
 use std::thread;
 use std::time::Duration;
 
@@ -227,7 +226,7 @@ pub fn handle_configure_sap_params() -> Result<()> {
 
                 println!("\nPress Enter to continue...");
                 let mut input = String::new();
-                io::stdin().read_line(&mut input).unwrap();
+                sap_automation::shell::read_line(&mut input).unwrap();
                 continue;
             }
             _ => {
@@ -639,7 +638,7 @@ fn configure_tcode_parameters(config: &mut SapConfig, tcode_name: &str) -> Resul
                     "Are you sure you want to delete the configuration for TCode '{tcode_name}'? (y/n)"
                 );
                 let mut confirm = String::new();
-                io::stdin().read_line(&mut confirm).unwrap();
+                sap_automation::shell::read_line(&mut confirm).unwrap();
 
                 if confirm.trim().to_lowercase() == "y" {
                     if let Some(tcode_configs) = &mut config.tcode {
@@ -851,7 +850,7 @@ fn handle_configure_loop_params(config: &mut SapConfig) -> Result<()> {
 
                 println!("\nPress Enter to continue...");
                 let mut input = String::new();
-                io::stdin().read_line(&mut input).unwrap();
+                sap_automation::shell::read_line(&mut input).unwrap();
                 continue;
             }
             _ => {

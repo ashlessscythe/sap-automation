@@ -1,7 +1,6 @@
 use anyhow::Result;
-use dialoguer::{Input, Select};
+use sap_automation::shell::dialog::{Input, Select};
 use std::fmt::Write as _;
-use std::io;
 use std::thread;
 use std::time::Duration;
 use windows::core;
@@ -293,7 +292,7 @@ pub fn handle_read_excel_file() -> Result<()> {
 
     println!("\nPress Enter to continue...");
     let mut input = String::new();
-    io::stdin().read_line(&mut input).unwrap();
+    sap_automation::shell::read_line(&mut input).unwrap();
 
     Ok(())
 }

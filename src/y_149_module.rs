@@ -1,4 +1,4 @@
-use dialoguer::Input;
+use sap_automation::shell::dialog::Input;
 use sap_scripting::*;
 use std::io::{self, Write};
 use windows::core::Result;
@@ -30,7 +30,7 @@ pub fn run_149_module(session: &GuiSession) -> Result<()> {
     // Wait for user to press enter before returning to main menu
     println!("\nPress Enter to return to main menu...");
     let mut input = String::new();
-    io::stdin().read_line(&mut input).unwrap();
+    sap_automation::shell::read_line(&mut input).unwrap();
 
     Ok(())
 }
@@ -47,7 +47,7 @@ pub fn run_149_auto(session: &GuiSession) -> Result<()> {
             println!("Error loading configuration: {e}");
             println!("\nPress Enter to return to main menu...");
             let mut input = String::new();
-            io::stdin().read_line(&mut input).unwrap();
+            sap_automation::shell::read_line(&mut input).unwrap();
             return Ok(());
         }
     };
@@ -60,7 +60,7 @@ pub fn run_149_auto(session: &GuiSession) -> Result<()> {
             println!("Please configure 149 report parameters first.");
             println!("\nPress Enter to return to main menu...");
             let mut input = String::new();
-            io::stdin().read_line(&mut input).unwrap();
+            sap_automation::shell::read_line(&mut input).unwrap();
             return Ok(());
         }
     };
@@ -206,7 +206,7 @@ fn get_149_parameters() -> Result<Report149Params> {
         print!("Plant {}: ", plants.len() + 1);
         io::stdout().flush().unwrap();
         let mut plant = String::new();
-        io::stdin().read_line(&mut plant).unwrap();
+        sap_automation::shell::read_line(&mut plant).unwrap();
         let plant = plant.trim().to_string();
 
         if plant.is_empty() {

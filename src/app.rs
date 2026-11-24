@@ -1,5 +1,5 @@
-use dialoguer::Select;
 use rand::RngExt;
+use sap_automation::shell::dialog::Select;
 use sap_scripting::*;
 use std::env;
 use std::io::{self, Write};
@@ -187,7 +187,7 @@ pub fn get_login_parameters() -> windows::core::Result<LoginParams> {
         if params.user.is_empty() {
             print!("Username: ");
             io::stdout().flush().unwrap();
-            io::stdin().read_line(&mut params.user).unwrap();
+            sap_automation::shell::read_line(&mut params.user).unwrap();
             params.user = params.user.trim().to_string();
         } else {
             println!("Username: {} (from saved credentials)", params.user);
@@ -197,14 +197,14 @@ pub fn get_login_parameters() -> windows::core::Result<LoginParams> {
             print!("Password: ");
             io::stdout().flush().unwrap();
             // In a real application, you would use a crate like rpassword to hide input
-            params.password = rpassword::read_password().unwrap();
+            params.password = sap_automation::shell::read_password().unwrap();
         }
 
         // Ask if user wants to save credentials
         print!("Save credentials for future use? (y/n): ");
         io::stdout().flush().unwrap();
         let mut save_choice = String::new();
-        io::stdin().read_line(&mut save_choice).unwrap();
+        sap_automation::shell::read_line(&mut save_choice).unwrap();
 
         if save_choice.trim().to_lowercase() == "y" {
             save_credentials(

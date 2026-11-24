@@ -1,6 +1,7 @@
 //! Pure rendering of the shell: `draw(frame, &ShellState, &mut ViewState)`.
 #![allow(dead_code)]
 
+use super::menu::{draw_menu, UiRequest};
 use super::state::{
     format_elapsed, truncate_ellipsis, Level, LogEntry, SapStatus, SessionRow, SessionSnapshot,
     ShellState, ViewState,
@@ -108,7 +109,22 @@ fn status_line(state: &ShellState, view: &ViewState, width: usize) -> Line<'stat
         state.count(Level::Error)
     ));
     optional.push(if view.follow { "follow" } else { "paused" }.to_string());
-    optional.push("q quit  PgUp/PgDn  Home/End  f follow".to_string());
+    let keys = match &state.request {
+        Some(UiRequest::Menu(_)) => "Up/Down Enter  / filter  1-9 jump  q back".to_string(),
+        Some(UiRequest::Acknowledge { .. }) => {
+            "any key / q: back to menu  PgUp/PgDn scroll".to_string()
+        }
+        None if state.mode == super::state::Mode::Interactive => {
+            "running  PgUp/PgDn  Home/End  f follow".to_string()
+        }
+        None => "q quit  PgUp/PgDn  Home/End  f follow".to_string(),
+    };
+    if state.request.is_some() {
+        // what the user must do now outranks counters
+        optional.insert(2.min(optional.len()), keys);
+    } else {
+        optional.push(keys);
+    }
     let mut used: usize = spans.iter().map(|s| s.width()).sum();
     for item in optional {
         let add = 3 + item.chars().count();
@@ -157,7 +173,29 @@ pub fn draw(frame: &mut Frame, state: &ShellState, view: &mut ViewState) {
     if let (Some(snap), true) = (&state.sessions, pane_h > 0) {
         draw_sessions(frame, rows[2], snap, pane);
     }
-    draw_log(frame, rows[3], state, view);
+    match &state.request {
+        Some(UiRequest::Menu(spec)) => {
+            let body = rows[3];
+            // with enough room the log tail stays visible under the menu
+            if body.height >= 16 {
+                let log_h = (body.height / 3).max(5);
+                let menu_area = Rect {
+                    height: body.height - log_h,
+                    ..body
+                };
+                let log_area = Rect {
+                    y: body.y + menu_area.height,
+                    height: log_h,
+                    ..body
+                };
+                draw_menu(frame, menu_area, spec, &mut view.menu);
+                draw_log(frame, log_area, state, view);
+            } else {
+                draw_menu(frame, body, spec, &mut view.menu);
+            }
+        }
+        _ => draw_log(frame, rows[3], state, view),
+    }
     if rows[4].height > 0 {
         frame.render_widget(
             Paragraph::new(status_line(state, view, area.width as usize)),
@@ -605,5 +643,72 @@ mod tests {
         let mut v = ViewState::default();
         let out = render(80, 24, &st, &mut v);
         assert!(out.contains("..."));
+    }
+
+    fn menu_state(n: usize) -> ShellState {
+        use crate::shell::menu::{MenuSpec, UiRequest};
+        let mut st = ShellState::new("SAP Automation", Mode::Interactive);
+        st.sap = SapStatus::Connected(Some("logged in".into()));
+        for i in 0..30 {
+            st.log(Level::Info, None, format!("old output {i}"));
+        }
+        st.request = Some(UiRequest::Menu(MenuSpec {
+            title: "SAP Automation - Main Menu".into(),
+            items: (0..n).map(|i| format!("Action number {i}")).collect(),
+            default: Some(2),
+            id: 1,
+        }));
+        st
+    }
+
+    #[test]
+    fn menu_view_shows_menu_footer_and_log_tail() {
+        let st = menu_state(33);
+        let mut v = ViewState::default();
+        let out = render(100, 40, &st, &mut v);
+        assert!(out.contains("Main Menu"));
+        assert!(out.contains("> "), "selection marker");
+        assert!(
+            out.contains("3. Action number 2"),
+            "default highlighted item shown"
+        );
+        assert!(out.contains("interactive"));
+        assert!(out.contains("logged in"));
+        assert!(out.contains("Up/Down Enter"));
+        assert!(
+            out.contains("old output 29"),
+            "log tail under the menu on tall screens"
+        );
+        // short screen: menu only
+        let out = render(100, 14, &st, &mut v);
+        assert!(out.contains("Action number 2"));
+        assert!(!out.contains("old output"));
+    }
+
+    #[test]
+    fn menu_and_ack_views_survive_every_size() {
+        for ack in [false, true] {
+            let mut st = menu_state(40);
+            if ack {
+                st.request = Some(crate::shell::menu::UiRequest::Acknowledge { ok: false });
+            }
+            let mut v = ViewState::default();
+            for w in [0u16, 1, 5, 12, 30, 80, 250] {
+                for h in [0u16, 1, 2, 4, 8, 16, 17, 24, 60] {
+                    render(w, h, &st, &mut v);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn ack_view_shows_return_hint_and_log() {
+        let mut st = menu_state(3);
+        st.request = Some(crate::shell::menu::UiRequest::Acknowledge { ok: true });
+        let mut v = ViewState::default();
+        let out = render(120, 24, &st, &mut v);
+        assert!(out.contains("back to menu"));
+        assert!(out.contains("old output 29"));
+        assert!(!out.contains("Action number"));
     }
 }

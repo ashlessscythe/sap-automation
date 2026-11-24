@@ -1,6 +1,6 @@
 //! Interactive menu wrapper for the inbond shipment → VL06O → 149 workflow.
 
-use dialoguer::Input;
+use sap_automation::shell::dialog::Input;
 use sap_scripting::*;
 use std::io::{self, Write};
 use windows::core::Result;
@@ -36,7 +36,7 @@ pub fn run_inbond_shipment_module(session: &GuiSession) -> Result<()> {
         println!("No shipment entered. Cancelled.");
         println!("\nPress Enter to return to main menu...");
         let mut input = String::new();
-        let _ = io::stdin().read_line(&mut input);
+        let _ = sap_automation::shell::read_line(&mut input);
         return Ok(());
     }
 
@@ -56,7 +56,7 @@ pub fn run_inbond_shipment_module(session: &GuiSession) -> Result<()> {
 
     println!("\nPress Enter to return to main menu...");
     let mut input = String::new();
-    let _ = io::stdin().read_line(&mut input);
+    let _ = sap_automation::shell::read_line(&mut input);
     let _ = io::stdout().flush();
 
     Ok(())

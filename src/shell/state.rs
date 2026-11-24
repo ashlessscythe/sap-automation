@@ -1,6 +1,7 @@
 //! Plain data behind the full-screen shell: header/status info and the bounded log buffer.
 #![allow(dead_code)]
 
+use super::menu::{MenuView, UiRequest};
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
@@ -127,6 +128,8 @@ pub struct ShellState {
     pub extras: Vec<(String, String)>,
     /// Parallel session rows; copied in by `draw_once` (None outside parallel runs).
     pub sessions: Option<SessionSnapshot>,
+    /// Interactive sessions: what the worker waits for (a menu, or a key after an action).
+    pub request: Option<UiRequest>,
     log: VecDeque<LogEntry>,
     /// Total entries ever pushed, including dropped ones.
     pub total_logged: u64,
@@ -144,6 +147,7 @@ impl ShellState {
             finished_after: None,
             extras: Vec::new(),
             sessions: None,
+            request: None,
             log: VecDeque::new(),
             total_logged: 0,
         }
@@ -215,6 +219,8 @@ pub struct ViewState {
     /// Set by `draw`: wrapped line count of the log, used for clamping.
     pub total_lines: usize,
     pub quit: bool,
+    /// Selection / filter state of the menu view.
+    pub menu: MenuView,
 }
 
 impl Default for ViewState {
@@ -225,6 +231,7 @@ impl Default for ViewState {
             page: 10,
             total_lines: 0,
             quit: false,
+            menu: MenuView::default(),
         }
     }
 }

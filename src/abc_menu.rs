@@ -100,7 +100,7 @@ fn run_report_interactive(session: &GuiSession, name: &str) {
     use chrono::Datelike;
     let today = chrono::Local::now().date_naive();
     let year = today.year();
-    let raw: String = match dialoguer::Input::new()
+    let raw: String = match sap_automation::shell::dialog::Input::new()
         .with_prompt(format!("{name} run date (YYYY-MM-DD, A..B or WKnn)"))
         .default(today.format("%Y-%m-%d").to_string())
         .validate_with(|s: &String| validate_run_date_input(s, year).map(|_| ()))
@@ -120,13 +120,13 @@ fn run_report_interactive(session: &GuiSession, name: &str) {
     let mut iterate = false;
     let mut merge = false;
     if date.days().len() > 1 {
-        iterate = dialoguer::Confirm::new()
+        iterate = sap_automation::shell::dialog::Confirm::new()
             .with_prompt("Run each day separately?")
             .default(false)
             .interact()
             .unwrap_or(false);
         if iterate {
-            merge = dialoguer::Confirm::new()
+            merge = sap_automation::shell::dialog::Confirm::new()
                 .with_prompt("Merge into one xlsx?")
                 .default(false)
                 .interact()
@@ -145,7 +145,7 @@ fn run_report_interactive(session: &GuiSession, name: &str) {
     } else if let Err(e) = dispatch::run_report(session, name, &date) {
         eprintln!("{name} failed: {}", dispatch::describe_error(&e));
     }
-    let _: std::result::Result<String, _> = dialoguer::Input::new()
+    let _: std::result::Result<String, _> = sap_automation::shell::dialog::Input::new()
         .with_prompt("Press Enter to continue")
         .allow_empty(true)
         .interact_text();

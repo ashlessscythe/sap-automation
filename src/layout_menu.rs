@@ -2,7 +2,7 @@
 //! (`[layouts.<TCODE>.<NAME>]` in config.toml), pick the layout, say whether an existing layout
 //! may be replaced, and run the same function as `--create-layout` on the CURRENT screen of the
 //! session (the report's result list must be displayed in SAP). UNVERIFIED live.
-use dialoguer::{Confirm, Input, Select};
+use sap_automation::shell::dialog::{Confirm, Input, Select};
 use sap_scripting::*;
 
 use crate::utils::layout_create::{create_layout_on_current_screen, profile_for};

@@ -2,10 +2,9 @@
 #![allow(clippy::field_reassign_with_default)]
 
 use anyhow::{anyhow, Result};
-use dialoguer::{Input, Select};
+use sap_automation::shell::dialog::{Input, Select};
 use std::collections::HashMap;
 use std::fs;
-use std::io::{self};
 use std::path::Path;
 use std::thread;
 use std::time::Duration;
@@ -1324,7 +1323,7 @@ pub fn handle_configure_reports_dir() -> Result<()> {
     if !path.exists() {
         println!("Directory does not exist. Create it? (y/n)");
         let mut create_choice = String::new();
-        io::stdin().read_line(&mut create_choice).unwrap();
+        sap_automation::shell::read_line(&mut create_choice).unwrap();
 
         if create_choice.trim().to_lowercase() == "y" {
             if let Err(e) = fs::create_dir_all(&new_dir) {

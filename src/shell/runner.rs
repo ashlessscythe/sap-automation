@@ -5,16 +5,27 @@
 //! `eprintln!` line goes into the shell log ([`crate::logging::attach_shell`]). When the work is
 //! done the window stays open until `q` (or closes at once with `SAP_SHELL_AUTOCLOSE`), then the
 //! terminal is restored and the tail of the log is printed to the normal screen.
+//!
+//! [`run_with_shell_opts`] with [`ShellOpts::interactive`] is the interactive session: the shell
+//! is entered once, the worker thread (which owns COM and the SAP session) posts menus and
+//! acknowledgements through [`super::request`], and prompts reached by actions suspend / resume
+//! the terminal through [`super::prompt`]. The event loop here is the only place that touches
+//! the terminal.
 #![allow(dead_code)]
 
+use super::menu::{MenuEvent, UiRequest};
+use super::prompt::{self, CloseOnDrop, PromptGate};
+use super::request;
 use super::{
     draw_once, handle_event, lock, set_active_shell, shared, Level, Mode, SharedShell, ShellState,
     TerminalGuard, ViewState,
 };
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
+use std::cell::RefCell;
 use std::io::IsTerminal;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 /// Log lines echoed to the normal screen after the shell closes.
 pub const TAIL_LINES: usize = 40;
@@ -66,6 +77,129 @@ pub fn format_tail_line(e: &super::LogEntry) -> String {
     }
 }
 
+/// How a shell session behaves.
+#[derive(Clone, Copy, Debug)]
+pub struct ShellOpts {
+    /// Keep the window open after the work ended until `q` (unattended runs).
+    pub hold_on_finish: bool,
+    /// Worker may post menus / acknowledgements ([`super::request`]); interactive sessions.
+    pub interactive: bool,
+    /// Log lines echoed to the normal screen after the shell closes.
+    pub tail_lines: usize,
+}
+
+impl ShellOpts {
+    pub fn unattended() -> Self {
+        ShellOpts {
+            hold_on_finish: true,
+            interactive: false,
+            tail_lines: TAIL_LINES,
+        }
+    }
+
+    pub fn interactive() -> Self {
+        ShellOpts {
+            hold_on_finish: false,
+            interactive: true,
+            tail_lines: 1,
+        }
+    }
+}
+
+/// Keys that return from the "done / FAILED" screen to the menu: everything except the scroll
+/// keys (so the output can still be read), key releases and bare modifiers.
+pub fn is_ack_key(ev: &Event) -> bool {
+    match ev {
+        Event::Key(k) if k.kind != KeyEventKind::Release => !matches!(
+            k.code,
+            KeyCode::Up
+                | KeyCode::Down
+                | KeyCode::PageUp
+                | KeyCode::PageDown
+                | KeyCode::Home
+                | KeyCode::End
+                | KeyCode::Char('f')
+                | KeyCode::Modifier(_)
+                | KeyCode::Null
+        ),
+        _ => false,
+    }
+}
+
+/// Route one terminal event according to what the worker waits for. Returns true when the screen
+/// should be redrawn at once.
+pub fn dispatch_event(ev: &Event, sh: &SharedShell, view: &mut ViewState) -> bool {
+    let req = lock(sh).request.clone();
+    match req {
+        Some(UiRequest::Menu(spec)) => {
+            view.menu.sync(&spec);
+            match view.menu.handle_event(ev, &spec) {
+                MenuEvent::Choose(i) => {
+                    request::answer(sh, Some(i));
+                    view.end();
+                    true
+                }
+                MenuEvent::Cancel => {
+                    request::answer(sh, None);
+                    view.end();
+                    true
+                }
+                MenuEvent::Redraw => true,
+                MenuEvent::None => false,
+            }
+        }
+        Some(UiRequest::Acknowledge { .. }) => {
+            if is_ack_key(ev) {
+                request::answer(sh, Some(0));
+                view.end();
+                true
+            } else {
+                let r = handle_event(ev, view);
+                view.quit = false;
+                r
+            }
+        }
+        None => handle_event(ev, view),
+    }
+}
+
+/// Throw away key events typed while the terminal belonged to a prompt.
+fn drain_input() {
+    while matches!(event::poll(Duration::ZERO), Ok(true)) {
+        if event::read().is_err() {
+            break;
+        }
+    }
+}
+
+/// Echo the log lines written since `*printed` to the normal screen (a prompt is about to run and
+/// its context text would otherwise stay hidden in the shell's log pane).
+fn echo_recent(sh: &SharedShell, printed: &mut u64) {
+    let s = lock(sh);
+    let new = s.total_logged.saturating_sub(*printed) as usize;
+    *printed = s.total_logged;
+    let n = s.log_len();
+    let take = new.min(n).min(30);
+    ::std::println!();
+    for e in s.log_entries().skip(n - take) {
+        ::std::println!("{}", format_tail_line(e));
+    }
+}
+
+struct DoneOnDrop<'a> {
+    done: &'a AtomicBool,
+    crashed: &'a AtomicBool,
+}
+
+impl Drop for DoneOnDrop<'_> {
+    fn drop(&mut self) {
+        if std::thread::panicking() {
+            self.crashed.store(true, Ordering::Release);
+        }
+        self.done.store(true, Ordering::Release);
+    }
+}
+
 /// Run `work` under the shell when [`shell_wanted`], else plainly (output exactly as before).
 /// The work gets the [`SharedShell`] (a throw-away one when the shell is off, so callers need
 /// not branch). `Err` from the work is logged, shown as FAILED and returned.
@@ -75,50 +209,111 @@ pub fn run_with_shell<T: Send>(
     tcode: Option<String>,
     work: impl FnOnce(SharedShell) -> anyhow::Result<T> + Send,
 ) -> anyhow::Result<T> {
+    run_with_shell_opts(title, mode, tcode, ShellOpts::unattended(), work)
+}
+
+/// [`run_with_shell`] with explicit [`ShellOpts`] (the interactive session uses
+/// [`ShellOpts::interactive`]: one shell for the whole session, menus and actions on the worker).
+pub fn run_with_shell_opts<T: Send>(
+    title: &str,
+    mode: Mode,
+    tcode: Option<String>,
+    opts: ShellOpts,
+    work: impl FnOnce(SharedShell) -> anyhow::Result<T> + Send,
+) -> anyhow::Result<T> {
     let mut st = ShellState::new(title, mode).with_current_command_line();
     st.tcode = tcode;
+    if opts.interactive {
+        st.command_line.clear();
+    }
     let sh = shared(st);
     if !shell_wanted() {
         return work(sh);
     }
-    let mut guard = match TerminalGuard::new() {
+    let guard = match TerminalGuard::new() {
         Ok(g) => g,
         Err(_) => return work(sh),
     };
+    let gate = Arc::new(PromptGate::new());
+    gate.set_ui_thread();
+    prompt::set_gate(Some(gate.clone()));
+    request::set_interactive(opts.interactive);
     set_active_shell(Some(sh.clone()));
     let sink = crate::logging::attach_shell();
     let done = AtomicBool::new(false);
+    let crashed = AtomicBool::new(false);
     let autoclose = std::env::var_os("SAP_SHELL_AUTOCLOSE").is_some();
+    let guard = RefCell::new(guard);
 
     let result = std::thread::scope(|scope| {
         let worker = scope.spawn(|| {
+            let _done = DoneOnDrop {
+                done: &done,
+                crashed: &crashed,
+            };
             let r = work(sh.clone());
             {
                 let mut s = lock(&sh);
                 match &r {
-                    Ok(_) => s.log(Level::Info, None, finish_message(true)),
+                    Ok(_) if opts.hold_on_finish => s.log(Level::Info, None, finish_message(true)),
+                    Ok(_) => {}
                     Err(e) => {
                         s.log(Level::Error, None, format!("Error: {e:#}"));
-                        s.log(Level::Error, None, finish_message(false));
+                        if opts.hold_on_finish {
+                            s.log(Level::Error, None, finish_message(false));
+                        }
                     }
                 }
                 s.set_extra("result", if r.is_ok() { "done" } else { "FAILED" });
                 s.finish();
             }
-            done.store(true, Ordering::Release);
             r
         });
+        let _close = CloseOnDrop(gate.clone());
         let mut view = ViewState::default();
-        let tick = Duration::from_millis(100);
+        let tick = Duration::from_millis(30);
+        let redraw_every = Duration::from_millis(100);
+        let mut last_draw: Option<Instant> = None;
+        let mut dirty = true;
+        let mut printed = lock(&sh).total_logged;
         let mut ui_ok = true;
         while ui_ok {
-            if draw_once(guard.terminal(), &sh, &mut view).is_err() {
-                break;
+            // 1. a worker wants the normal terminal: hand it over and wait (no drawing, no input)
+            let serviced = gate.ui_service(
+                || {
+                    guard.borrow_mut().suspend()?;
+                    echo_recent(&sh, &mut printed);
+                    Ok(())
+                },
+                || {
+                    let r = guard.borrow_mut().resume();
+                    drain_input();
+                    r
+                },
+            );
+            match serviced {
+                Ok(true) => {
+                    dirty = true;
+                    last_draw = None;
+                }
+                Ok(false) => {}
+                Err(_) => break,
+            }
+            // 2. draw (on change, and at least every 100 ms for the clock / new log lines)
+            if dirty || last_draw.is_none_or(|t| t.elapsed() >= redraw_every) {
+                if draw_once(guard.borrow_mut().terminal(), &sh, &mut view).is_err() {
+                    break;
+                }
+                last_draw = Some(Instant::now());
+                dirty = false;
             }
             let finished = done.load(Ordering::Acquire);
-            if finished && (autoclose || view.quit) {
+            if crashed.load(Ordering::Acquire)
+                || (finished && (autoclose || view.quit || !opts.hold_on_finish))
+            {
                 break;
             }
+            // 3. input (a pending suspend request is noticed within one tick)
             match event::poll(tick) {
                 Ok(true) => loop {
                     let Ok(ev) = event::read() else {
@@ -130,7 +325,7 @@ pub fn run_with_shell<T: Send>(
                         super::restore_terminal();
                         std::process::exit(130);
                     }
-                    handle_event(&ev, &mut view);
+                    dirty |= dispatch_event(&ev, &sh, &mut view);
                     if !matches!(event::poll(Duration::ZERO), Ok(true)) {
                         break;
                     }
@@ -140,21 +335,34 @@ pub fn run_with_shell<T: Send>(
             }
             if view.quit && !done.load(Ordering::Acquire) {
                 view.quit = false;
-                lock(&sh).set_extra("hint", "q quits when the run is done (Ctrl-C aborts)");
+                lock(&sh).set_extra(
+                    "hint",
+                    if opts.interactive {
+                        "action running - wait for it to finish (Ctrl-C aborts)"
+                    } else {
+                        "q quits when the run is done (Ctrl-C aborts)"
+                    },
+                );
+                dirty = true;
             }
         }
+        // release a worker that still waits on a request or a prompt
+        request::cancel_pending(&sh);
+        gate.close();
         worker.join()
     });
 
     // leave the alternate screen first, then detach, then print what would otherwise be lost
     drop(guard);
     drop(sink);
+    request::set_interactive(false);
+    prompt::set_gate(None);
     set_active_shell(None);
     let tail: Vec<String> = {
         let s = lock(&sh);
         let n = s.log_len();
         s.log_entries()
-            .skip(n.saturating_sub(TAIL_LINES))
+            .skip(n.saturating_sub(opts.tail_lines))
             .map(format_tail_line)
             .collect()
     };
@@ -170,6 +378,16 @@ pub fn run_with_shell<T: Send>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crossterm::event::{KeyEvent, KeyEventState};
+
+    fn key_ev(c: KeyCode, kind: KeyEventKind) -> Event {
+        Event::Key(KeyEvent {
+            code: c,
+            modifiers: KeyModifiers::NONE,
+            kind,
+            state: KeyEventState::NONE,
+        })
+    }
 
     #[test]
     fn enable_decision() {
@@ -201,11 +419,19 @@ mod tests {
         assert_eq!(r, 7);
         let e = run_with_shell::<()>("t", Mode::Unattended, None, |_| anyhow::bail!("x"));
         assert!(e.is_err());
+        let r = run_with_shell_opts(
+            "t",
+            Mode::Interactive,
+            None,
+            ShellOpts::interactive(),
+            |_| Ok(1),
+        )
+        .unwrap();
+        assert_eq!(r, 1);
     }
 
     #[test]
     fn ctrl_c_detected() {
-        use crossterm::event::{KeyEvent, KeyEventState};
         let k = |c, m| {
             Event::Key(KeyEvent {
                 code: KeyCode::Char(c),
@@ -217,5 +443,47 @@ mod tests {
         assert!(is_ctrl_c(&k('c', KeyModifiers::CONTROL)));
         assert!(!is_ctrl_c(&k('c', KeyModifiers::NONE)));
         assert!(!is_ctrl_c(&k('q', KeyModifiers::CONTROL)));
+    }
+
+    #[test]
+    fn ack_keys() {
+        let p = KeyEventKind::Press;
+        assert!(is_ack_key(&key_ev(KeyCode::Enter, p)));
+        assert!(is_ack_key(&key_ev(KeyCode::Char('q'), p)));
+        assert!(is_ack_key(&key_ev(KeyCode::Esc, p)));
+        assert!(is_ack_key(&key_ev(KeyCode::Char(' '), p)));
+        assert!(!is_ack_key(&key_ev(KeyCode::PageUp, p)));
+        assert!(!is_ack_key(&key_ev(KeyCode::Char('f'), p)));
+        assert!(!is_ack_key(&key_ev(KeyCode::Enter, KeyEventKind::Release)));
+        assert!(!is_ack_key(&Event::Resize(1, 1)));
+    }
+
+    #[test]
+    fn dispatch_menu_and_ack_answer_the_worker() {
+        use crate::shell::menu::MenuSpec;
+        let p = KeyEventKind::Press;
+        let sh = shared(ShellState::new("t", Mode::Interactive));
+        let mut view = ViewState::default();
+        // menu: Down + Enter answers and clears the request
+        lock(&sh).request = Some(UiRequest::Menu(MenuSpec {
+            title: "m".into(),
+            items: vec!["a".into(), "b".into()],
+            default: None,
+            id: 7,
+        }));
+        assert!(dispatch_event(&key_ev(KeyCode::Down, p), &sh, &mut view));
+        assert!(lock(&sh).request.is_some(), "still waiting");
+        assert!(dispatch_event(&key_ev(KeyCode::Enter, p), &sh, &mut view));
+        assert!(lock(&sh).request.is_none());
+        // ack: scrolling does not answer, a letter does
+        lock(&sh).request = Some(UiRequest::Acknowledge { ok: true });
+        dispatch_event(&key_ev(KeyCode::PageUp, p), &sh, &mut view);
+        assert!(lock(&sh).request.is_some());
+        assert!(!view.quit);
+        dispatch_event(&key_ev(KeyCode::Char('q'), p), &sh, &mut view);
+        assert!(lock(&sh).request.is_none());
+        // no request: q is the old "quit when done" key
+        dispatch_event(&key_ev(KeyCode::Char('q'), p), &sh, &mut view);
+        assert!(view.quit);
     }
 }

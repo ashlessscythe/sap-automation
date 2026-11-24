@@ -1,7 +1,7 @@
 //! Layout selection helpers; much of the surface is for T-code flows and tests, not the binary alone.
 #![allow(dead_code)]
 
-use dialoguer::{Input, Select};
+use sap_automation::shell::dialog::{Input, Select};
 use sap_scripting::*;
 use std::collections::HashMap;
 use std::thread;

@@ -20,6 +20,11 @@ macro_rules! println {
         sap_automation::logging::emit(false, format_args!($($arg)*))
     };
 }
+macro_rules! print {
+    ($($arg:tt)*) => {
+        sap_automation::logging::emit_partial(format_args!($($arg)*))
+    };
+}
 macro_rules! eprintln {
     () => {
         sap_automation::logging::emit(true, format_args!(""))
@@ -589,7 +594,22 @@ fn connect_interactive_sap() -> (
     }
 }
 
+/// Interactive mode. With a terminal this is one persistent full-screen shell for the whole
+/// session: the UI thread owns the terminal, this whole function (COM, the SAP session, the menu
+/// loop and every action) runs on the worker thread, prompts suspend / resume the shell
+/// (`shell::prompt`). Without a terminal or with `SAP_NO_SHELL` / `SAP_NO_STATUS` it is the
+/// classic menu loop, unchanged.
 fn run_interactive_mode() -> anyhow::Result<()> {
+    sap_automation::shell::run_with_shell_opts(
+        "SAP Automation",
+        sap_automation::shell::Mode::Interactive,
+        None,
+        sap_automation::shell::ShellOpts::interactive(),
+        |_| run_interactive_session(),
+    )
+}
+
+fn run_interactive_session() -> anyhow::Result<()> {
     // Initialize logging if needed
     // pretty_env_logger::init();
 
@@ -618,6 +638,13 @@ fn run_interactive_mode() -> anyhow::Result<()> {
         } else {
             false
         };
+        sap_automation::shell::set_sap_status(if !sap_connected {
+            sap_automation::shell::SapStatus::Disconnected
+        } else if is_logged_in {
+            sap_automation::shell::SapStatus::Connected(Some("logged in".into()))
+        } else {
+            sap_automation::shell::SapStatus::Connected(Some("not logged in".into()))
+        });
 
         // Default option for the menu from config else 0
         let default_option = SapConfig::load()
@@ -737,9 +764,10 @@ fn run_interactive_mode() -> anyhow::Result<()> {
             ]
         };
 
+        let labels: Vec<String> = options.into_iter().map(|s| s.to_string()).collect();
         let choice = match tui::show_selection_menu(
             "SAP Automation - Main Menu",
-            options.into_iter().map(|s| s.to_string()).collect(),
+            labels.clone(),
             default_option,
         ) {
             Ok(Some(selected)) => selected,
@@ -754,6 +782,11 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                 return Err(anyhow::anyhow!("TUI error: {e}"));
             }
         };
+
+        // shell: switch to the running view (header, command row); no-op without the shell
+        let scope = (choice != 32).then(|| {
+            sap_automation::shell::begin_action(labels.get(choice).map_or("", |s| s.as_str()))
+        });
 
         match choice {
             0 => {
@@ -1201,6 +1234,11 @@ fn run_interactive_mode() -> anyhow::Result<()> {
                 return Ok(());
             }
             _ => {} // no-op
+        }
+
+        // shell: "done / FAILED - press any key" then back to the menu
+        if let Some(scope) = scope {
+            sap_automation::shell::end_action(scope);
         }
     }
 }

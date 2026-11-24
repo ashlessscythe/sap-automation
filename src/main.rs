@@ -9,6 +9,26 @@ use sap_scripting::*;
 use std::thread;
 use std::time::Duration;
 
+// Route this binary's println!/eprintln! (and those of its module copies below) through the
+// library's logging, so they land in the full-screen shell log while it is active. Without the
+// shell they are plain std printing.
+macro_rules! println {
+    () => {
+        sap_automation::logging::emit(false, format_args!(""))
+    };
+    ($($arg:tt)*) => {
+        sap_automation::logging::emit(false, format_args!($($arg)*))
+    };
+}
+macro_rules! eprintln {
+    () => {
+        sap_automation::logging::emit(true, format_args!(""))
+    };
+    ($($arg:tt)*) => {
+        sap_automation::logging::emit(true, format_args!($($arg)*))
+    };
+}
+
 mod abc;
 mod abc_menu;
 mod app;
@@ -199,9 +219,10 @@ fn real_main() -> anyhow::Result<()> {
             if cli.keep_awake {
                 let _ = keep_awake::start_keep_awake_thread();
             }
-            return sap_automation::parallel_test::run_lt03_parallel(
-                cli.conn_count.map(usize::from),
-            );
+            let conn_count = cli.conn_count.map(usize::from);
+            return shell_run("Parallel LT03", Some("LT03".into()), move || {
+                sap_automation::parallel_test::run_lt03_parallel(conn_count)
+            });
         }
         if sap_automation::utils::cli_overrides::use_clipboard() {
             return Err(anyhow::anyhow!(
@@ -219,13 +240,16 @@ fn real_main() -> anyhow::Result<()> {
                 .rname
                 .clone()
                 .ok_or_else(|| anyhow::anyhow!("parallel days need --rname"))?;
-            return sap_automation::parallel_test::run_loop_parallel(
-                &rname,
-                &date,
-                cli.conn_count.map(usize::from),
-                sap_automation::abc::iterate::IterOpts::from_overrides(),
-                sap_automation::utils::cli_overrides::effective_today(),
-            );
+            let conn_count = cli.conn_count.map(usize::from);
+            return shell_run("Parallel report days", Some(rname.clone()), || {
+                sap_automation::parallel_test::run_loop_parallel(
+                    &rname,
+                    &date,
+                    conn_count,
+                    sap_automation::abc::iterate::IterOpts::from_overrides(),
+                    sap_automation::utils::cli_overrides::effective_today(),
+                )
+            });
         }
         if cli.rname.len() < 2 {
             return Err(anyhow::anyhow!(
@@ -233,7 +257,9 @@ fn real_main() -> anyhow::Result<()> {
             ));
         }
         let names = sap_automation::parallel_test::parse_rnames(&cli.rname)?;
-        return sap_automation::parallel_test::run_reports(&names, &date, true);
+        return shell_run("Parallel reports", Some(cli.rname.join(",")), || {
+            sap_automation::parallel_test::run_reports(&names, &date, true)
+        });
     }
 
     // Headless report by name: --rname=<name> --run-date=<date>
@@ -287,7 +313,28 @@ fn real_main() -> anyhow::Result<()> {
     run_interactive_mode()
 }
 
+/// Run an unattended flow under the full-screen shell (plain output when the shell is off:
+/// no TTY, `SAP_NO_STATUS` / `SAP_NO_SHELL`, `--json`).
+fn shell_run<T: Send>(
+    title: &str,
+    tcode: Option<String>,
+    work: impl FnOnce() -> anyhow::Result<T> + Send,
+) -> anyhow::Result<T> {
+    sap_automation::shell::run_with_shell(
+        title,
+        sap_automation::shell::Mode::Unattended,
+        tcode,
+        |_| work(),
+    )
+}
+
 fn run_unattended_loop(skip_sap_check: bool, keep_awake: bool) -> anyhow::Result<()> {
+    shell_run("Unattended loop", None, move || {
+        run_unattended_loop_inner(skip_sap_check, keep_awake)
+    })
+}
+
+fn run_unattended_loop_inner(skip_sap_check: bool, keep_awake: bool) -> anyhow::Result<()> {
     println!("SAP Automation - Unattended Loop Mode");
     println!("=====================================");
 
@@ -310,6 +357,12 @@ fn run_unattended_loop(skip_sap_check: bool, keep_awake: bool) -> anyhow::Result
 }
 
 fn run_unattended_sequence(skip_sap_check: bool, keep_awake: bool) -> anyhow::Result<()> {
+    shell_run("Unattended sequence", None, move || {
+        run_unattended_sequence_inner(skip_sap_check, keep_awake)
+    })
+}
+
+fn run_unattended_sequence_inner(skip_sap_check: bool, keep_awake: bool) -> anyhow::Result<()> {
     println!("SAP Automation - Unattended Sequence Mode");
     println!("=========================================");
 
@@ -332,6 +385,17 @@ fn run_unattended_sequence(skip_sap_check: bool, keep_awake: bool) -> anyhow::Re
 }
 
 fn run_unattended_rname(
+    rname: &str,
+    date: &sap_automation::abc::run::RunDate,
+    skip_sap_check: bool,
+    keep_awake: bool,
+) -> anyhow::Result<()> {
+    shell_run("Unattended report", Some(rname.to_string()), move || {
+        run_unattended_rname_inner(rname, date, skip_sap_check, keep_awake)
+    })
+}
+
+fn run_unattended_rname_inner(
     rname: &str,
     date: &sap_automation::abc::run::RunDate,
     skip_sap_check: bool,
@@ -371,6 +435,17 @@ fn run_create_layout(
     overwrite: bool,
     keep_awake: bool,
 ) -> anyhow::Result<()> {
+    shell_run("Create layout", Some(tcode.to_string()), move || {
+        run_create_layout_inner(tcode, name, overwrite, keep_awake)
+    })
+}
+
+fn run_create_layout_inner(
+    tcode: &str,
+    name: &str,
+    overwrite: bool,
+    keep_awake: bool,
+) -> anyhow::Result<()> {
     println!("SAP Automation - Create Layout");
     println!("==============================");
 
@@ -389,6 +464,21 @@ fn run_create_layout(
 }
 
 fn run_unattended_single_tcode(
+    tcode: &str,
+    tcode_run_type: Option<String>,
+    skip_sap_check: bool,
+    keep_awake: bool,
+) -> anyhow::Result<()> {
+    shell_run(
+        "Unattended single-shot",
+        Some(tcode.to_uppercase()),
+        move || {
+            run_unattended_single_tcode_inner(tcode, tcode_run_type, skip_sap_check, keep_awake)
+        },
+    )
+}
+
+fn run_unattended_single_tcode_inner(
     tcode: &str,
     tcode_run_type: Option<String>,
     skip_sap_check: bool,

@@ -17,6 +17,14 @@
 //! second so the clock ticks). Not a terminal (pipe, file, CI) or `SAP_NO_STATUS` set: no panel,
 //! the output is unchanged. [`status`] sets the state, [`progress`] the `done/total` counter.
 //!
+//! # Shell sink
+//!
+//! While the full-screen shell owns the terminal ([`attach_shell`], used by
+//! `shell::run_with_shell`) every `println!` / `eprintln!` line of ANY thread goes into the
+//! shell's log buffer instead of stdout, whether or not [`start`] was called (single runs too).
+//! The pinned ANSI status panel is switched off in that case. Dropping the [`ShellSinkGuard`]
+//! returns to plain printing.
+//!
 //! Declared first in `lib.rs` with `#[macro_use]` so the macros are in scope crate-wide. Plain
 //! `print!` is not covered (it stays direct).
 
@@ -50,6 +58,7 @@ enum Msg {
 }
 
 static ENABLED: AtomicBool = AtomicBool::new(false);
+static SINK_ON: AtomicBool = AtomicBool::new(false);
 static TX: OnceLock<Mutex<Sender<Msg>>> = OnceLock::new();
 
 macro_rules! println {
@@ -72,6 +81,18 @@ macro_rules! eprintln {
 
 /// Print one line (see the module docs). Not meant to be called directly.
 pub fn emit(stderr: bool, args: Arguments<'_>) {
+    if SINK_ON.load(Ordering::Acquire) {
+        if let Some(shell) = crate::shell::active_shell() {
+            let tag = crate::utils::sap_export_utils::session_tag_name();
+            let tag = if tag.is_empty() { None } else { Some(tag) };
+            let entries = lines_to_entries(stderr, tag.as_deref(), &args.to_string());
+            let mut st = crate::shell::lock(&shell);
+            for (level, tag, text) in entries {
+                st.log(level, tag.as_deref(), text);
+            }
+            return;
+        }
+    }
     if !ENABLED.load(Ordering::Acquire) {
         if stderr {
             ::std::eprintln!("{args}");
@@ -108,6 +129,112 @@ pub fn emit(stderr: bool, args: Arguments<'_>) {
     }
     // writer thread gone: never lose a line
     ::std::println!("{args}");
+}
+
+/// True while the shell owns the screen (log lines go to its buffer, no ANSI panel).
+pub fn shell_sink_active() -> bool {
+    SINK_ON.load(Ordering::Acquire)
+}
+
+/// Remove ANSI escape sequences (CSI `ESC [ ... final`, OSC `ESC ] ... BEL/ST`, two-byte escapes).
+pub fn strip_ansi(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut it = s.chars().peekable();
+    while let Some(c) = it.next() {
+        if c != '\u{1b}' {
+            out.push(c);
+            continue;
+        }
+        match it.peek().copied() {
+            Some('[') => {
+                it.next();
+                for n in it.by_ref() {
+                    if ('\u{40}'..='\u{7e}').contains(&n) {
+                        break;
+                    }
+                }
+            }
+            Some(']') => {
+                it.next();
+                while let Some(n) = it.next() {
+                    if n == '\u{7}' {
+                        break;
+                    }
+                    if n == '\u{1b}' {
+                        it.next();
+                        break;
+                    }
+                }
+            }
+            Some(_) => {
+                it.next();
+            }
+            None => {}
+        }
+    }
+    out
+}
+
+/// Split a leading `[sN]` session tag (as the writer thread prefixes it) off a line.
+pub fn split_session_tag(line: &str) -> (Option<&str>, &str) {
+    if let Some(rest) = line.strip_prefix("[s") {
+        if let Some(end) = rest.find(']') {
+            let digits = &rest[..end];
+            if !digits.is_empty() && digits.chars().all(|c| c.is_ascii_digit()) {
+                return (Some(&line[1..end + 2]), rest[end + 1..].trim_start());
+            }
+        }
+    }
+    (None, line)
+}
+
+/// Level of a line: stdout is `Info`; stderr is `Error` when it starts with "error" (any case),
+/// else `Warn`.
+pub fn level_for(stderr: bool, text: &str) -> crate::shell::Level {
+    use crate::shell::Level;
+    if !stderr {
+        return Level::Info;
+    }
+    if text.trim_start().to_ascii_lowercase().starts_with("error") {
+        Level::Error
+    } else {
+        Level::Warn
+    }
+}
+
+/// Turn one `println!` / `eprintln!` payload into shell log entries: ANSI stripped, split on
+/// newlines, blank lines dropped, tabs expanded, `[sN]` prefix moved into the tag (an explicit
+/// `tag` wins).
+pub fn lines_to_entries(
+    stderr: bool,
+    tag: Option<&str>,
+    text: &str,
+) -> Vec<(crate::shell::Level, Option<String>, String)> {
+    strip_ansi(text)
+        .lines()
+        .map(|l| l.replace('\r', "").replace('\t', "    "))
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| {
+            let (t, body) = split_session_tag(l.trim_end());
+            let tag = tag.map(str::to_string).or_else(|| t.map(str::to_string));
+            let level = level_for(stderr, body);
+            (level, tag, body.trim_end().to_string())
+        })
+        .collect()
+}
+
+/// Route all log lines into the active shell (see `shell::run_with_shell`) until dropped.
+pub fn attach_shell() -> ShellSinkGuard {
+    SINK_ON.store(true, Ordering::Release);
+    ShellSinkGuard
+}
+
+pub struct ShellSinkGuard;
+
+impl Drop for ShellSinkGuard {
+    fn drop(&mut self) {
+        SINK_ON.store(false, Ordering::Release);
+    }
 }
 
 struct Row {
@@ -230,7 +357,7 @@ impl Panel {
     }
 
     fn draw(&mut self, out: &mut impl Write) {
-        if !self.tty || !self.active || self.rows.is_empty() {
+        if !self.tty || !self.active || self.rows.is_empty() || shell_sink_active() {
             return;
         }
         let (w, h) = crossterm::terminal::size().unwrap_or((110, 30));
@@ -438,6 +565,45 @@ impl Drop for LogGuard {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ansi_is_stripped() {
+        assert_eq!(strip_ansi("\x1b[1;36m| a\x1b[0m b"), "| a b");
+        assert_eq!(strip_ansi("x\x1b]0;title\x07y"), "xy");
+        assert_eq!(strip_ansi("plain"), "plain");
+    }
+
+    #[test]
+    fn session_tag_is_split() {
+        assert_eq!(split_session_tag("[s3] hello"), (Some("s3"), "hello"));
+        assert_eq!(split_session_tag("[x] hello"), (None, "[x] hello"));
+        assert_eq!(split_session_tag("[s] hi"), (None, "[s] hi"));
+        assert_eq!(split_session_tag("no tag"), (None, "no tag"));
+    }
+
+    #[test]
+    fn levels_map() {
+        use crate::shell::Level;
+        assert_eq!(level_for(false, "Error: x"), Level::Info);
+        assert_eq!(level_for(true, "Error: x"), Level::Error);
+        assert_eq!(level_for(true, "  error x"), Level::Error);
+        assert_eq!(level_for(true, "Warning: x"), Level::Warn);
+    }
+
+    #[test]
+    fn lines_become_entries() {
+        use crate::shell::Level;
+        let e = lines_to_entries(true, None, "[s2] Error: boom\n\n\x1b[31mnext\x1b[0m\t!\r\n");
+        assert_eq!(e.len(), 2);
+        assert_eq!(
+            e[0],
+            (Level::Error, Some("s2".into()), "Error: boom".into())
+        );
+        assert_eq!(e[1], (Level::Warn, None, "next    !".into()));
+        let e = lines_to_entries(false, Some("s9"), "[s1] a");
+        assert_eq!(e[0].1.as_deref(), Some("s9"));
+        assert!(lines_to_entries(false, None, "").is_empty());
+    }
 
     #[test]
     fn panel_renders_header_and_rows_truncated() {

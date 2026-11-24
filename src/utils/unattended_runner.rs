@@ -446,6 +446,23 @@ pub fn init_sap_connection() -> Result<(
     GuiConnection,
     GuiSession,
 )> {
+    let r = init_sap_connection_inner();
+    // footer of the full-screen shell (no-op without one)
+    sap_automation::shell::set_sap_status(if r.is_ok() {
+        sap_automation::shell::SapStatus::Connected(None)
+    } else {
+        sap_automation::shell::SapStatus::Disconnected
+    });
+    r
+}
+
+fn init_sap_connection_inner() -> Result<(
+    SAPComInstance,
+    SAPWrapper,
+    GuiApplication,
+    GuiConnection,
+    GuiSession,
+)> {
     crate::utils::cli_overrides::set_unattended(true);
     println!("Initializing SAP connection for unattended execution...");
 

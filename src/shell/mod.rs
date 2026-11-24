@@ -5,10 +5,12 @@
 //! [`ShellState`] through [`SharedShell`] (e.g. [`push_log`]).
 #![allow(dead_code)]
 
+pub mod runner;
 pub mod state;
 pub mod terminal;
 pub mod ui;
 
+pub use runner::{run_with_shell, shell_enabled, shell_wanted};
 pub use state::{
     command_line_from, format_elapsed, quote_arg, truncate_ellipsis, Level, LogEntry, Mode,
     SapStatus, ShellState, ViewState, LOG_CAP,
@@ -22,6 +24,24 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
 pub type SharedShell = Arc<Mutex<ShellState>>;
+
+static ACTIVE: Mutex<Option<SharedShell>> = Mutex::new(None);
+
+/// The shell that currently owns the screen (set by [`run_with_shell`]), if any.
+pub fn active_shell() -> Option<SharedShell> {
+    ACTIVE.lock().unwrap_or_else(|p| p.into_inner()).clone()
+}
+
+pub(crate) fn set_active_shell(s: Option<SharedShell>) {
+    *ACTIVE.lock().unwrap_or_else(|p| p.into_inner()) = s;
+}
+
+/// Update the footer's SAP status; no-op when no shell is active.
+pub fn set_sap_status(status: SapStatus) {
+    if let Some(sh) = active_shell() {
+        lock(&sh).sap = status;
+    }
+}
 
 pub fn shared(state: ShellState) -> SharedShell {
     Arc::new(Mutex::new(state))

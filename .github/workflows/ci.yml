@@ -18,6 +18,7 @@ jobs:
   rust:
     name: Build, lint, and test
     runs-on: windows-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -43,6 +44,7 @@ jobs:
         run: cargo build --locked --all-targets
 
       - name: Test
+        timeout-minutes: 10
         run: cargo test --locked
 
   security:

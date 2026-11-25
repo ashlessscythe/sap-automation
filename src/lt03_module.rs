@@ -249,13 +249,13 @@ pub fn collect_shipments(cli: &Lt03Cli, src: &ShipmentSources) -> Result<Vec<Str
     }
     if let Some(f) = &cli.shipments_file {
         if f.trim() == "-" {
-            all.extend(parse_shipments(&(src.stdin)()?));
+            all.extend(crate::lt03_db::parse_shipments_input(&(src.stdin)()?));
         } else {
             all.extend(read_shipments_file(Path::new(f.trim()), None)?);
         }
     }
     if cli.shipments_clipboard {
-        all.extend(parse_shipments(&(src.clipboard)()?));
+        all.extend(crate::lt03_db::parse_shipments_input(&(src.clipboard)()?));
     }
     if !explicit {
         let file = crate::mm60::newest_lx03_file(&src.vt11_dir).ok_or_else(|| {
@@ -1371,6 +1371,9 @@ pub fn run_lt03_auto(session: &GuiSession) -> Result<()> {
     let st = settings_from_environment()?;
     let shipments = shipments_from_environment(&st)?;
     println!("{} shipment(s): {}", shipments.len(), shipments.join(", "));
+    if crate::utils::cli_overrides::lt03().show_shipments_only {
+        return run_show_shipments_only(session, &st, &shipments);
+    }
     let skip = if st.resume && !st.lt.dry_run {
         read_done_deliveries_day(&output_dir(&st.reports_dir, st.lt.today))
     } else {
@@ -1409,6 +1412,40 @@ pub fn run_lt03_auto(session: &GuiSession) -> Result<()> {
         }
     }
     finish_run(&st, &rep, &log)
+}
+
+/// `--lt03-show-shipments-only`: no VL06O / ZMDESNR / LT03. Only VT11 with the variant, the given
+/// shipments pasted, executed and all checkmarks ticked; SAP stays on that list. Prints a JSON
+/// line with `--json` (`kind` = `show_shipments`). A failed step is an error (non-zero exit).
+pub fn run_show_shipments_only(
+    session: &GuiSession,
+    st: &ManualToSettings,
+    shipments: &[String],
+) -> Result<()> {
+    let variant = st.vt11_variant.clone().ok_or_else(|| {
+        anyhow!("--lt03-show-shipments-only needs a VT11 variant (--lt03-vt11-variant or [abc.manual_to].vt11_variant)")
+    })?;
+    let outcome = crate::vt11::show_shipments(session, &variant, shipments);
+    let (ok, error) = match &outcome {
+        Ok(true) => (true, None),
+        Ok(false) => (
+            false,
+            Some("VT11 display did not complete (see the output above)".to_string()),
+        ),
+        Err(e) => (false, Some(format!("{e:#}"))),
+    };
+    print_json_line(&serde_json::json!({
+        "schema": 1, "tcode": "LT03", "kind": "show_shipments", "ok": ok,
+        "version": env!("CARGO_PKG_VERSION"),
+        "vt11_variant": variant,
+        "shipments": shipments,
+        "ticked": if ok { shipments.len() } else { 0 },
+        "error": error,
+    }));
+    match error {
+        None => Ok(()),
+        Some(m) => Err(anyhow!("VT11 show shipments: {m}")),
+    }
 }
 
 /// The VT11 display step runs only when asked for (`--lt03-show-vt11` / `show_vt11`) and with a

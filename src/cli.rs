@@ -480,6 +480,14 @@ pub struct Cli {
     )]
     pub lt03_show_vt11: Option<bool>,
 
+    /// LT03 ONLY: show-shipments-only mode for a calling program. Skips VL06O, ZMDESNR and LT03:
+    /// opens VT11 with `--lt03-vt11-variant`, pastes the given shipments (`--shipments`,
+    /// `--shipments-file` (txt/csv/xlsx/json), `--shipments-clipboard` (plain or JSON text)),
+    /// executes and ticks all shipment checkmarks, leaving SAP on that list. Needs a VT11 variant.
+    /// With `--json` the last line is `{"kind":"show_shipments","ok":...}`.
+    #[arg(long = "lt03-show-shipments-only")]
+    pub lt03_show_shipments_only: bool,
+
     /// LT03 ONLY: warehouse number of LT03 (LTAK-LGNUM). Overrides `[abc.manual_to].warehouse`.
     #[arg(long = "lt03-warehouse", value_name = "WH")]
     pub lt03_warehouse: Option<String>,
@@ -601,6 +609,7 @@ impl Cli {
             two_pass: self.lt03_two_pass,
             vt11_variant: self.lt03_vt11_variant.clone(),
             show_vt11: self.lt03_show_vt11,
+            show_shipments_only: self.lt03_show_shipments_only,
             sap_date_format: self.lt03_sap_date_format.clone(),
             warehouse: self.lt03_warehouse.clone(),
             vl06o_variant: self.lt03_vl06o_variant.clone(),
@@ -622,6 +631,13 @@ impl Cli {
             return Err(anyhow!(
                 "{} only work with --tcode lt03",
                 lt03_flags.join(", ")
+            ));
+        }
+        if lt03.show_shipments_only
+            && (self.multi_conn == Some(true) || self.conn_count.is_some() || lt03.resume)
+        {
+            return Err(anyhow!(
+                "--lt03-show-shipments-only can't be combined with --multi-conn / --conn-count / --lt03-resume"
             ));
         }
         if let Some(s) = &lt03.shipto_strategy {

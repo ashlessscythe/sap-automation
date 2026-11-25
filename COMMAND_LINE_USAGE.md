@@ -601,6 +601,13 @@ process). The contract:
   but no variant (a note is printed), the run is exactly as before. Also runs after a `--dry-run` (nothing is created); ignored by parallel runs
   (`--conn-count` / `--multi-conn`). The control ids are from the macro: **not yet run live**, try one shipment first.
   The effective values are echoed in the result (`settings`). Flags that are not LT03's are rejected with a message.
+* **`--lt03-show-shipments-only`** (needs `--lt03-vt11-variant` / `vt11_variant`; built, **not yet run live**): for a calling
+  program. No VL06O / ZMDESNR / LT03: only VT11 with the variant, the given shipments pasted, executed, all checkmarks ticked,
+  SAP left on that list. Shipments come from `--shipments`, `--shipments-file` (txt/csv/xlsx/**json**, `-` = stdin) and
+  `--shipments-clipboard`; JSON is accepted in the file, stdin and clipboard: `["1","2"]`, `[1,2]`, `{"shipments":[...]}`,
+  or objects with `shipment_number` / `shipment` / `tknum`. With `--json` the last line is
+  `{"schema":1,"tcode":"LT03","kind":"show_shipments","ok":...,"shipments":[...],"ticked":n,"error":...}`; a failed step exits non-zero.
+  Not combinable with `--multi-conn` / `--conn-count` / `--lt03-resume`.
 * **Result.** With `--json` the **last line on stdout** is one JSON object (`schema` 1). Everything above it is the
   human-readable log and may be shown to the user live; take the last line that starts with `{`. Exit code: `0` = ok,
   `1` = a delivery/shipment failed or an error stopped the run ("no data" / "nothing to pick" are not failures).

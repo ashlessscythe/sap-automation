@@ -420,7 +420,69 @@ pub fn shipments_from_grid(grid: &[Vec<String>]) -> Vec<String> {
 /// Shipments from a file: `.txt`/`.tsv`/`.csv` (a header with `shipment_number` or one number
 /// per line) or `.xlsx` (`sheet`, default first).
 pub fn read_shipments_file(path: &Path, sheet: Option<&str>) -> Result<Vec<String>> {
+    let is_json = path
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("json"));
+    if is_json {
+        let text = std::fs::read_to_string(path)
+            .map_err(|e| anyhow::anyhow!("cannot read {}: {e}", path.display()))?;
+        return shipments_from_json(text.trim_start_matches('\u{feff}')).ok_or_else(|| {
+            anyhow::anyhow!(
+                "{}: not a JSON shipment list (expected [\"123\",...] or {{\"shipments\":[...]}})",
+                path.display()
+            )
+        });
+    }
     Ok(shipments_from_grid(&read_grid(path, sheet)?))
+}
+
+/// Shipments from JSON text: an array of strings/numbers/objects, or an object with a
+/// `shipments` (or `shipment_numbers`) array. Objects in an array use `shipment_number` /
+/// `shipment` / `tknum`. `None` when the text is not JSON of that shape.
+pub fn shipments_from_json(text: &str) -> Option<Vec<String>> {
+    fn collect(v: &serde_json::Value, out: &mut Vec<String>) -> bool {
+        match v {
+            serde_json::Value::String(s) => out.extend(parse_shipments(s)),
+            serde_json::Value::Number(n) => out.extend(parse_shipments(&n.to_string())),
+            serde_json::Value::Array(a) => return a.iter().all(|x| collect(x, out)),
+            serde_json::Value::Object(o) => {
+                for k in [
+                    "shipment_number",
+                    "shipment",
+                    "tknum",
+                    "shipments",
+                    "shipment_numbers",
+                ] {
+                    if let Some(x) = o.get(k) {
+                        return collect(x, out);
+                    }
+                }
+                return false;
+            }
+            _ => return false,
+        }
+        true
+    }
+    let v: serde_json::Value = serde_json::from_str(text.trim()).ok()?;
+    let mut out = Vec::new();
+    if !collect(&v, &mut out) {
+        return None;
+    }
+    let mut seen = HashSet::new();
+    out.retain(|s| seen.insert(s.clone()));
+    Some(out)
+}
+
+/// Shipments from pasted / piped text: JSON when it looks like JSON, else digits split on
+/// whitespace and separators.
+pub fn parse_shipments_input(text: &str) -> Vec<String> {
+    let t = text.trim_start_matches('\u{feff}').trim();
+    if t.starts_with('[') || t.starts_with('{') {
+        if let Some(v) = shipments_from_json(t) {
+            return v;
+        }
+    }
+    parse_shipments(text)
 }
 
 #[cfg(test)]
@@ -431,6 +493,28 @@ mod tests {
         rows.iter()
             .map(|r| r.iter().map(|c| c.to_string()).collect())
             .collect()
+    }
+
+    #[test]
+    fn shipments_from_json_shapes() {
+        let want = vec!["100".to_string(), "200".to_string()];
+        assert_eq!(
+            shipments_from_json(r#"["100","200","100"]"#),
+            Some(want.clone())
+        );
+        assert_eq!(shipments_from_json("[100, 200]"), Some(want.clone()));
+        assert_eq!(
+            shipments_from_json(r#"{"shipments":["100","200"]}"#),
+            Some(want.clone())
+        );
+        assert_eq!(
+            shipments_from_json(r#"[{"shipment_number":"100"},{"shipment":200}]"#),
+            Some(want.clone())
+        );
+        assert_eq!(shipments_from_json(r#"{"x":1}"#), None);
+        assert_eq!(shipments_from_json("not json"), None);
+        assert_eq!(parse_shipments_input("[\"100\",\"200\"]"), want);
+        assert_eq!(parse_shipments_input("100\n200"), want);
     }
 
     #[test]

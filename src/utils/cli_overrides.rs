@@ -81,6 +81,8 @@ pub struct Lt03Cli {
     pub vt11_variant: Option<String>,
     /// `--lt03-show-vt11`: run that VT11 step after a real run (default off).
     pub show_vt11: Option<bool>,
+    /// `--lt03-show-shipments-only`: only VT11: list the given shipments and tick them.
+    pub show_shipments_only: bool,
     /// `--lt03-sap-date-format`: how SAP shows dates (GR date column).
     pub sap_date_format: Option<String>,
     /// `--lt03-warehouse`: LT03 warehouse number.
@@ -137,6 +139,9 @@ impl Lt03Cli {
         }
         if self.json {
             v.push("--json");
+        }
+        if self.show_shipments_only {
+            v.push("--lt03-show-shipments-only");
         }
         for (set, name) in [
             (self.shipto_strategy.is_some(), "--shipto-strategy"),

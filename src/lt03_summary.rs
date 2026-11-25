@@ -633,7 +633,7 @@ pub fn render_html(d: &RunData, generated: &str) -> String {
         "t-del",
         "Deliveries",
         "",
-        true,
+        false,
         &heads(&[
             "Shipment",
             "Delivery",
@@ -705,7 +705,7 @@ pub fn render_html(d: &RunData, generated: &str) -> String {
         "t-pick",
         if dry { "Planned picks" } else { "Picks" },
         "",
-        true,
+        false,
         &heads(&[
             "Shipment", "Delivery", "Material", "Open", "Bin", "Qty", "GR date", "Flags", "Reason",
         ]),

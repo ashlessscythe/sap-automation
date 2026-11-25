@@ -1838,7 +1838,7 @@ dependencies = [
 
 [[package]]
 name = "sap_automation"
-version = "0.24.3"
+version = "0.24.4"
 dependencies = [
  "aes",
  "aes-gcm",

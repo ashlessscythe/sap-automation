@@ -159,6 +159,17 @@ pub fn draw(frame: &mut Frame, state: &ShellState, view: &mut ViewState) {
     .split(area);
 
     frame.render_widget(Paragraph::new(header(state)), rows[0]);
+    // version in the right corner of the header row (skipped when the row is too narrow)
+    let ver = concat!("v", env!("CARGO_PKG_VERSION"), " ");
+    let left = header(state).width() as u16;
+    let vw = ver.chars().count() as u16;
+    if rows[0].width > left + vw + 1 {
+        let area = Rect::new(rows[0].x + rows[0].width - vw, rows[0].y, vw, 1);
+        frame.render_widget(
+            Paragraph::new(Span::styled(ver, Style::default().fg(Color::DarkGray))),
+            area,
+        );
+    }
     if show_cmd {
         let avail = (area.width as usize).saturating_sub(2);
         let line = Line::from(vec![

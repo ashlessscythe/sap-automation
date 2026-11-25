@@ -16,13 +16,17 @@ pub type ShellTerminal = Terminal<CrosstermBackend<Stdout>>;
 
 /// Best-effort restore of the terminal (also used by the panic hook).
 pub fn restore_terminal() {
-    let _ = disable_raw_mode();
+    // Order matters on Windows: crossterm keeps ONE saved console mode shared by raw mode and
+    // mouse capture. `DisableMouseCapture` restores it, `disable_raw_mode` consumes it, so raw
+    // mode must go LAST; the other way round the console stays in the mouse-only mode (no line
+    // input, no echo, no Ctrl-C) and a following `stdin().read_line` hangs.
     let _ = execute!(
         io::stdout(),
         DisableMouseCapture,
         LeaveAlternateScreen,
         Show
     );
+    let _ = disable_raw_mode();
 }
 
 static HOOK: Once = Once::new();
@@ -89,13 +93,15 @@ impl TerminalGuard {
     pub fn suspend(&mut self) -> io::Result<()> {
         if self.active {
             self.active = false;
-            disable_raw_mode()?;
-            execute!(
+            // same order as `restore_terminal` (mouse capture first, raw mode last)
+            let r = execute!(
                 io::stdout(),
                 DisableMouseCapture,
                 LeaveAlternateScreen,
                 Show
-            )?;
+            );
+            disable_raw_mode()?;
+            r?;
         }
         Ok(())
     }

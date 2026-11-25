@@ -45,6 +45,11 @@ jobs:
 
       - name: Test
         timeout-minutes: 10
+        # Backtrace capture on every anyhow! error (i686 + dbghelp's global lock) is the
+        # suspected cause of the cli::rname_tests hangs; keep it off for the test run.
+        env:
+          RUST_BACKTRACE: 0
+          RUST_LIB_BACKTRACE: 0
         run: cargo test --locked
 
   security:
